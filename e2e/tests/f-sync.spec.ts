@@ -1,7 +1,26 @@
 import { test, expect } from '../fixtures'
 import { fillPersonRequiredFields } from '../helpers/wizard'
+import { loginToCss } from '../helpers/login'
+import { CSS_ISSUER, TEST_EMAIL, TEST_PASSWORD } from '../../playwright.config'
+
+// All F tests share the same pod user and write to overlapping resources (question-set,
+// packing-lists). Running them in parallel causes wizard saves from one test to overwrite
+// question-set changes made by another, producing flaky results. Serial mode gives each
+// test exclusive access to the pod state.
+test.describe.configure({ mode: 'serial' })
 
 test.describe('F – Solid Pod Sync', () => {
+  // Creates a fresh authenticated context (full login) instead of using storageState.
+  // storageState-based session restoration is unreliable on CSS v7 (prompt=none gets stuck),
+  // so we always do a full login for second contexts that need to read from the pod.
+  async function freshLogin(browser: import('@playwright/test').Browser) {
+    const ctx = await browser.newContext()
+    const pg = await ctx.newPage()
+    await pg.goto('/')
+    await loginToCss(pg, CSS_ISSUER, TEST_EMAIL, TEST_PASSWORD)
+    return { ctx, pg }
+  }
+
   async function runWizardLoggedIn(page: import('@playwright/test').Page) {
     await page.goto('/#/wizard')
     await fillPersonRequiredFields(page)
@@ -42,8 +61,7 @@ test.describe('F – Solid Pod Sync', () => {
     await expect(page.locator('span.text-green-600').first()).toBeVisible({ timeout: 8_000 })
     await expect(page.locator('span.text-green-600').first()).not.toBeVisible({ timeout: 5_000 })
     // Second context: manage-questions should load questions from Pod (via usePodSync polling)
-    const context2 = await browser.newContext({ storageState: 'e2e/.auth/user.json' })
-    const page2 = await context2.newPage()
+    const { ctx: context2, pg: page2 } = await freshLogin(browser)
     await page2.goto('/#/manage-questions')
     await page2.waitForLoadState('networkidle')
     // Expand People section if collapsed (inputs are conditionally rendered)
@@ -62,8 +80,7 @@ test.describe('F – Solid Pod Sync', () => {
     // Check item to trigger Pod sync (saveWithSyncPrevention → saveToPod)
     await syncListToPod(page)
     // Second context: view-lists loads from Pod (loadFromPod) and shows the list
-    const context2 = await browser.newContext({ storageState: 'e2e/.auth/user.json' })
-    const page2 = await context2.newPage()
+    const { ctx: context2, pg: page2 } = await freshLogin(browser)
     await page2.goto('/#/view-lists')
     await page2.waitForSelector('text=Loading packing lists...', { state: 'hidden', timeout: 60_000 })
     await expect(page2.getByText('Sync Test List')).toBeVisible({ timeout: 8_000 })
@@ -81,12 +98,62 @@ test.describe('F – Solid Pod Sync', () => {
     await page.getByRole('button', { name: /^Delete$/ }).click()
     await page.waitForTimeout(3_000)
     // Second context: list should not appear (Pod has no file, loadFromPod returns nothing)
-    const context2 = await browser.newContext({ storageState: 'e2e/.auth/user.json' })
-    const page2 = await context2.newPage()
+    const { ctx: context2, pg: page2 } = await freshLogin(browser)
     await page2.goto('/#/view-lists')
     await page2.waitForSelector('text=Loading packing lists...', { state: 'hidden', timeout: 60_000 })
     await expect(page2.getByText('Delete Sync Test')).not.toBeVisible()
     await context2.close()
+  })
+
+  test('F5: rapid checkbox ticks persist without 409 conflict (stale-rev regression)', async ({ authedPage: page }) => {
+    await runWizardLoggedIn(page)
+    await createList(page, 'Rapid Check Test')
+
+    // Keep packed items visible so their checkboxes stay in the DOM while we tick them.
+    await page.getByRole('button', { name: 'Show Packed' }).click()
+
+    const checkboxes = page.locator('input[type="checkbox"]')
+    await expect(checkboxes.first()).toBeVisible()
+
+    // Capture stable name attributes (items.{id}) for post-reload assertions.
+    const box0Name = await checkboxes.nth(0).getAttribute('name')
+    const box1Name = await checkboxes.nth(1).getAttribute('name')
+
+    // Add artificial latency to pod PUT requests for the packing-lists container.
+    // This opens the stale-_rev window that caused the original bug:
+    //   - local DB save completes in <50 ms  → PouchDB advances _rev
+    //   - pod PUT completes in ~1 500 ms     → component state _rev still stale
+    //   - 800 ms debounce fires between them → second save sees stale _rev
+    await page.route('**/pack-me-up/packing-lists/**', async (route) => {
+      if (route.request().method() === 'PUT') {
+        await new Promise(resolve => setTimeout(resolve, 1500))
+      }
+      await route.continue()
+    })
+
+    // First checkbox: debounce (800 ms) fires → local DB save → pod PUT begins (delayed 1 500 ms).
+    await checkboxes.nth(0).click()
+
+    // Wait long enough for the first debounce to fire and local DB save to complete (~850 ms),
+    // but NOT long enough for the pod PUT to return (fires at 800 + 1 500 = 2 300 ms).
+    // During this window the component-state _rev is one generation behind PouchDB.
+    await page.waitForTimeout(1000)
+
+    // Second checkbox while first pod PUT is still in-flight — the exact sequence that
+    // previously caused "Document update conflict" 409 errors on the local DB save.
+    await checkboxes.nth(1).click()
+
+    // Both saves must complete without surfacing an error status.
+    await expect(page.locator('span.text-green-600').first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('span.text-green-600').first()).not.toBeVisible({ timeout: 8_000 })
+    await expect(page.locator('span.text-red-600')).not.toBeVisible()
+
+    // Reload and verify BOTH items persisted.  A silent 409 on the second save returns
+    // null from saveWithSyncPrevention, leaving that item unchecked after a reload.
+    await page.reload()
+    await page.getByRole('button', { name: 'Show Packed' }).click()
+    await expect(page.locator(`input[name="${box0Name}"]`)).toBeChecked({ timeout: 5_000 })
+    await expect(page.locator(`input[name="${box1Name}"]`)).toBeChecked({ timeout: 5_000 })
   })
 
   test('F4: item check state visible from second context after Pod sync', async ({ authedPage: page, browser }) => {
@@ -97,8 +164,7 @@ test.describe('F – Solid Pod Sync', () => {
     // Give Pod sync time to propagate (poll interval is 5s)
     await page.waitForTimeout(5_000)
     // Second context: load view-lists (triggers loadFromPod which populates local DB from Pod)
-    const context2 = await browser.newContext({ storageState: 'e2e/.auth/user.json' })
-    const page2 = await context2.newPage()
+    const { ctx: context2, pg: page2 } = await freshLogin(browser)
     await page2.goto('/#/view-lists')
     await page2.waitForSelector('text=Loading packing lists...', { state: 'hidden', timeout: 60_000 })
     // Navigate to the specific list
