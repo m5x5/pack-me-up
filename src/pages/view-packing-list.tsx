@@ -592,7 +592,7 @@ export function ViewPackingList() {
                                             <button
                                                 type="button"
                                                 onClick={() => handleAddItem(personName)}
-                                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                                                className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
                                             >
                                                 Add
                                             </button>
