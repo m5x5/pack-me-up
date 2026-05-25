@@ -66,7 +66,9 @@ export function SolidPodProvider({ children }: { children: ReactNode }) {
         console.log("Initializing Solid session...");
 
         const searchParams = new URLSearchParams(window.location.search);
-        const isOAuthCallback = searchParams.has("code") || searchParams.has("state");
+        // Only treat a response with `code` as an OAuth callback — error redirects
+        // may carry `state` without `code` and should not suppress the returnTo write.
+        const isOAuthCallback = searchParams.has("code");
 
         if (!isOAuthCallback) {
           sessionStorage.setItem(AUTH_RETURN_TO_KEY, window.location.hash.substring(1) || "/");
@@ -78,7 +80,7 @@ export function SolidPodProvider({ children }: { children: ReactNode }) {
           // Redirect completed — navigate to the stored return route.
           // We handle this here instead of via pod-auth-callback.html so the
           // redirect_uri registered with the IdP can be the plain SPA root ("/").
-          const returnTo = sessionStorage.getItem(AUTH_RETURN_TO_KEY) || "/solid-pod-handle-redirect";
+          const returnTo = sessionStorage.getItem(AUTH_RETURN_TO_KEY) || "/";
           window.location.replace("/#" + returnTo);
           return;
         }

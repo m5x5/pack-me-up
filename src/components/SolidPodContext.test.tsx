@@ -249,6 +249,22 @@ describe('SolidPodContext', () => {
         })
     })
 
+    it('overwrites sessionStorage authReturnTo for state-only OAuth error redirects (no code)', async () => {
+        setWindowLocation('?state=xyz&error=access_denied', '#/home')
+        sessionStorage.setItem('authReturnTo', '/old-route')
+
+        render(
+            <Wrapper>
+                <Consumer />
+            </Wrapper>
+        )
+
+        await waitFor(() => {
+            // state-only is not a code exchange — should update returnTo from current hash
+            expect(sessionStorage.getItem('authReturnTo')).toBe('/home')
+        })
+    })
+
     it('navigates to stored return route after OAuth callback completes', async () => {
         setWindowLocation('?code=abc123&state=xyz', '')
         sessionStorage.setItem('authReturnTo', '/create-packing-list')
