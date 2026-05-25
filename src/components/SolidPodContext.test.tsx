@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
-import { EventEmitter } from 'events'
 import React from 'react'
 import { SolidPodProvider, useSolidPod } from './SolidPodContext'
 import { ToastProvider } from './ToastContext'
@@ -13,27 +12,41 @@ function Wrapper({ children }: { children: React.ReactNode }) {
     )
 }
 
-// Build a controllable mock session backed by an EventEmitter
-function makeMockSession(isLoggedIn = false, webId?: string) {
-    const events = new EventEmitter()
-    return {
-        info: { isLoggedIn, webId, sessionId: 'test-session' },
-        events,
-        fetch: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
-    }
-}
+// Callbacks captured from the Session constructor
+let capturedCallbacks: {
+    onSessionStateChange?: (event?: Event) => void;
+    onSessionExpiration?: (event?: Event) => void;
+} = {}
 
-let mockSession = makeMockSession()
+let mockAuthFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+let mockIsActive = false
+let mockWebId: string | undefined
 
-vi.mock('@inrupt/solid-client-authn-browser', () => ({
-    handleIncomingRedirect: vi.fn().mockResolvedValue(undefined),
-    getDefaultSession: vi.fn(() => mockSession),
-    login: vi.fn(),
-    logout: vi.fn().mockResolvedValue(undefined),
+vi.mock('@uvdsl/solid-oidc-client-browser', () => ({
+    // Must use a regular function (not arrow) so vitest can call it as a constructor
+    Session: vi.fn().mockImplementation(function(_clientDetails: unknown, options: typeof capturedCallbacks) {
+        capturedCallbacks = options ?? {}
+        return {
+            get isActive() { return mockIsActive },
+            get webId() { return mockWebId },
+            handleRedirectFromLogin: vi.fn().mockResolvedValue(undefined),
+            restore: vi.fn().mockResolvedValue(undefined),
+            login: vi.fn().mockResolvedValue(undefined),
+            logout: vi.fn().mockResolvedValue(undefined),
+            authFetch: mockAuthFetch,
+        }
+    }),
 }))
 
-import { getDefaultSession } from '@inrupt/solid-client-authn-browser'
-const mockGetDefaultSession = vi.mocked(getDefaultSession)
+function fireStateChange(isActive: boolean, webId?: string) {
+    capturedCallbacks.onSessionStateChange?.(
+        new CustomEvent('sessionStateChange', { detail: { isActive, webId } })
+    )
+}
+
+function fireExpiration() {
+    capturedCallbacks.onSessionExpiration?.()
+}
 
 /** Test consumer that renders context values as text */
 function Consumer() {
@@ -66,8 +79,10 @@ describe('SolidPodContext', () => {
     beforeEach(() => {
         vi.spyOn(console, 'log').mockImplementation(() => {})
         vi.spyOn(console, 'error').mockImplementation(() => {})
-        mockSession = makeMockSession()
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
+        capturedCallbacks = {}
+        mockIsActive = false
+        mockWebId = undefined
+        mockAuthFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
         sessionStorage.clear()
         originalLocation = window.location
     })
@@ -98,10 +113,7 @@ describe('SolidPodContext', () => {
         })
     })
 
-    it('sets isLoggedIn true after session initialises with a logged-in session', async () => {
-        mockSession = makeMockSession(true, 'https://user.example.org/profile/card#me')
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
-
+    it('sets isLoggedIn true after STATE_CHANGE event with isActive true', async () => {
         render(
             <Wrapper>
                 <Consumer />
@@ -109,30 +121,43 @@ describe('SolidPodContext', () => {
         )
 
         await waitFor(() => {
+            expect(screen.getByTestId('isLoggedIn').textContent).toBe('false')
+        })
+
+        await act(async () => {
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
+        })
+
+        await waitFor(() => {
             expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
+            expect(screen.getByTestId('webId').textContent).toBe('https://user.example.org/profile/card#me')
         })
     })
 
-    it('sets isLoggedIn false and sessionExpired true on non-intentional logout', async () => {
-        mockSession = makeMockSession(true, 'https://user.example.org/profile/card#me')
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
-
+    it('sets isLoggedIn false and sessionExpired true on session expiration', async () => {
         render(
             <Wrapper>
                 <Consumer />
             </Wrapper>
         )
 
+        await act(async () => {
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
+        })
+
         await waitFor(() => {
             expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
         })
 
-        // Simulate session expiry: library fires logout event and resets session info
+        // Simulate session expiry
         await act(async () => {
-            mockSession.info.isLoggedIn = false
-            const expiredSession = makeMockSession(false)
-            mockGetDefaultSession.mockReturnValue(expiredSession as never)
-            mockSession.events.emit('logout')
+            mockIsActive = false
+            mockWebId = undefined
+            fireExpiration()
         })
 
         await waitFor(() => {
@@ -142,14 +167,17 @@ describe('SolidPodContext', () => {
     })
 
     it('sets isLoggedIn false but keeps sessionExpired false on intentional logout', async () => {
-        mockSession = makeMockSession(true, 'https://user.example.org/profile/card#me')
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
-
         render(
             <Wrapper>
                 <ConsumerWithActions />
             </Wrapper>
         )
+
+        await act(async () => {
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
+        })
 
         await waitFor(() => {
             expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
@@ -165,7 +193,7 @@ describe('SolidPodContext', () => {
         })
     })
 
-    it('sets isLoggedIn true and sessionExpired false on login event', async () => {
+    it('sets isLoggedIn true and sessionExpired false on login STATE_CHANGE', async () => {
         render(
             <Wrapper>
                 <Consumer />
@@ -177,9 +205,9 @@ describe('SolidPodContext', () => {
         })
 
         await act(async () => {
-            mockSession.info.isLoggedIn = true
-            mockSession.info.webId = 'https://user.example.org/profile/card#me'
-            mockSession.events.emit('login')
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
         })
 
         await waitFor(() => {
@@ -217,55 +245,28 @@ describe('SolidPodContext', () => {
         })
     })
 
-    it('periodically calls session.fetch to keep the session alive', async () => {
-        const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
-
-        mockSession = makeMockSession(true, 'https://user.example.org/profile/card#me')
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
-
-        render(<Wrapper><Consumer /></Wrapper>)
-
-        await waitFor(() => {
-            expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
-        })
-
-        const keepaliveCall = setIntervalSpy.mock.calls.find(
-            ([, delay]) => delay === 10 * 60 * 1000
-        )
-        expect(keepaliveCall).toBeDefined()
-
-        mockSession.fetch.mockClear()
-        await act(async () => {
-            await (keepaliveCall![0] as () => Promise<void>)()
-        })
-
-        expect(mockSession.fetch).toHaveBeenCalledWith(
-            'https://user.example.org/profile/card#me',
-            { method: 'HEAD' }
-        )
-    })
-
     it('clearSessionExpired sets sessionExpired to false', async () => {
-        mockSession = makeMockSession(true, 'https://user.example.org/profile/card#me')
-        mockGetDefaultSession.mockReturnValue(mockSession as never)
-
         render(
             <Wrapper>
                 <ConsumerWithActions />
             </Wrapper>
         )
 
-        // Wait for initialization
+        await act(async () => {
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
+        })
+
         await waitFor(() => {
             expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
         })
 
         // Trigger session expiry
         await act(async () => {
-            mockSession.info.isLoggedIn = false
-            const expiredSession = makeMockSession(false)
-            mockGetDefaultSession.mockReturnValue(expiredSession as never)
-            mockSession.events.emit('logout')
+            mockIsActive = false
+            mockWebId = undefined
+            fireExpiration()
         })
 
         await waitFor(() => {

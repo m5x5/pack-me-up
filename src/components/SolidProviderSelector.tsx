@@ -21,11 +21,6 @@ export const COMMON_PROVIDERS: SolidProvider[] = [
     description: 'Free · community-run, backed by the Open Data Institute'
   },
   {
-    name: 'solidweb.org',
-    issuer: 'https://solidweb.org',
-    description: 'Free · EU-hosted'
-  },
-  {
     name: 'Private Data Pod',
     issuer: 'https://privatedatapod.com',
     description: 'Free · 1 GB storage · beginner-friendly'
