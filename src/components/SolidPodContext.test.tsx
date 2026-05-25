@@ -22,9 +22,9 @@ let mockAuthFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }
 let mockIsActive = false
 let mockWebId: string | undefined
 
-vi.mock('@uvdsl/solid-oidc-client-browser', () => ({
+vi.mock('@uvdsl/solid-oidc-client-browser/core', () => ({
     // Must use a regular function (not arrow) so vitest can call it as a constructor
-    Session: vi.fn().mockImplementation(function(_clientDetails: unknown, options: typeof capturedCallbacks) {
+    SessionCore: vi.fn().mockImplementation(function(_clientDetails: unknown, options: typeof capturedCallbacks) {
         capturedCallbacks = options ?? {}
         return {
             get isActive() { return mockIsActive },
@@ -36,6 +36,10 @@ vi.mock('@uvdsl/solid-oidc-client-browser', () => ({
             authFetch: mockAuthFetch,
         }
     }),
+}))
+
+vi.mock('@uvdsl/solid-oidc-client-browser', () => ({
+    SessionIDB: vi.fn().mockImplementation(function() { return {} }),
 }))
 
 function fireStateChange(isActive: boolean, webId?: string) {
@@ -243,6 +247,35 @@ describe('SolidPodContext', () => {
         await waitFor(() => {
             expect(sessionStorage.getItem('authReturnTo')).toBe('/existing-route')
         })
+    })
+
+    it('periodically calls authFetch to keep the session alive', async () => {
+        const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+
+        render(<Wrapper><Consumer /></Wrapper>)
+
+        await act(async () => {
+            mockIsActive = true
+            mockWebId = 'https://user.example.org/profile/card#me'
+            fireStateChange(true, 'https://user.example.org/profile/card#me')
+        })
+
+        await waitFor(() => {
+            expect(screen.getByTestId('isLoggedIn').textContent).toBe('true')
+        })
+
+        const keepaliveCall = setIntervalSpy.mock.calls.find(([, delay]) => delay === 10 * 60 * 1000)
+        expect(keepaliveCall).toBeDefined()
+
+        mockAuthFetch.mockClear()
+        await act(async () => {
+            await (keepaliveCall![0] as () => Promise<void>)()
+        })
+
+        expect(mockAuthFetch).toHaveBeenCalledWith(
+            'https://user.example.org/profile/card#me',
+            { method: 'HEAD' }
+        )
     })
 
     it('clearSessionExpired sets sessionExpired to false', async () => {

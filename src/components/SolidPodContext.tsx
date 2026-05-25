@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useContext, useState, useEffect, useRef } from "react";
-import { Session, type SessionStateChangeDetail } from "@uvdsl/solid-oidc-client-browser";
+import { SessionCore, type SessionStateChangeDetail } from "@uvdsl/solid-oidc-client-browser/core";
+import { SessionIDB } from "@uvdsl/solid-oidc-client-browser";
 import { isAuthenticationError } from "../services/solidPod";
 import { AUTH_RETURN_TO_KEY } from "../pages/solid-pod-handle-redirect-page";
 import { AppSession } from "../types/AppSession";
@@ -24,15 +25,16 @@ export function SolidPodProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const intentionalLogoutRef = useRef(false);
 
-  const uvdslSessionRef = useRef<InstanceType<typeof Session>>(null!);
+  const uvdslSessionRef = useRef<SessionCore>(null!);
   if (!uvdslSessionRef.current) {
     const origin = window.location.origin || window.location.href?.split("?")[0]?.split("#")[0] || "http://localhost";
-    uvdslSessionRef.current = new Session(
+    uvdslSessionRef.current = new SessionCore(
       {
         redirect_uris: [new URL("/pod-auth-callback.html", origin).toString()],
         client_name: "Pack Me Up",
       },
       {
+        database: new SessionIDB(),
         onSessionStateChange: (e) => {
           const { isActive, webId: newWebId } = (e as CustomEvent<SessionStateChangeDetail>).detail;
           setIsLoggedIn(isActive);
@@ -124,6 +126,20 @@ export function SolidPodProvider({ children }: { children: ReactNode }) {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isLoggedIn, webId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Proactively refresh the access token so it doesn't silently expire between user actions.
+  // (SessionCore has no background worker, so we poll manually.)
+  useEffect(() => {
+    if (!isLoggedIn || !webId) return;
+    const intervalId = setInterval(async () => {
+      try {
+        await uvdslSession.authFetch(webId, { method: "HEAD" });
+      } catch {
+        // Best-effort; event listeners handle real auth failures
+      }
+    }, 10 * 60 * 1000);
+    return () => clearInterval(intervalId);
   }, [isLoggedIn, webId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (oidcIssuer: string, returnTo?: string) => {
