@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { Session } from '@inrupt/solid-client-authn-browser'
+import type { AppSession as Session } from '../types/AppSession'
 import type { SolidDataset, WithServerResourceInfo } from '@inrupt/solid-client'
 import { hasPodData, syncAllDataFromPod } from './solidPod'
 import { AuthenticationError } from './solidPod'

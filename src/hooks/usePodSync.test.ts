@@ -22,7 +22,7 @@ vi.mock('../services/solidPod', () => ({
 
 import { useSolidPod } from '../components/SolidPodContext'
 import { getPrimaryPodUrl, loadFileFromPod } from '../services/solidPod'
-import type { Session } from '@inrupt/solid-client-authn-browser'
+import type { AppSession as Session } from '../../types/AppSession'
 
 const mockUseSolidPod = vi.mocked(useSolidPod)
 const mockGetPrimaryPodUrl = vi.mocked(getPrimaryPodUrl)

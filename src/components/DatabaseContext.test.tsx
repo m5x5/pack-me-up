@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import React from 'react'
-import type { Session } from '@inrupt/solid-client-authn-browser'
+import type { AppSession as Session } from '../types/AppSession'
 import { DatabaseProvider, useDatabase } from './DatabaseContext'
 
 // --- Mocks ---

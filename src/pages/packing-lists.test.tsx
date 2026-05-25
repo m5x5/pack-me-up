@@ -45,7 +45,7 @@ vi.mock('../services/solidPod', () => ({
     },
 }))
 
-import type { Session } from '@inrupt/solid-client-authn-browser'
+import type { AppSession as Session } from '../types/AppSession'
 import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { getPrimaryPodUrl, saveFileToPod, deleteFileFromPod } from '../services/solidPod'
