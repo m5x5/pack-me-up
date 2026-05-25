@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test'
  *  3. User fills login form (JS-driven — button is disabled until scripts load)
  *  4. After successful login, page navigates to /.account/oidc/prompt/ (consent page)
  *  5. The #authorize button starts disabled, JS enables it after loading WebIDs
- *  6. User clicks Authorize → CSS redirects to pod-auth-callback.html → app
+ *  6. User clicks Authorize → CSS redirects to SPA root (/) → app processes OAuth callback
  */
 export async function loginToCss(
   page: Page,
@@ -32,10 +32,11 @@ export async function loginToCss(
   await page.getByLabel('Custom Provider URL').fill(cssIssuer)
   await page.getByRole('button', { name: 'Connect' }).click()
 
-  // Wait for navigation to CSS login page
+  // Wait for navigation to CSS password login page specifically.
+  // (CSS redirects: /.oidc/auth → /.account/ → /.account/login/password/)
   await page.waitForURL(
-    url => url.hostname === 'localhost' && url.port === new URL(cssIssuer).port,
-    { timeout: 15_000 }
+    url => url.hostname === 'localhost' && url.port === new URL(cssIssuer).port && url.pathname.includes('/login/password'),
+    { timeout: 20_000 }
   )
 
   // Wait for the login form button to be enabled (CSS uses JS to enable it)
@@ -55,28 +56,22 @@ export async function loginToCss(
   await page.waitForURL(
     url =>
       url.pathname.includes('/oidc/prompt') ||
-      url.pathname.includes('consent') ||
-      url.pathname.includes('pod-auth-callback'),
+      url.pathname.includes('consent'),
     { timeout: 20_000 }
   )
 
-  // If we landed on the consent/prompt page, approve it
-  if (!page.url().includes('pod-auth-callback')) {
-    // The #authorize button starts disabled; JS enables it after loading WebIDs
-    const authorizeBtn = page.locator('#authorize')
-    await authorizeBtn.waitFor({ timeout: 10_000 })
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('#authorize') as HTMLButtonElement | null
-      return btn && !btn.disabled
-    }, { timeout: 10_000 })
-    await authorizeBtn.click()
+  // The #authorize button starts disabled; JS enables it after loading WebIDs
+  const authorizeBtn = page.locator('#authorize')
+  await authorizeBtn.waitFor({ timeout: 10_000 })
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('#authorize') as HTMLButtonElement | null
+    return btn && !btn.disabled
+  }, { timeout: 10_000 })
+  await authorizeBtn.click()
 
-    // Wait for redirect back to the app's OAuth callback
-    await page.waitForURL(/pod-auth-callback\.html/, { timeout: 20_000 })
-  }
-
-  // Wait for app to process auth and return to app URL
-  await page.waitForURL(/localhost:4173/, { timeout: 10_000 })
+  // CSS redirects to the SPA root with OAuth params (?code=...&state=...&iss=...)
+  // The app processes the callback and navigates to the return route.
+  await page.waitForURL(/localhost:4173/, { timeout: 20_000 })
   // Wait for logged-in state (skip if the caller expects a migration prompt to block the nav)
   if (options?.waitForLoggedIn !== false) {
     await page.getByRole('button', { name: 'Logout' }).first().waitFor({ timeout: 20_000 })

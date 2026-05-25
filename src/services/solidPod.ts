@@ -1,4 +1,4 @@
-import { Session } from '@inrupt/solid-client-authn-browser'
+import { AppSession as Session } from '../types/AppSession'
 import { getPodUrlAll, saveFileInContainer, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile } from '@inrupt/solid-client'
 import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'

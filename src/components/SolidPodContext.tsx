@@ -1,16 +1,12 @@
 import { createContext, ReactNode, useContext, useState, useEffect, useRef } from "react";
-import {
-  Session,
-  handleIncomingRedirect,
-  getDefaultSession,
-  login as solidLogin,
-  logout as solidLogout
-} from "@inrupt/solid-client-authn-browser";
+import { SessionCore, type SessionStateChangeDetail } from "@uvdsl/solid-oidc-client-browser/core";
+import { SessionIDB } from "@uvdsl/solid-oidc-client-browser";
 import { isAuthenticationError } from "../services/solidPod";
 import { AUTH_RETURN_TO_KEY } from "../pages/solid-pod-handle-redirect-page";
+import { AppSession } from "../types/AppSession";
 
 interface SolidPodContextValue {
-  session: Session | null;
+  session: AppSession | null;
   isLoggedIn: boolean;
   sessionExpired: boolean;
   clearSessionExpired: () => void;
@@ -22,229 +18,169 @@ interface SolidPodContextValue {
 
 const SolidPodContext = createContext<SolidPodContextValue | undefined>(undefined);
 
-/**
- * Sets up event listeners for session lifecycle events.
- * Monitors login, logout, and session restoration events.
- * Returns a cleanup function that removes all registered listeners.
- */
-function setupSessionEventListeners(
-  session: Session,
-  setSession: (session: Session) => void,
-  setSessionVersion: (updater: (v: number) => number) => void,
-  setIsLoggedIn: (v: boolean) => void,
-  setSessionExpired: (v: boolean) => void,
-  intentionalLogoutRef: React.MutableRefObject<boolean>
-): () => void {
-  // Listen for logout events — fires for both intentional logout and session expiry.
-  // Use intentionalLogoutRef to distinguish between the two.
-  const onLogout = () => {
-    console.log("Session logout event fired");
-    setSession(getDefaultSession());
-    setSessionVersion(v => v + 1);
-    setIsLoggedIn(false);
-
-    if (!intentionalLogoutRef.current) {
-      setSessionExpired(true);
-    }
-    intentionalLogoutRef.current = false;
-  };
-
-  // Listen for login events
-  const onLogin = () => {
-    console.log("Session login event fired");
-    const updatedSession = getDefaultSession();
-    setSession(updatedSession);
-    setSessionVersion(v => v + 1);
-    setIsLoggedIn(true);
-    setSessionExpired(false);
-  };
-
-  // Listen for session restore events
-  const onSessionRestore = () => {
-    console.log("Session restore event fired");
-    const updatedSession = getDefaultSession();
-    setSession(updatedSession);
-    setSessionVersion(v => v + 1);
-    setIsLoggedIn(true);
-  };
-
-  session.events.on("logout", onLogout);
-  session.events.on("login", onLogin);
-  session.events.on("sessionRestore", onSessionRestore);
-
-  return () => {
-    session.events.off("logout", onLogout);
-    session.events.off("login", onLogin);
-    session.events.off("sessionRestore", onSessionRestore);
-  };
-}
-
 export function SolidPodProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [webId, setWebId] = useState<string | undefined>(undefined);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [, setSessionVersion] = useState(0);
   const intentionalLogoutRef = useRef(false);
 
-  useEffect(() => {
-    // Register listeners synchronously on the singleton session so the cleanup
-    // function is available immediately (before the async init work completes).
-    // This prevents React StrictMode's synchronous cleanup–remount cycle from
-    // leaving duplicate listeners when the async callback hasn't resolved yet.
-    const initialSession = getDefaultSession();
-    const cleanupListeners = setupSessionEventListeners(
-      initialSession, setSession, setSessionVersion, setIsLoggedIn, setSessionExpired, intentionalLogoutRef
+  const uvdslSessionRef = useRef<SessionCore>(null!);
+  if (!uvdslSessionRef.current) {
+    const origin = window.location.origin || "http://localhost";
+    uvdslSessionRef.current = new SessionCore(
+      {
+        // Use SPA root so the redirect_uri in the token exchange matches what's registered.
+        // If we go through pod-auth-callback.html, the library strips params from that URL
+        // and sends the wrong redirect_uri to the token endpoint.
+        redirect_uris: [origin + "/"],
+        client_name: "Pack Me Up",
+      },
+      {
+        database: new SessionIDB(),
+        onSessionStateChange: (e) => {
+          const { isActive, webId: newWebId } = (e as CustomEvent<SessionStateChangeDetail>).detail;
+          setIsLoggedIn(isActive);
+          setWebId(isActive ? newWebId : undefined);
+          if (isActive) setSessionExpired(false);
+        },
+        onSessionExpiration: () => {
+          if (!intentionalLogoutRef.current) setSessionExpired(true);
+          setIsLoggedIn(false);
+          setWebId(undefined);
+          intentionalLogoutRef.current = false;
+        },
+      }
     );
+  }
 
+  const uvdslSession = uvdslSessionRef.current;
+
+  const appSession: AppSession | null = isLoggedIn
+    ? { fetch: uvdslSession.authFetch.bind(uvdslSession), info: { isLoggedIn, webId } }
+    : null;
+
+  useEffect(() => {
     const initializeSession = async () => {
       try {
         console.log("Initializing Solid session...");
 
-        // Save the current route before session restore may redirect away.
-        // sessionStorage persists through redirect cycles in the same tab, so
-        // SolidPodHandleRedirectPage can use this to return the user to the
-        // correct page instead of the stale returnTo stored at login time.
-        const isOAuthCallback = new URLSearchParams(window.location.search).has("code") ||
-          new URLSearchParams(window.location.search).has("state");
+        const searchParams = new URLSearchParams(window.location.search);
+        const isOAuthCallback = searchParams.has("code") || searchParams.has("state");
+
         if (!isOAuthCallback) {
           sessionStorage.setItem(AUTH_RETURN_TO_KEY, window.location.hash.substring(1) || "/");
         }
 
-        await handleIncomingRedirect({ restorePreviousSession: true });
-        const currentSession = getDefaultSession();
-        console.log("Session initialized:", {
-          isLoggedIn: currentSession.info.isLoggedIn,
-          webId: currentSession.info.webId,
-          sessionId: currentSession.info.sessionId
-        });
-        setSession(currentSession);
-        setSessionVersion(v => v + 1);
-        setIsLoggedIn(currentSession.info.isLoggedIn);
+        await uvdslSession.handleRedirectFromLogin();
+
+        if (isOAuthCallback && uvdslSession.isActive) {
+          // Redirect completed — navigate to the stored return route.
+          // We handle this here instead of via pod-auth-callback.html so the
+          // redirect_uri registered with the IdP can be the plain SPA root ("/").
+          const returnTo = sessionStorage.getItem(AUTH_RETURN_TO_KEY) || "/solid-pod-handle-redirect";
+          window.location.replace("/#" + returnTo);
+          return;
+        }
+
+        if (!uvdslSession.isActive) {
+          try {
+            await uvdslSession.restore();
+          } catch {
+            // No saved session — user starts logged out
+          }
+        }
+
+        console.log("Session initialized:", { isActive: uvdslSession.isActive, webId: uvdslSession.webId });
       } catch (error) {
         console.error("Error initializing session:", error);
-        console.log("Session restoration failed, clearing any corrupted session data...");
-
-        // Clear any corrupted session data by logging out
-        // This handles cases where an invalid client_id or expired session data
-        // is stored in the browser, causing authentication failures
-        try {
-          await solidLogout();
-          const clearedSession = getDefaultSession();
-          setSession(clearedSession);
-          setSessionVersion(v => v + 1);
-          console.log("Session data cleared successfully");
-        } catch (logoutError) {
-          console.error("Error clearing session data:", logoutError);
-          // Even if logout fails, try to set a fresh session
-          const currentSession = getDefaultSession();
-          setSession(currentSession);
-          setSessionVersion(v => v + 1);
-        }
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeSession();
-
-    return cleanupListeners;
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Validate session when user returns to the tab
   useEffect(() => {
-    if (!session?.info.isLoggedIn || !session?.info.webId) {
-      return;
-    }
+    if (!isLoggedIn || !webId) return;
 
     const handleSessionExpired = async () => {
       console.log("Session validation failed - session has expired");
-      await solidLogout();
-      const updatedSession = getDefaultSession();
-      setSession(updatedSession);
-      setSessionVersion(v => v + 1);
+      await uvdslSession.logout();
       setIsLoggedIn(false);
+      setWebId(undefined);
       setSessionExpired(true);
     };
 
     const validateSession = async () => {
       try {
-        // Make a lightweight HEAD request to verify the session is still valid
-        const response = await session.fetch(session.info.webId!, { method: 'HEAD' });
-        // fetch() doesn't throw on 4xx; check status explicitly
+        const response = await uvdslSession.authFetch(webId, { method: "HEAD" });
         if (response.status === 401 || response.status === 403) {
           await handleSessionExpired();
         }
       } catch (error: unknown) {
-        // If authentication error, the session has expired
         if (isAuthenticationError(error)) {
           await handleSessionExpired();
         } else {
-          // Network errors or other issues - log but don't logout
           console.error("Session validation failed with non-auth error:", error);
         }
       }
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         console.log("Tab became visible - validating session");
         validateSession();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [session, session?.info.isLoggedIn, session?.info.webId]);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isLoggedIn, webId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Periodically make an authenticated request so the library uses its refresh
-  // token to renew the access token before it expires, preventing unnecessary
-  // re-logins when the access token silently expires between user actions.
+  // Proactively refresh the access token so it doesn't silently expire between user actions.
+  // (SessionCore has no background worker, so we poll manually.)
   useEffect(() => {
-    if (!session?.info.isLoggedIn || !session?.info.webId) {
-      return;
-    }
-
+    if (!isLoggedIn || !webId) return;
     const intervalId = setInterval(async () => {
       try {
-        await session.fetch(session.info.webId!, { method: 'HEAD' });
+        await uvdslSession.authFetch(webId, { method: "HEAD" });
       } catch {
-        // Best-effort: session event listeners handle any real auth failures
+        // Best-effort; event listeners handle real auth failures
       }
     }, 10 * 60 * 1000);
-
     return () => clearInterval(intervalId);
-  }, [session, session?.info.isLoggedIn, session?.info.webId]);
+  }, [isLoggedIn, webId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (oidcIssuer: string, returnTo?: string) => {
     const currentLocation = returnTo || window.location.hash.substring(1) || "/";
-    const redirectUrl = new URL("/pod-auth-callback.html", window.location.href);
-    redirectUrl.searchParams.set("returnTo", currentLocation);
-
-    return solidLogin({
-      oidcIssuer,
-      redirectUrl: redirectUrl.toString(),
-      clientName: "Pack Me Up",
-    });
+    // Persist the return route so SolidPodHandleRedirectPage can navigate back after login.
+    // We do this here (not just in initializeSession) to handle the case where login is
+    // triggered from a page the init effect didn't record.
+    sessionStorage.setItem(AUTH_RETURN_TO_KEY, currentLocation);
+    // Use the SPA root as redirect_uri so the URI registered via dynamic client
+    // registration matches what the library derives when exchanging the code.
+    const redirectUri = (window.location.origin || "http://localhost") + "/";
+    await uvdslSession.login(oidcIssuer, redirectUri);
   };
 
   const logout = async () => {
     intentionalLogoutRef.current = true;
-    await solidLogout();
-    const updatedSession = getDefaultSession();
-    setSession(updatedSession);
-    setSessionVersion(v => v + 1);
+    await uvdslSession.logout();
     setIsLoggedIn(false);
+    setWebId(undefined);
   };
 
   const clearSessionExpired = () => setSessionExpired(false);
 
   const value: SolidPodContextValue = {
-    session,
+    session: appSession,
     isLoggedIn,
     sessionExpired,
     clearSessionExpired,
-    webId: session?.info.webId,
+    webId,
     isLoading,
     login,
     logout,
@@ -262,7 +198,7 @@ export function useSolidPod() {
   const context = useContext(SolidPodContext);
 
   if (context === undefined) {
-    throw new Error('useSolidPod must be used within a SolidPodProvider');
+    throw new Error("useSolidPod must be used within a SolidPodProvider");
   }
 
   return context;

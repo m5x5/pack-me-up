@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import PouchDB from 'pouchdb'
 import PouchDBMemoryAdapter from 'pouchdb-adapter-memory'
-import type { Session } from '@inrupt/solid-client-authn-browser'
+import type { AppSession as Session } from '../types/AppSession'
 import type { SolidDataset, WithServerResourceInfo } from '@inrupt/solid-client'
 import { PackingAppDatabase } from './database'
 import { AuthenticationError } from './solidPod'

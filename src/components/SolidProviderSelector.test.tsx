@@ -49,7 +49,6 @@ describe('SolidProviderSelector', () => {
     it('hides other providers by default', () => {
       render(<SolidProviderSelector {...defaultProps} />)
       expect(isProviderVisible('solidcommunity.net')).toBe(false)
-      expect(isProviderVisible('solidweb.org')).toBe(false)
       expect(isProviderVisible('Private Data Pod')).toBe(false)
     })
 
@@ -57,23 +56,22 @@ describe('SolidProviderSelector', () => {
       render(<SolidProviderSelector {...defaultProps} />)
       fireEvent.click(screen.getByRole('button', { name: /other providers/i }))
       expect(isProviderVisible('solidcommunity.net')).toBe(true)
-      expect(isProviderVisible('solidweb.org')).toBe(true)
       expect(isProviderVisible('Private Data Pod')).toBe(true)
     })
   })
 
   describe('with last-used provider stored', () => {
     it('shows the last-used provider as the primary option', () => {
-      localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidweb.org')
+      localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidcommunity.net')
       render(<SolidProviderSelector {...defaultProps} />)
-      expect(getPrimaryProviderName()).toBe('solidweb.org')
+      expect(getPrimaryProviderName()).toBe('solidcommunity.net')
     })
 
     it('does not show other providers by default', () => {
-      localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidweb.org')
+      localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidcommunity.net')
       render(<SolidProviderSelector {...defaultProps} />)
-      expect(isProviderVisible('solidcommunity.net')).toBe(false)
       expect(isProviderVisible('Inrupt PodSpaces')).toBe(false)
+      expect(isProviderVisible('Private Data Pod')).toBe(false)
     })
 
     it('falls back to Inrupt PodSpaces for an unrecognised issuer', () => {
