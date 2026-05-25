@@ -249,6 +249,29 @@ describe('SolidPodContext', () => {
         })
     })
 
+    it('navigates to stored return route after OAuth callback completes', async () => {
+        setWindowLocation('?code=abc123&state=xyz', '')
+        sessionStorage.setItem('authReturnTo', '/create-packing-list')
+        mockIsActive = true
+        mockWebId = 'https://user.example.org/profile/card#me'
+
+        const replaceSpy = vi.fn()
+        Object.defineProperty(window, 'location', {
+            configurable: true,
+            value: { ...originalLocation, search: '?code=abc123&state=xyz', hash: '', replace: replaceSpy },
+        })
+
+        render(
+            <Wrapper>
+                <Consumer />
+            </Wrapper>
+        )
+
+        await waitFor(() => {
+            expect(replaceSpy).toHaveBeenCalledWith('/#/create-packing-list')
+        })
+    })
+
     it('periodically calls authFetch to keep the session alive', async () => {
         const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
 
