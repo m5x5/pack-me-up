@@ -9,8 +9,9 @@ import { Button } from '../components/Button'
 import { useToast } from '../components/ToastContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { SolidProviderSelector } from '../components/SolidProviderSelector'
-import { getPrimaryPodUrl, saveFileToPod, POD_CONTAINERS } from '../services/solidPod'
+import { getPrimaryPodUrl, saveRdfToPod, POD_CONTAINERS } from '../services/solidPod'
 import { usePodSync } from '../hooks/usePodSync'
+import { questionSetToDataset, datasetToQuestionSet, packingListToDataset } from '../services/rdfSerialization'
 
 export function deduplicateItems(items: PackingListItem[]): PackingListItem[] {
     const seen = new Set<string>()
@@ -295,7 +296,7 @@ export function CreatePackingList() {
     const { showToast } = useToast()
     const { isLoggedIn, login, session } = useSolidPod()
     const [isProviderSelectorOpen, setIsProviderSelectorOpen] = useState(false)
-    const { db } = useDatabase()
+    const { db, loginSyncInProgress } = useDatabase()
     const navigate = useNavigate()
 
     const { register, handleSubmit, setValue, watch } = useForm<PackingListFormData>({
@@ -320,14 +321,17 @@ export function CreatePackingList() {
     const { saveToPod: saveQuestionSetToPod } = usePodSync<PackingListQuestionSet>({
         pathConfig: {
             container: POD_CONTAINERS.ROOT,
-            filename: 'packing-list-questions.json',
+            filename: 'packing-list-questions.ttl',
         },
+        rdf: { serialize: questionSetToDataset, deserialize: datasetToQuestionSet },
         syncOnMount: true,
         enabled: isLoggedIn,
         onSyncSuccess: handleQuestionSetPodSync,
     })
 
     useEffect(() => {
+        if (loginSyncInProgress) return
+
         const fetchQuestionSet = async () => {
             if (!db) {
                 setNoQuestionsFound(true)
@@ -358,7 +362,7 @@ export function CreatePackingList() {
             }
         }
         fetchQuestionSet()
-    }, [db, showToast])
+    }, [db, showToast, loginSyncInProgress])
 
     const suggestions = useMemo(
         () => questionSet ? getUnreviewedCustomItems(allPackingLists, questionSet) : [],
@@ -423,11 +427,11 @@ export function CreatePackingList() {
         if (!isLoggedIn || !session) return
         const podUrl = await getPrimaryPodUrl(session)
         if (!podUrl) return
-        await saveFileToPod({
+        await saveRdfToPod({
             session,
-            containerPath: `${podUrl}${POD_CONTAINERS.PACKING_LISTS}`,
-            filename: `${list.id}.json`,
+            fileUrl: `${podUrl}${POD_CONTAINERS.PACKING_LISTS}${list.id}.ttl`,
             data: list,
+            serializer: packingListToDataset,
         })
     }
 
@@ -564,11 +568,11 @@ export function CreatePackingList() {
             if (isLoggedIn) {
                 const podUrl = await getPrimaryPodUrl(session)
                 if (podUrl) {
-                    await saveFileToPod({
+                    await saveRdfToPod({
                         session: session!,
-                        containerPath: `${podUrl}${POD_CONTAINERS.PACKING_LISTS}`,
-                        filename: `${packingList.id}.json`,
+                        fileUrl: `${podUrl}${POD_CONTAINERS.PACKING_LISTS}${packingList.id}.ttl`,
                         data: packingList,
+                        serializer: packingListToDataset,
                     })
                 }
             }

@@ -15,6 +15,8 @@ import { CSS_ISSUER, SCHEMA_COMPAT_EMAIL, SCHEMA_COMPAT_PASSWORD } from '../../p
 //      after the 30+ logins that precede K tests in the workers=1 CI run).
 //   2. Login sync (syncAllDataFromPod) runs exactly once — all three tests operate
 //      on the same local DB, which is fully populated before any test begins.
+// Run serially: K1 migrates the shared schema-compat pod (JSON → RDF); K2/K3
+// must start after K1 finishes so they find the .ttl files already in place.
 test.describe.configure({ mode: 'serial' })
 
 test.describe('K – JSON Schema Compatibility', () => {

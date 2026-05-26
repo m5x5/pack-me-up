@@ -11,6 +11,7 @@ import { useToast } from '../components/ToastContext'
 import { usePodSync } from '../hooks/usePodSync'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
 import { POD_CONTAINERS } from '../services/solidPod'
+import { packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 
 type FormData = {
     items: Record<string, boolean>
@@ -72,7 +73,7 @@ export function ViewPackingList() {
     const { showToast } = useToast()
     const { db } = useDatabase()
 
-    const { register, setValue, getValues, control } = useForm<FormData>({
+    const { register, setValue, getValues, control, reset } = useForm<FormData>({
         defaultValues: {
             items: {}
         }
@@ -93,12 +94,11 @@ export function ViewPackingList() {
                     ...data,
                     _rev: newRev
                 });
-                // Update form values
                 const formValues: Record<string, boolean> = {};
                 data.items.forEach((item) => {
                     formValues[item.id] = item.packed;
                 });
-                setValue('items', formValues);
+                reset({ items: formValues });
             },
             conflictStrategy: 'fallback-to-pod', // Use same strategy as edit questions for consistency
         });
@@ -118,9 +118,10 @@ export function ViewPackingList() {
     const { saveToPod } = usePodSync<PackingList>({
         pathConfig: {
             container: POD_CONTAINERS.PACKING_LISTS,
-            filename: (id) => `${id}.json`,
+            filename: (id) => `${id}.ttl`,
             resourceId: id || null
         },
+        rdf: { serialize: packingListToDataset, deserialize: datasetToPackingList },
         pollInterval: 5000, // Poll every 5 seconds for faster sync
         enabled: isLoggedIn, // Only sync when logged in
         onSyncSuccess: handleSyncSuccess,
@@ -134,12 +135,15 @@ export function ViewPackingList() {
             try {
                 const doc = await db.getPackingList(id!)
                 setPackingList(doc)
-                // Initialize form values with a clean slate
+                // Use reset (not setValue) so _defaultValues is updated too.
+                // register() initialises each checkbox from _defaultValues; setValue
+                // only updates the store and leaves _defaultValues stale, which means
+                // newly-mounted checkboxes always render unchecked.
                 const initialValues: Record<string, boolean> = {}
                 doc.items.forEach((item) => {
                     initialValues[item.id] = item.packed
                 })
-                setValue('items', initialValues)
+                reset({ items: initialValues })
             } catch (err) {
                 console.error('Error fetching packing list:', err)
             } finally {

@@ -15,6 +15,7 @@ import { useSolidPod } from '../components/SolidPodContext'
 import { usePodSync } from '../hooks/usePodSync'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
 import { POD_CONTAINERS } from '../services/solidPod'
+import { questionSetToDataset, datasetToQuestionSet } from '../services/rdfSerialization'
 import { JsonEditor } from '../edit-questions/json-editor'
 import { validateQuestionSet } from '../edit-questions/validation'
 
@@ -36,7 +37,7 @@ export function EditQuestionsForm() {
   });
   const { showToast } = useToast();
   const { isLoggedIn } = useSolidPod();
-  const { db } = useDatabase();
+  const { db, loginSyncInProgress } = useDatabase();
 
   // Watch all form values for auto-save
   const watchedFormValues = useWatch({ control });
@@ -100,8 +101,9 @@ export function EditQuestionsForm() {
   const { lastSync, isSyncing, error: syncError, saveToPod } = usePodSync<PackingListQuestionSet>({
     pathConfig: {
       container: POD_CONTAINERS.ROOT,
-      filename: 'packing-list-questions.json'
+      filename: 'packing-list-questions.ttl'
     },
+    rdf: { serialize: questionSetToDataset, deserialize: datasetToQuestionSet },
     pollInterval: 5000, // Poll every 5 seconds for faster sync
     enabled: isLoggedIn, // Only sync when logged in
     onSyncSuccess: handleSyncSuccess,
@@ -284,9 +286,14 @@ export function EditQuestionsForm() {
       }
     }
 
+    // Skip while the login sync is running: syncAllDataFromPod hasn't written
+    // pod data into the local DB yet, so reading now would find nothing and
+    // create a default "Me" question set that immediately auto-saves to the pod,
+    // overwriting the real data that arrives moments later.
+    if (loginSyncInProgress) return
     loadQuestionSet()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loginSyncInProgress])
 
   const { fields: questionFields, append: appendQuestion, remove: removeQuestion, move: moveQuestion } = useFieldArray({
     control,
