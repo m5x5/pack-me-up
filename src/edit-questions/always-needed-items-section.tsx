@@ -12,9 +12,10 @@ interface AlwaysNeededItemsSectionProps {
     watch: UseFormWatch<PackingListQuestionSet>;
     setValue: UseFormSetValue<PackingListQuestionSet>;
     people: Person[];
+    triggerAddItem?: number;
 }
 
-export function AlwaysNeededItemsSection({ control, register, watch, setValue, people }: AlwaysNeededItemsSectionProps) {
+export function AlwaysNeededItemsSection({ control, register, watch, setValue, people, triggerAddItem }: AlwaysNeededItemsSectionProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const { fields: itemFields, append: appendItem } = useFieldArray({
@@ -27,18 +28,24 @@ export function AlwaysNeededItemsSection({ control, register, watch, setValue, p
     ).filter(Boolean))] as Item[];
     const allItemNames = () => allItems.map((item) => item.text);
     const selectRefs = useRef<(HTMLDivElement | null)[]>([]);
-    const shouldFocusRef = useRef(false);
+    const expectedNewLengthRef = useRef<number | null>(null);
+    const [newItemIndex, setNewItemIndex] = useState<number | null>(null);
 
     useEffect(() => {
-        // Only focus if the user clicked "Add Item" button
-        if (shouldFocusRef.current) {
-            if (selectRefs.current[itemFields.length - 1]) {
-                const input = selectRefs.current[itemFields.length - 1]?.querySelector('input');
-                if (input) {
-                    input.focus();
-                }
-            }
-            shouldFocusRef.current = false;
+        if (triggerAddItem !== undefined && triggerAddItem > 0) {
+            setIsExpanded(true);
+            expectedNewLengthRef.current = itemFields.length + 1;
+            appendItem({ text: "", personSelections: [] });
+        }
+    }, [triggerAddItem]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (expectedNewLengthRef.current === itemFields.length) {
+            expectedNewLengthRef.current = null;
+            const idx = itemFields.length - 1;
+            selectRefs.current[idx]?.querySelector('input')?.focus();
+            selectRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setNewItemIndex(idx);
         }
     }, [itemFields.length]);
 
@@ -66,7 +73,7 @@ export function AlwaysNeededItemsSection({ control, register, watch, setValue, p
             {isExpanded && (
                 <div className="space-y-3">
                 {itemFields.map((_item: Item, itemIndex: number) => (
-                    <div key={itemIndex} className="flex items-start gap-2 sm:gap-3">
+                    <div key={itemIndex} className={`flex items-start gap-2 sm:gap-3 rounded-md ${itemIndex === newItemIndex ? 'ring-2 ring-primary-300' : ''}`}>
                         <div className="flex-1" ref={el => { selectRefs.current[itemIndex] = el; }}>
                             <ItemPeopleSection
                                 control={control}
@@ -102,7 +109,7 @@ export function AlwaysNeededItemsSection({ control, register, watch, setValue, p
                 <Button
                     type="button"
                     onClick={() => {
-                        shouldFocusRef.current = true;
+                        expectedNewLengthRef.current = itemFields.length + 1;
                         appendItem({ text: "", personSelections: [] });
                     }}
                     variant="ghost"
