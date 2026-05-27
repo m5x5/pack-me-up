@@ -1,11 +1,12 @@
 import { AppSession as Session } from '../types/AppSession'
-import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess } from '@inrupt/solid-client'
-import type { SolidDataset } from '@inrupt/solid-client'
-const { setAgentAccess, getAgentAccessAll, setPublicAccess } = universalAccess
+import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, createContainerAt, acp_ess_2 } from '@inrupt/solid-client'
+import type { SolidDataset, Access } from '@inrupt/solid-client'
+const { getAgentAccessAll, setPublicAccess } = universalAccess
 import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
-import { packingListToDataset, datasetToPackingList, datasetToQuestionSet } from './rdfSerialization'
+import { packingListToDataset, datasetToPackingList, datasetToQuestionSet, datasetToSharedWithMe } from './rdfSerialization'
+import type { SharedWithMeList } from './rdfSerialization'
 
 /**
  * Pod container paths under the user's Pod root
@@ -17,6 +18,7 @@ export const POD_CONTAINERS = {
     MIGRATION_MARKER: 'pack-me-up/migrated-to-rdf.ttl',
     PACKING_LISTS: 'pack-me-up/packing-lists/',
     BACKUPS: 'pack-me-up/backups/',
+    SHARED_WITH_ME: 'pack-me-up/shared-with-me.ttl',
 } as const
 
 /**
@@ -128,18 +130,37 @@ export function derivePodUrlFromWebId(webId: string): string | null {
 
 export async function grantCollaboratorAccess(
     session: Session,
-    fileUrl: string,
+    resourceUrl: string,
     collaboratorWebId: string
 ): Promise<void> {
+    const accessModes: Access = { read: true, write: true, append: true, control: false }
+    const isContainer = resourceUrl.endsWith('/')
     try {
-        const result = await setAgentAccess(
-            fileUrl,
-            collaboratorWebId,
-            { read: true, write: true, append: true },
-            { fetch: session.fetch }
-        )
-        if (result === null) {
-            throw new Error('grantCollaboratorAccess: server does not support access control for this resource')
+        const resourceWithOldAcl = await getResourceInfoWithAcl(resourceUrl, { fetch: session.fetch })
+        // hasAccessibleAcl narrows aclUrl from string|undefined to string, required by saveAclFor/createAclFromFallbackAcl.
+        // hasResourceAcl/hasFallbackAcl distinguish real WAC ACL files from ACP ACRs that also appear via rel="acl".
+        if (hasAccessibleAcl(resourceWithOldAcl) && hasResourceAcl(resourceWithOldAcl)) {
+            // WAC path: resource ACL exists
+            let aclDataset = getResourceAcl(resourceWithOldAcl)
+            aclDataset = setAgentResourceAccess(aclDataset, collaboratorWebId, accessModes)
+            if (isContainer) aclDataset = setAgentDefaultAccess(aclDataset, collaboratorWebId, accessModes)
+            await saveAclFor(resourceWithOldAcl, aclDataset, { fetch: session.fetch })
+        } else if (hasAccessibleAcl(resourceWithOldAcl) && hasFallbackAcl(resourceWithOldAcl)) {
+            // WAC path: create resource ACL from inherited fallback
+            let aclDataset = createAclFromFallbackAcl(resourceWithOldAcl)
+            aclDataset = setAgentResourceAccess(aclDataset, collaboratorWebId, accessModes)
+            if (isContainer) aclDataset = setAgentDefaultAccess(aclDataset, collaboratorWebId, accessModes)
+            await saveAclFor(resourceWithOldAcl, aclDataset, { fetch: session.fetch })
+        } else {
+            // ACP path (Inrupt PodSpaces / ESS): hasAccessibleAcl true but no WAC files, or no acl link at all.
+            // universalAccess handles ACP internally. For containers, also propagate via memberAccessControl.
+            const result = await universalAccess.setAgentAccess(resourceUrl, collaboratorWebId, accessModes, { fetch: session.fetch })
+            if (result === null) {
+                throw new Error('grantCollaboratorAccess: server does not support access control for this resource')
+            }
+            if (isContainer) {
+                await addAcpMemberAccess(session, resourceUrl)
+            }
         }
     } catch (error) {
         if (isAuthenticationError(error)) handlePodError(error)
@@ -168,18 +189,25 @@ export async function grantPublicAccess(
 
 export async function revokeCollaboratorAccess(
     session: Session,
-    fileUrl: string,
+    resourceUrl: string,
     collaboratorWebId: string
 ): Promise<void> {
+    const noAccess: Access = { read: false, write: false, append: false, control: false }
+    const isContainer = resourceUrl.endsWith('/')
     try {
-        const result = await setAgentAccess(
-            fileUrl,
-            collaboratorWebId,
-            { read: false, write: false, append: false, controlRead: false, controlWrite: false },
-            { fetch: session.fetch }
-        )
-        if (result === null) {
-            throw new Error('revokeCollaboratorAccess: server does not support access control for this resource')
+        const resourceWithOldAcl = await getResourceInfoWithAcl(resourceUrl, { fetch: session.fetch })
+        if (hasAccessibleAcl(resourceWithOldAcl) && hasResourceAcl(resourceWithOldAcl)) {
+            // WAC path: resource ACL exists, modify it directly
+            let aclDataset = getResourceAcl(resourceWithOldAcl)
+            aclDataset = setAgentResourceAccess(aclDataset, collaboratorWebId, noAccess)
+            if (isContainer) aclDataset = setAgentDefaultAccess(aclDataset, collaboratorWebId, noAccess)
+            await saveAclFor(resourceWithOldAcl, aclDataset, { fetch: session.fetch })
+        } else if (hasAccessibleAcl(resourceWithOldAcl) && hasFallbackAcl(resourceWithOldAcl)) {
+            // WAC path: no resource ACL yet — nothing to revoke
+            return
+        } else {
+            // ACP path (Inrupt PodSpaces / ESS)
+            await universalAccess.setAgentAccess(resourceUrl, collaboratorWebId, noAccess, { fetch: session.fetch })
         }
     } catch (error) {
         if (isAuthenticationError(error)) handlePodError(error)
@@ -203,6 +231,96 @@ export async function getCollaborators(
     } catch (error) {
         if (isAuthenticationError(error)) handlePodError(error)
         throw error
+    }
+}
+
+export async function grantFullCollaboratorAccess(
+    session: Session,
+    podUrl: string,
+    collaboratorWebId: string
+): Promise<void> {
+    const packMeUpUrl = `${podUrl}${POD_CONTAINERS.ROOT}`
+    await ensureContainerExists(session, packMeUpUrl)
+
+    // WAC servers (CSS, NSS): one container-level grant with acl:default inheritance covers everything.
+    // grantCollaboratorAccess handles WAC vs ACP detection internally.
+    // On WAC (CSS/NSS), acl:default on the container propagates to all children.
+    // On ACP (Inrupt PodSpaces/ESS), grantCollaboratorAccess adds memberAccessControl
+    // so child resources inherit the policy automatically.
+    await grantCollaboratorAccess(session, packMeUpUrl, collaboratorWebId)
+}
+
+export async function revokeFullCollaboratorAccess(
+    session: Session,
+    podUrl: string,
+    collaboratorWebId: string
+): Promise<void> {
+    const packMeUpUrl = `${podUrl}${POD_CONTAINERS.ROOT}`
+    try {
+        await revokeCollaboratorAccess(session, packMeUpUrl, collaboratorWebId)
+    } catch (err) {
+        if (getStatusCode(err) === 404) return // container doesn't exist, nothing to revoke
+        throw err
+    }
+}
+
+export async function getFullCollaborators(
+    session: Session,
+    podUrl: string
+): Promise<string[]> {
+    const packMeUpUrl = `${podUrl}${POD_CONTAINERS.ROOT}`
+    try {
+        return await getCollaborators(session, packMeUpUrl)
+    } catch (err) {
+        // Container doesn't exist yet → no collaborators have been granted access
+        if (getStatusCode(err) === 404) return []
+        throw err
+    }
+}
+
+// After universalAccess.setAgentAccess sets policies on an ACP container, copy those
+// policies into memberAccessControl so all child resources inherit them automatically.
+async function addAcpMemberAccess(session: Session, containerUrl: string): Promise<void> {
+    try {
+        const resourceWithAcr = await acp_ess_2.getSolidDatasetWithAcr(containerUrl, { fetch: session.fetch })
+        // hasAccessibleAcr narrows to WithAccessibleAcr (non-null ACR) required by the policy functions
+        if (!acp_ess_2.hasAccessibleAcr(resourceWithAcr)) return
+        const policyUrls = acp_ess_2.getPolicyUrlAll(resourceWithAcr)
+        let updated: typeof resourceWithAcr = resourceWithAcr
+        for (const policyUrl of policyUrls) {
+            updated = acp_ess_2.addMemberPolicyUrl(updated, policyUrl)
+        }
+        await acp_ess_2.saveAcrFor(updated, { fetch: session.fetch })
+    } catch (err) {
+        console.warn('addAcpMemberAccess: could not set memberAccessControl', err)
+    }
+}
+
+async function ensureContainerExists(session: Session, containerUrl: string): Promise<void> {
+    try {
+        await getSolidDataset(containerUrl, { fetch: session.fetch })
+    } catch (err) {
+        if (getStatusCode(err) !== 404) throw err
+        try {
+            await createContainerAt(containerUrl, { fetch: session.fetch })
+        } catch (createErr) {
+            // 409 Conflict = container was created concurrently; ignore
+            if (getStatusCode(createErr) !== 409) throw createErr
+        }
+    }
+}
+
+export async function verifyForeignPodAccess(
+    session: Session,
+    foreignPodUrl: string
+): Promise<boolean> {
+    try {
+        await getSolidDataset(`${foreignPodUrl}${POD_CONTAINERS.PACKING_LISTS}`, { fetch: session.fetch })
+        return true
+    } catch (err: unknown) {
+        const status = getStatusCode(err)
+        if (status === 403 || status === 401 || status === 404) return false
+        throw err
     }
 }
 
@@ -688,6 +806,8 @@ export interface SyncAllResult {
     packingListsSynced: number
     /** number of local-only packing lists uploaded to pod */
     packingListsUploaded: number
+    /** true if the shared-with-me list was synced from pod */
+    sharedWithMeSynced: boolean
 }
 
 /**
@@ -712,6 +832,7 @@ export async function syncAllDataFromPod(
     let questionSetSynced = false
     let packingListsSynced = 0
     let packingListsUploaded = 0
+    let sharedWithMeSynced = false
 
     const containerUrl = `${podUrl}${POD_CONTAINERS.PACKING_LISTS}`
 
@@ -767,7 +888,7 @@ export async function syncAllDataFromPod(
         const err = podListsResult.reason
         if (err instanceof AuthenticationError) throw err
         console.error('syncAllDataFromPod: error loading packing lists', err)
-        return { questionSetSynced, packingListsSynced, packingListsUploaded }
+        return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced }
     }
 
     const { data: podLists } = podListsResult.value
@@ -803,5 +924,27 @@ export async function syncAllDataFromPod(
         }
     }
 
-    return { questionSetSynced, packingListsSynced, packingListsUploaded }
+    // ── 3. SharedWithMe ──────────────────────────────────────────────────────
+    try {
+        const podSwm = await loadRdfFromPod<SharedWithMeList>(
+            session,
+            `${podUrl}${POD_CONTAINERS.SHARED_WITH_ME}`,
+            datasetToSharedWithMe,
+        )
+        let localSwm: SharedWithMeList | null = null
+        try { localSwm = await db.getSharedWithMe() } catch { /* not_found = ok */ }
+        const podTime = new Date(podSwm.lastModified).getTime()
+        const localTime = localSwm ? new Date(localSwm.lastModified).getTime() : 0
+        if (!localSwm || podTime > localTime) {
+            await db.saveSharedWithMe(podSwm)
+            sharedWithMeSynced = true
+        }
+    } catch (err: unknown) {
+        if (err instanceof AuthenticationError) throw err
+        const status = getStatusCode(err)
+        if (status !== 404) console.error('syncAllDataFromPod: error syncing shared-with-me', err)
+        // 404 = no shared-with-me yet → silently skip
+    }
+
+    return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced }
 }

@@ -1,12 +1,32 @@
-import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { useSolidPod } from './SolidPodContext'
+import { useDatabase } from './DatabaseContext'
 import { SolidProviderSelector } from './SolidProviderSelector'
+import type { SharedContext } from '../services/rdfSerialization'
 
 export const Navigation = () => {
     const [isOpen, setIsOpen] = useState(false)
     const [isProviderSelectorOpen, setIsProviderSelectorOpen] = useState(false)
     const { login, logout, isLoggedIn, webId } = useSolidPod()
+    const { db, loginSyncVersion } = useDatabase()
+    const location = useLocation()
+    const navigate = useNavigate()
+    const [sharedContexts, setSharedContexts] = useState<SharedContext[]>([])
+
+    useEffect(() => {
+        db.getSharedWithMe()
+            .then(swm => setSharedContexts(swm.contexts))
+            .catch(() => {})
+    }, [db, loginSyncVersion])
+
+    const podMatch = /^\/pod\/([^/]+)/.exec(location.pathname)
+    const currentForeignEncoded = podMatch?.[1] ?? null
+    const inForeignContext = currentForeignEncoded !== null
+
+    // When viewing a foreign pod, contextual links stay inside that pod's routes
+    const viewListsPath = inForeignContext ? `/pod/${currentForeignEncoded}/view-lists` : '/view-lists'
+    const manageQuestionsPath = inForeignContext ? `/pod/${currentForeignEncoded}/manage-questions` : '/manage-questions'
 
     const handleSolidLogin = () => {
         setIsProviderSelectorOpen(true)
@@ -35,19 +55,21 @@ export const Navigation = () => {
                             <div className="hidden md:block">
                                 <div className="ml-10 flex items-baseline space-x-2">
                                     <Link
-                                        to="/manage-questions"
+                                        to={manageQuestionsPath}
                                         className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
                                     >
-                                        My Questions & Items
+                                        {inForeignContext ? 'Questions & Items' : 'My Questions & Items'}
                                     </Link>
+                                    {!inForeignContext && (
+                                        <Link
+                                            to="/create-packing-list"
+                                            className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
+                                        >
+                                            Create List
+                                        </Link>
+                                    )}
                                     <Link
-                                        to="/create-packing-list"
-                                        className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
-                                    >
-                                        Create List
-                                    </Link>
-                                    <Link
-                                        to="/view-lists"
+                                        to={viewListsPath}
                                         className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
                                     >
                                         View Lists
@@ -58,6 +80,14 @@ export const Navigation = () => {
                                             className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
                                         >
                                             Backups
+                                        </Link>
+                                    )}
+                                    {isLoggedIn && (
+                                        <Link
+                                            to="/sharing"
+                                            className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
+                                        >
+                                            Sharing
                                         </Link>
                                     )}
                                 </div>
@@ -73,6 +103,29 @@ export const Navigation = () => {
                             </a>
                             {isLoggedIn ? (
                                 <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl">
+                                    {sharedContexts.length > 0 && (
+                                        <select
+                                            value={currentForeignEncoded ?? '__own__'}
+                                            onChange={e => {
+                                                const val = e.target.value
+                                                if (val === '__own__') navigate('/view-lists')
+                                                else navigate(`/pod/${val}/view-lists`)
+                                            }}
+                                            className="text-sm font-medium bg-white/20 text-white rounded-lg px-2 py-1 border-0 focus:ring-0 cursor-pointer"
+                                            aria-label="Switch context"
+                                        >
+                                            <option value="__own__" className="text-gray-900">Your data</option>
+                                            {sharedContexts.map(ctx => (
+                                                <option
+                                                    key={ctx.podUrl}
+                                                    value={encodeURIComponent(ctx.podUrl)}
+                                                    className="text-gray-900"
+                                                >
+                                                    {ctx.label ?? ctx.podUrl}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
                                     <span className="text-sm font-medium truncate max-w-xs" title={webId}>
                                         {webId}
                                     </span>
@@ -133,21 +186,23 @@ export const Navigation = () => {
                 <div className={`${isOpen ? 'block' : 'hidden'} md:hidden bg-primary-950`}>
                     <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
                         <Link
-                            to="/manage-questions"
+                            to={manageQuestionsPath}
                             className="block px-3 py-2 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
                             onClick={() => setIsOpen(false)}
                         >
-                            My Questions & Items
+                            {inForeignContext ? 'Questions & Items' : 'My Questions & Items'}
                         </Link>
+                        {!inForeignContext && (
+                            <Link
+                                to="/create-packing-list"
+                                className="block px-3 py-2 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Create List
+                            </Link>
+                        )}
                         <Link
-                            to="/create-packing-list"
-                            className="block px-3 py-2 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
-                            onClick={() => setIsOpen(false)}
-                        >
-                            Create List
-                        </Link>
-                        <Link
-                            to="/view-lists"
+                            to={viewListsPath}
                             className="block px-3 py-2 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
                             onClick={() => setIsOpen(false)}
                         >
@@ -160,6 +215,15 @@ export const Navigation = () => {
                                 onClick={() => setIsOpen(false)}
                             >
                                 Backups
+                            </Link>
+                        )}
+                        {isLoggedIn && (
+                            <Link
+                                to="/sharing"
+                                className="block px-3 py-2 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Sharing
                             </Link>
                         )}
                         <a
