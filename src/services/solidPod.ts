@@ -1,6 +1,7 @@
 import { AppSession as Session } from '../types/AppSession'
-import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle } from '@inrupt/solid-client'
+import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess } from '@inrupt/solid-client'
 import type { SolidDataset } from '@inrupt/solid-client'
+const { setAgentAccess, getAgentAccessAll } = universalAccess
 import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
@@ -100,6 +101,90 @@ export function handlePodError(error: unknown): never {
         throw new AuthenticationError(POD_ERROR_MESSAGES.SESSION_EXPIRED, error)
     }
     throw error
+}
+
+export function deriveWebIdFromPodUrl(podUrl: string): string {
+    const base = podUrl.replace(/\/+$/, '')
+    return `${base}/profile/card#me`
+}
+
+export function derivePodUrlFromWebId(webId: string): string | null {
+    try {
+        const url = new URL(webId)
+        url.hash = ''
+        const path = url.pathname
+        if (path.endsWith('/profile/card')) {
+            url.pathname = path.slice(0, -'profile/card'.length)
+            return url.toString()
+        }
+        const firstSegment = path.split('/').find(s => s.length > 0)
+        if (firstSegment) {
+            url.pathname = '/' + firstSegment + '/'
+            return url.toString()
+        }
+    } catch { /* ignore URL parse errors */ }
+    return null
+}
+
+export async function grantCollaboratorAccess(
+    session: Session,
+    fileUrl: string,
+    collaboratorWebId: string
+): Promise<void> {
+    try {
+        const result = await setAgentAccess(
+            fileUrl,
+            collaboratorWebId,
+            { read: true, write: true, append: true },
+            { fetch: session.fetch }
+        )
+        if (result === null) {
+            throw new Error('grantCollaboratorAccess: server does not support access control for this resource')
+        }
+    } catch (error) {
+        if (isAuthenticationError(error)) handlePodError(error)
+        throw error
+    }
+}
+
+export async function revokeCollaboratorAccess(
+    session: Session,
+    fileUrl: string,
+    collaboratorWebId: string
+): Promise<void> {
+    try {
+        const result = await setAgentAccess(
+            fileUrl,
+            collaboratorWebId,
+            { read: false, write: false, append: false, controlRead: false, controlWrite: false },
+            { fetch: session.fetch }
+        )
+        if (result === null) {
+            throw new Error('revokeCollaboratorAccess: server does not support access control for this resource')
+        }
+    } catch (error) {
+        if (isAuthenticationError(error)) handlePodError(error)
+        throw error
+    }
+}
+
+export async function getCollaborators(
+    session: Session,
+    fileUrl: string
+): Promise<string[]> {
+    try {
+        const accessMap = await getAgentAccessAll(fileUrl, { fetch: session.fetch })
+        if (!accessMap) return []
+        return Object.entries(accessMap)
+            .filter(([webId, modes]) =>
+                webId !== session.info.webId &&
+                modes.read === true
+            )
+            .map(([webId]) => webId)
+    } catch (error) {
+        if (isAuthenticationError(error)) handlePodError(error)
+        throw error
+    }
 }
 
 function getStatusCode(err: unknown): number | undefined {

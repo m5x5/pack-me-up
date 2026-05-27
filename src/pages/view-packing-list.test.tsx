@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ViewPackingList } from './view-packing-list'
@@ -13,8 +13,9 @@ vi.mock('../components/SolidPodContext', () => ({
     useSolidPod: vi.fn(),
 }))
 
+const mockShowToast = vi.fn()
 vi.mock('../components/ToastContext', () => ({
-    useToast: vi.fn(() => ({ showToast: vi.fn() })),
+    useToast: vi.fn(() => ({ showToast: mockShowToast })),
 }))
 
 vi.mock('../hooks/usePodSync', () => ({
@@ -29,6 +30,16 @@ import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { usePodSync } from '../hooks/usePodSync'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
+
+vi.mock('../services/solidPod', () => ({
+    POD_CONTAINERS: { PACKING_LISTS: 'pack-me-up/packing-lists/' },
+    getPrimaryPodUrl: vi.fn().mockResolvedValue('https://own.solidcommunity.net/'),
+    grantCollaboratorAccess: vi.fn(),
+}))
+
+vi.mock('../components/SharePackingListModal', () => ({
+    SharePackingListModal: vi.fn(() => null),
+}))
 
 const mockUseDatabase = vi.mocked(useDatabase)
 const mockUseSolidPod = vi.mocked(useSolidPod)
@@ -638,5 +649,140 @@ describe('ViewPackingList expandable person sections', () => {
         fireEvent.click(screen.getByRole('button', { name: /collapse alice's list/i }))
         const remainingInputs = screen.getAllByPlaceholderText('Add new item...')
         expect(remainingInputs.length).toBeLessThan(addInputs.length)
+    })
+})
+
+// ─── Foreign pod (?pod= query param) ────────────────────────────────────────
+
+const FOREIGN_POD_URL = 'https://alice.solidcommunity.net/'
+
+function renderWithForeignPod(podParam?: string) {
+    const path = podParam
+        ? `/view-list/test-list-1?pod=${encodeURIComponent(podParam)}`
+        : '/view-list/test-list-1'
+    return render(
+        <MemoryRouter initialEntries={[path]}>
+            <Routes>
+                <Route path="/view-list/:id" element={<ViewPackingList />} />
+            </Routes>
+        </MemoryRouter>
+    )
+}
+
+describe('ViewPackingList foreign pod (?pod= param)', () => {
+    beforeEach(() => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { info: { isLoggedIn: true, webId: 'https://own.solidcommunity.net/profile/card#me' }, fetch: vi.fn() },
+            webId: 'https://own.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('passes pathConfig.podUrl to usePodSync when ?pod= param is present', async () => {
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        expect(mockUsePodSync).toHaveBeenCalledWith(
+            expect.objectContaining({
+                pathConfig: expect.objectContaining({ podUrl: FOREIGN_POD_URL }),
+            })
+        )
+    })
+
+    it('does not pass pathConfig.podUrl to usePodSync when ?pod= param is absent', async () => {
+        renderWithForeignPod()
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        const lastCall = mockUsePodSync.mock.calls[mockUsePodSync.mock.calls.length - 1][0]
+        expect(lastCall.pathConfig.podUrl).toBeUndefined()
+    })
+
+    it('shows "Shared list" badge when ?pod= param is present', async () => {
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        expect(screen.getByText('Shared list')).toBeTruthy()
+    })
+
+    it('does not show "Shared list" badge when ?pod= param is absent', async () => {
+        renderWithForeignPod()
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        expect(screen.queryByText('Shared list')).toBeNull()
+    })
+
+    it('does not show Share button when ?pod= param is present', async () => {
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        expect(screen.queryByRole('button', { name: /^share$/i })).toBeNull()
+    })
+
+    it('shows Share button when logged in and no ?pod= param', async () => {
+        renderWithForeignPod()
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        await waitFor(() => expect(screen.getByRole('button', { name: /^share$/i })).toBeTruthy())
+    })
+
+    it('keeps loading state when getPackingList throws not_found on a foreign pod', async () => {
+        const dbWithNotFound = {
+            ...makeDb(),
+            getPackingList: vi.fn().mockRejectedValue({ name: 'not_found' }),
+        }
+        mockUseDatabase.mockReturnValue({ db: dbWithNotFound as unknown as PackingAppDatabase })
+
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        // Loading text should remain visible since we're waiting for pod poll
+        await waitFor(() => expect(screen.getByText(/loading/i)).toBeTruthy())
+    })
+
+    it('stops loading and shows a toast when foreign pod sync fails before data is loaded', async () => {
+        const dbWithNotFound = {
+            ...makeDb(),
+            getPackingList: vi.fn().mockRejectedValue({ name: 'not_found' }),
+        }
+        mockUseDatabase.mockReturnValue({ db: dbWithNotFound as unknown as PackingAppDatabase })
+        mockShowToast.mockClear()
+
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        // Wait until the component is in the loading state (DB not_found processed)
+        await waitFor(() => expect(screen.getByText(/loading/i)).toBeTruthy())
+
+        // Simulate the pod sync failing (e.g. 403 Forbidden - ACL not set)
+        const onSyncError = mockUsePodSync.mock.calls[mockUsePodSync.mock.calls.length - 1][0].onSyncError as (e: string) => void
+        act(() => onSyncError('403 Forbidden'))
+
+        // Loading spinner should disappear
+        await waitFor(() => expect(screen.queryByText(/loading packing list/i)).toBeNull())
+
+        // Toast should have been shown
+        expect(mockShowToast).toHaveBeenCalledWith(
+            expect.stringContaining('Could not load shared list'),
+            'error'
+        )
     })
 })
