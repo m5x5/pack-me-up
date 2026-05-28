@@ -12,10 +12,9 @@ interface AlwaysNeededItemsSectionProps {
     watch: UseFormWatch<PackingListQuestionSet>;
     setValue: UseFormSetValue<PackingListQuestionSet>;
     people: Person[];
-    triggerAddItem?: number;
 }
 
-export function AlwaysNeededItemsSection({ control, register, watch, setValue, people, triggerAddItem }: AlwaysNeededItemsSectionProps) {
+export function AlwaysNeededItemsSection({ control, register, watch, setValue, people }: AlwaysNeededItemsSectionProps) {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const { fields: itemFields, append: appendItem } = useFieldArray({
@@ -30,14 +29,6 @@ export function AlwaysNeededItemsSection({ control, register, watch, setValue, p
     const selectRefs = useRef<(HTMLDivElement | null)[]>([]);
     const expectedNewLengthRef = useRef<number | null>(null);
     const [newItemIndex, setNewItemIndex] = useState<number | null>(null);
-
-    useEffect(() => {
-        if (triggerAddItem !== undefined && triggerAddItem > 0) {
-            setIsExpanded(true);
-            expectedNewLengthRef.current = itemFields.length + 1;
-            appendItem({ text: "", personSelections: [] });
-        }
-    }, [triggerAddItem]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (expectedNewLengthRef.current === itemFields.length) {
@@ -121,4 +112,4 @@ export function AlwaysNeededItemsSection({ control, register, watch, setValue, p
             )}
         </div>
     );
-} 
+}

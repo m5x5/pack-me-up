@@ -16,10 +16,9 @@ interface OptionSectionProps {
     setValue: UseFormSetValue<PackingListQuestionSet>;
     removeOption: () => void;
     people: Person[];
-    triggerAddItem?: number;
 }
 
-export function OptionSection({ control, questionIndex, optionIndex, register, watch, setValue, removeOption, people, triggerAddItem }: OptionSectionProps) {
+export function OptionSection({ control, questionIndex, optionIndex, register, watch, setValue, removeOption, people }: OptionSectionProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const { fields: itemFields, append: appendItem } = useFieldArray({
         control,
@@ -32,14 +31,6 @@ export function OptionSection({ control, questionIndex, optionIndex, register, w
     const selectRefs = useRef<(HTMLDivElement | null)[]>([]);
     const expectedNewLengthRef = useRef<number | null>(null);
     const [newItemIndex, setNewItemIndex] = useState<number | null>(null);
-
-    useEffect(() => {
-        if (triggerAddItem !== undefined && triggerAddItem > 0) {
-            setIsExpanded(true);
-            expectedNewLengthRef.current = itemFields.length + 1;
-            appendItem({ text: "", personSelections: [] });
-        }
-    }, [triggerAddItem]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (expectedNewLengthRef.current === itemFields.length) {
@@ -134,4 +125,4 @@ export function OptionSection({ control, questionIndex, optionIndex, register, w
             </div>}
         </div>
     );
-} 
+}

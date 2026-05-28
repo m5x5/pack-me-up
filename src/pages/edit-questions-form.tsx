@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm, SubmitHandler, useFieldArray, useWatch } from "react-hook-form"
 import { useDebouncedCallback } from 'use-debounce'
-import { PackingListQuestionSet, newDraftQuestion } from '../edit-questions/types'
+import { PackingListQuestionSet, newDraftQuestion, Item } from '../edit-questions/types'
 import { useDatabase } from '../components/DatabaseContext'
 import { DatabaseMigration } from '../services/migration'
 import { QuestionSection } from '../edit-questions/question-section'
@@ -49,11 +49,6 @@ export function EditQuestionsForm() {
   const [currentQuestionSet, setCurrentQuestionSet] = useState<PackingListQuestionSet | null>(null);
   const [allQuestionsCollapsed, setAllQuestionsCollapsed] = useState<boolean | null>(true);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-  const [addItemTarget, setAddItemTarget] = useState<{
-    destination: 'always' | { questionIndex: number; optionIndex: number };
-    version: number;
-  } | null>(null);
-  const addItemVersionRef = useRef(0);
 
   console.log("EditQuestionsForm - isLoggedIn:", isLoggedIn);
 
@@ -108,23 +103,21 @@ export function EditQuestionsForm() {
     showToast(`Failed to save to Pod: ${error}`, 'error');
   }, [showToast]);
 
-  const handleAddItemConfirm = useCallback((destination: AddItemDestination) => {
-    addItemVersionRef.current += 1;
-    const version = addItemVersionRef.current;
+  const handleAddItemConfirm = useCallback((destination: AddItemDestination, item: Item) => {
     if (destination.type === 'always') {
-      setAddItemTarget({ destination: 'always', version });
+      const current = getValues('alwaysNeededItems') ?? [];
+      setValue('alwaysNeededItems', [...current, item]);
     } else {
       const questions = getValues('questions');
-      const questionIndex = questions.findIndex((q) => q.id === destination.questionId);
-      const optionIndex = questionIndex >= 0
-        ? questions[questionIndex].options.findIndex((o) => o.id === destination.optionId)
-        : -1;
-      if (questionIndex >= 0 && optionIndex >= 0) {
-        setAddItemTarget({ destination: { questionIndex, optionIndex }, version });
+      const qi = questions.findIndex((q) => q.id === destination.questionId);
+      const oi = qi >= 0 ? questions[qi].options.findIndex((o) => o.id === destination.optionId) : -1;
+      if (qi >= 0 && oi >= 0) {
+        const path = `questions.${qi}.options.${oi}.items` as const;
+        const current = getValues(path) ?? [];
+        setValue(path, [...current, item]);
       }
     }
-    setIsAddItemModalOpen(false);
-  }, [getValues]);
+  }, [getValues, setValue]);
 
   // Set up automatic Pod sync with polling
   const { lastSync, isSyncing, error: syncError, saveToPod } = usePodSync<PackingListQuestionSet>({
@@ -450,6 +443,23 @@ export function EditQuestionsForm() {
         </h1>
         <p className="mt-2 text-gray-600">Customise the questions and packing items that generate your lists. Changes here affect all future packing lists you create.</p>
         <p className="mt-1 text-sm text-gray-400">Want to start from scratch? <Link to="/wizard" className="text-primary-600 hover:underline">Redo the setup wizard</Link> to regenerate your questions.</p>
+        {/* Mobile-only status line */}
+        <div className="lg:hidden mt-2 flex items-center gap-3 text-xs text-gray-400">
+          {autoSaveStatus === 'saving' && (
+            <span className="flex items-center gap-1 text-blue-600">
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Saving…
+            </span>
+          )}
+          {(autoSaveStatus === 'saved' || autoSaveStatus === 'idle') && <span>Saved</span>}
+          {isLoggedIn && !isSyncing && !syncError && <span>· Pod synced {formatLastSync(lastSync)}</span>}
+          {isLoggedIn && isSyncing && (
+            <span className="flex items-center gap-1 text-blue-600">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              Syncing pod
+            </span>
+          )}
+        </div>
       </div>
       {editorMode === 'visual' ? (
         <>
@@ -469,7 +479,6 @@ export function EditQuestionsForm() {
             watch={watch}
             setValue={setValue}
             people={people}
-            triggerAddItem={addItemTarget?.destination === 'always' ? addItemTarget.version : undefined}
           />
           {questionFields.length > 0 && (
             <div className="flex justify-end">
@@ -495,18 +504,6 @@ export function EditQuestionsForm() {
               moveUp={questionIndex > 0 ? () => moveQuestion(questionIndex, questionIndex - 1) : undefined}
               moveDown={questionIndex < questionFields.length - 1 ? () => moveQuestion(questionIndex, questionIndex + 1) : undefined}
               forceCollapsed={allQuestionsCollapsed}
-              triggerAddItemForOptionIndex={
-                addItemTarget?.destination !== 'always' &&
-                (addItemTarget?.destination as { questionIndex: number; optionIndex: number } | undefined)?.questionIndex === questionIndex
-                  ? (addItemTarget?.destination as { questionIndex: number; optionIndex: number } | undefined)?.optionIndex
-                  : undefined
-              }
-              triggerAddItemVersion={
-                addItemTarget?.destination !== 'always' &&
-                (addItemTarget?.destination as { questionIndex: number; optionIndex: number } | undefined)?.questionIndex === questionIndex
-                  ? addItemTarget?.version
-                  : undefined
-              }
             />
           ))}
           {/* Add Question button at bottom of form - only visible on large screens */}
@@ -618,67 +615,13 @@ export function EditQuestionsForm() {
       {/* Sticky bottom bar for small/medium screens */}
       <div className="fixed bottom-0 left-0 w-full z-50 flex justify-center pointer-events-none lg:hidden">
         <div className="max-w-4xl w-full px-4 pb-4">
-          <div className="backdrop-blur-md bg-white/80 border border-gray-200 shadow-xl rounded-xl flex flex-col gap-3 py-4 px-3 pointer-events-auto relative">
-            {/* Sync from Pod indicator - absolutely positioned to avoid layout shift */}
+          <div className="backdrop-blur-md bg-white/80 border border-gray-200 shadow-xl rounded-xl flex items-center justify-center gap-3 py-3 px-4 pointer-events-auto relative">
             {isLoggedIn && syncingFromPod && (
               <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-10 bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5 flex items-center gap-1.5 shadow-md">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <span className="text-xs text-blue-700 font-medium whitespace-nowrap">Syncing from Pod...</span>
               </div>
             )}
-
-            {/* Auto-save Status */}
-            <div className="bg-gray-50 border border-gray-200 rounded-md p-2 mx-2">
-              <div className="flex items-center justify-between">
-                <div className={`flex items-center gap-2 transition-opacity duration-200 ${autoSaveStatus === 'idle' ? 'opacity-60' : 'opacity-100'}`}>
-                  {autoSaveStatus === 'saving' && (
-                    <>
-                      <div className="animate-spin h-3 w-3 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                      <span className="text-xs text-blue-600">Auto-saving...</span>
-                    </>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                    <>
-                      <div className="h-3 w-3 flex items-center justify-center text-green-500">✓</div>
-                      <span className="text-xs text-green-600">Saved</span>
-                    </>
-                  )}
-                  {autoSaveStatus === 'error' && (
-                    <>
-                      <div className="h-3 w-3 flex items-center justify-center text-red-500">✗</div>
-                      <span className="text-xs text-red-600">Error</span>
-                    </>
-                  )}
-                  {autoSaveStatus === 'idle' && (
-                    <>
-                      <div className="h-3 w-3 flex items-center justify-center text-gray-500">✓</div>
-                      <span className="text-xs text-gray-600">All changes saved</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {isLoggedIn && (
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-2 mx-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {isSyncing ? (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    ) : syncError ? (
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    ) : (
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    )}
-                    <p className="text-xs text-gray-600">
-                      {isSyncing ? 'Pod polling...' : `Pod synced ${formatLastSync(lastSync)}`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3 justify-center">
             <Button
               type="button"
               onClick={() => { setAllQuestionsCollapsed(null); appendQuestion(newDraftQuestion(questionFields.length)); }}
@@ -698,8 +641,7 @@ export function EditQuestionsForm() {
               reset(defaultData);
               setCurrentQuestionSet(defaultData);
               showToast('Form has been reset to default state', 'success');
-            }}>Reset form</Button>
-            </div>
+            }}>Reset</Button>
           </div>
         </div>
       </div>
@@ -707,6 +649,8 @@ export function EditQuestionsForm() {
         isOpen={isAddItemModalOpen}
         onClose={() => setIsAddItemModalOpen(false)}
         questions={watch('questions') ?? []}
+        people={people ?? []}
+        existingItemNames={(watch('questions') ?? []).flatMap((q) => q.options.flatMap((o) => o.items.map((i) => i.text)))}
         onConfirm={handleAddItemConfirm}
       />
         </>
