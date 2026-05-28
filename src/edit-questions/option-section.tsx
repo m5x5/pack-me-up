@@ -16,21 +16,20 @@ interface OptionSectionProps {
     setValue: UseFormSetValue<PackingListQuestionSet>;
     removeOption: () => void;
     people: Person[];
+    triggerScrollToLast?: number;
+    getAllItemNames: () => string[];
 }
 
-export function OptionSection({ control, questionIndex, optionIndex, register, watch, setValue, removeOption, people }: OptionSectionProps) {
+export function OptionSection({ control, questionIndex, optionIndex, register, watch, setValue, removeOption, people, triggerScrollToLast, getAllItemNames }: OptionSectionProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const { fields: itemFields, append: appendItem } = useFieldArray({
         control,
         name: `questions.${questionIndex}.options.${optionIndex}.items`
     })
-    const allItems = [...new Set((watch('questions') ?? []).flatMap((q) =>
-        q.options.flatMap((o) => o.items)
-    ).filter(Boolean))] as Item[];
-    const allItemNames = () => allItems.map((item) => item.text);
     const selectRefs = useRef<(HTMLDivElement | null)[]>([]);
     const expectedNewLengthRef = useRef<number | null>(null);
     const [newItemIndex, setNewItemIndex] = useState<number | null>(null);
+    const pendingScrollRef = useRef(false);
 
     useEffect(() => {
         if (expectedNewLengthRef.current === itemFields.length) {
@@ -41,6 +40,26 @@ export function OptionSection({ control, questionIndex, optionIndex, register, w
             setNewItemIndex(idx);
         }
     }, [itemFields.length]);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (!triggerScrollToLast) return;
+        setIsExpanded(true);
+        pendingScrollRef.current = true;
+    }, [triggerScrollToLast]);
+
+    useEffect(() => {
+        if (!pendingScrollRef.current || !isExpanded) return;
+        pendingScrollRef.current = false;
+        const idx = itemFields.length - 1;
+        if (idx >= 0) {
+            requestAnimationFrame(() => {
+                selectRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+            setNewItemIndex(idx);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isExpanded, triggerScrollToLast]);
 
     return (
         <div className="bg-gray-50 rounded-lg p-4">
@@ -96,7 +115,7 @@ export function OptionSection({ control, questionIndex, optionIndex, register, w
                                         onChange={(newValue) => {
                                             onChange({ ...value, text: newValue })
                                         }}
-                                        options={allItemNames()}
+                                        options={getAllItemNames()}
                                         placeholder="Enter item"
                                     />}
                             >

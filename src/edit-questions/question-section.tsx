@@ -17,9 +17,12 @@ interface QuestionSectionProps {
     moveUp?: () => void;
     moveDown?: () => void;
     forceCollapsed?: boolean | null;
+    triggerScrollToOptionIndex?: number;
+    triggerScrollToLastVersion?: number;
+    getAllItemNames: () => string[];
 }
 
-export function QuestionSection({ questionIndex, control, register, watch, setValue, removeQuestion, people, moveUp, moveDown, forceCollapsed }: QuestionSectionProps) {
+export function QuestionSection({ questionIndex, control, register, watch, setValue, removeQuestion, people, moveUp, moveDown, forceCollapsed, triggerScrollToOptionIndex, triggerScrollToLastVersion, getAllItemNames }: QuestionSectionProps) {
     const [isExpanded, setIsExpanded] = useState(true);
 
     // Sync with forceCollapsed when it changes
@@ -28,6 +31,12 @@ export function QuestionSection({ questionIndex, control, register, watch, setVa
             setIsExpanded(!forceCollapsed);
         }
     }, [forceCollapsed]);
+
+    // Expand when a remote scroll trigger arrives for one of our options
+    useEffect(() => {
+        if (triggerScrollToLastVersion == null) return;
+        setIsExpanded(true);
+    }, [triggerScrollToLastVersion]);
 
     const { fields: optionFields, append: appendOption, remove: removeOption } = useFieldArray({
         control,
@@ -140,6 +149,8 @@ export function QuestionSection({ questionIndex, control, register, watch, setVa
                                 setValue={setValue}
                                 removeOption={() => removeOption(optionIndex)}
                                 people={people}
+                                triggerScrollToLast={optionIndex === triggerScrollToOptionIndex ? triggerScrollToLastVersion : undefined}
+                                getAllItemNames={getAllItemNames}
                             />
                         ))}
                         <div className="mt-4">
