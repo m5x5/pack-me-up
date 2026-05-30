@@ -1,12 +1,12 @@
 import { AppSession as Session } from '../types/AppSession'
 import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, createContainerAt, acp_ess_2, getThing, getStringNoLocale } from '@inrupt/solid-client'
 import type { SolidDataset, Access } from '@inrupt/solid-client'
-const { getAgentAccessAll, setPublicAccess } = universalAccess
+const { getAgentAccessAll, setPublicAccess, getPublicAccess } = universalAccess
 import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
-import { packingListToDataset, datasetToPackingList, datasetToQuestionSet, datasetToSharedWithMe } from './rdfSerialization'
-import type { SharedWithMeList } from './rdfSerialization'
+import { packingListToDataset, datasetToPackingList, datasetToQuestionSet, datasetToSharedWithMe, datasetToSharedListsWithMe } from './rdfSerialization'
+import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
 /**
  * Pod container paths under the user's Pod root
@@ -19,6 +19,7 @@ export const POD_CONTAINERS = {
     PACKING_LISTS: 'pack-me-up/packing-lists/',
     BACKUPS: 'pack-me-up/backups/',
     SHARED_WITH_ME: 'pack-me-up/shared-with-me.ttl',
+    SHARED_LISTS_WITH_ME: 'pack-me-up/shared-lists-with-me.ttl',
 } as const
 
 /**
@@ -107,17 +108,64 @@ export function handlePodError(error: unknown): never {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const SERVICE_SUBDOMAINS = new Set(['storage', 'pod', 'pods', 'www', 'app'])
+
 export function friendlyPodName(podUrl: string): string {
     try {
         const url = new URL(podUrl)
+        const parts = url.hostname.split('.')
+        // Strip known service subdomain prefixes (storage.inrupt.com → inrupt.com)
+        const cleanHostname = parts.length >= 3 && SERVICE_SUBDOMAINS.has(parts[0])
+            ? parts.slice(1).join('.')
+            : url.hostname
+
         const firstSegment = url.pathname.split('/').find(s => s.length > 0)
         if (firstSegment && !UUID_RE.test(firstSegment)) {
-            return `${firstSegment} on ${url.hostname}`
+            return `${firstSegment} on ${cleanHostname}`
         }
-        return url.hostname
+
+        // Treat first subdomain as username when it isn't a service subdomain
+        // e.g. alice.solidcommunity.net → "alice on solidcommunity.net"
+        if (parts.length >= 3 && !SERVICE_SUBDOMAINS.has(parts[0])) {
+            return `${parts[0]} on ${parts.slice(1).join('.')}`
+        }
+
+        return cleanHostname
     } catch {
         return podUrl
     }
+}
+
+export function friendlyWebIdName(webId: string): string {
+    try {
+        const url = new URL(webId)
+        url.hash = ''
+        // Strip well-known profile path suffixes so the identity root is used,
+        // but preserve meaningful path segments (e.g. /timgent on id.inrupt.com)
+        url.pathname = url.pathname
+            .replace(/\/profile\/card\/?$/, '/')
+            .replace(/\/profile\/?$/, '/')
+        return friendlyPodName(url.toString())
+    } catch {
+        return webId
+    }
+}
+
+export function resolveOwnerDisplayName(
+    foafName: string | null | undefined,
+    ownerWebId: string | null | undefined,
+    podUrl: string,
+): string {
+    return foafName ?? (ownerWebId ? friendlyWebIdName(ownerWebId) : null) ?? friendlyPodName(podUrl)
+}
+
+export function buildSharedListPath(listId: string, podUrl: string, ownerWebId?: string): string {
+    const base = `/view-lists/${listId}?pod=${encodeURIComponent(podUrl)}`
+    return ownerWebId ? `${base}&owner=${encodeURIComponent(ownerWebId)}` : base
+}
+
+export function buildSharedListUrl(listId: string, podUrl: string, ownerWebId?: string): string {
+    return `${window.location.origin}/#${buildSharedListPath(listId, podUrl, ownerWebId)}`
 }
 
 export function deriveWebIdFromPodUrl(podUrl: string): string {
@@ -215,6 +263,38 @@ export async function grantPublicAccess(
     }
 }
 
+export async function isPubliclyAccessible(
+    session: Session,
+    fileUrl: string
+): Promise<boolean> {
+    try {
+        const result = await getPublicAccess(fileUrl, { fetch: session.fetch })
+        return result?.read === true
+    } catch (error) {
+        if (isAuthenticationError(error)) handlePodError(error)
+        throw error
+    }
+}
+
+export async function revokePublicAccess(
+    session: Session,
+    fileUrl: string
+): Promise<void> {
+    try {
+        const result = await setPublicAccess(
+            fileUrl,
+            { read: false, write: false, append: false },
+            { fetch: session.fetch }
+        )
+        if (result === null) {
+            throw new Error('revokePublicAccess: server does not support access control for this resource')
+        }
+    } catch (error) {
+        if (isAuthenticationError(error)) handlePodError(error)
+        throw error
+    }
+}
+
 export async function revokeCollaboratorAccess(
     session: Session,
     resourceUrl: string,
@@ -243,6 +323,13 @@ export async function revokeCollaboratorAccess(
     }
 }
 
+// Special agent URIs that represent public/authenticated access rather than named people
+const SYSTEM_AGENT_URIS = new Set([
+    'http://www.w3.org/ns/solid/acp#PublicAgent',       // ACP public agent
+    'http://xmlns.com/foaf/0.1/Agent',                  // WAC foaf:Agent (public)
+    'http://www.w3.org/ns/auth/acl#AuthenticatedAgent', // WAC authenticated-user wildcard
+])
+
 export async function getCollaborators(
     session: Session,
     fileUrl: string
@@ -253,6 +340,7 @@ export async function getCollaborators(
         return Object.entries(accessMap)
             .filter(([webId, modes]) =>
                 webId !== session.info.webId &&
+                !SYSTEM_AGENT_URIS.has(webId) &&
                 modes.read === true
             )
             .map(([webId]) => webId)
@@ -836,6 +924,8 @@ export interface SyncAllResult {
     packingListsUploaded: number
     /** true if the shared-with-me list was synced from pod */
     sharedWithMeSynced: boolean
+    /** true if the shared-lists-with-me list was synced from pod */
+    sharedListsWithMeSynced: boolean
 }
 
 /**
@@ -861,6 +951,7 @@ export async function syncAllDataFromPod(
     let packingListsSynced = 0
     let packingListsUploaded = 0
     let sharedWithMeSynced = false
+    let sharedListsWithMeSynced = false
 
     const containerUrl = `${podUrl}${POD_CONTAINERS.PACKING_LISTS}`
 
@@ -916,7 +1007,7 @@ export async function syncAllDataFromPod(
         const err = podListsResult.reason
         if (err instanceof AuthenticationError) throw err
         console.error('syncAllDataFromPod: error loading packing lists', err)
-        return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced }
+        return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced, sharedListsWithMeSynced }
     }
 
     const { data: podLists } = podListsResult.value
@@ -974,5 +1065,27 @@ export async function syncAllDataFromPod(
         // 404 = no shared-with-me yet → silently skip
     }
 
-    return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced }
+    // ── 4. SharedListsWithMe ─────────────────────────────────────────────────
+    try {
+        const podSlwm = await loadRdfFromPod<SharedListsWithMe>(
+            session,
+            `${podUrl}${POD_CONTAINERS.SHARED_LISTS_WITH_ME}`,
+            datasetToSharedListsWithMe,
+        )
+        let localSlwm: SharedListsWithMe | null = null
+        try { localSlwm = await db.getSharedListsWithMe() } catch { /* not_found = ok */ }
+        const podTime = new Date(podSlwm.lastModified).getTime()
+        const localTime = localSlwm ? new Date(localSlwm.lastModified).getTime() : 0
+        if (!localSlwm || podTime > localTime) {
+            await db.saveSharedListsWithMe(podSlwm)
+            sharedListsWithMeSynced = true
+        }
+    } catch (err: unknown) {
+        if (err instanceof AuthenticationError) throw err
+        const status = getStatusCode(err)
+        if (status !== 404) console.error('syncAllDataFromPod: error syncing shared-lists-with-me', err)
+        // 404 = no shared-lists-with-me yet → silently skip
+    }
+
+    return { questionSetSynced, packingListsSynced, packingListsUploaded, sharedWithMeSynced, sharedListsWithMeSynced }
 }

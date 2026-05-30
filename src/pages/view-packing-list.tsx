@@ -10,10 +10,12 @@ import { useSolidPod } from '../components/SolidPodContext'
 import { useToast } from '../components/ToastContext'
 import { usePodSync } from '../hooks/usePodSync'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
-import { POD_CONTAINERS, getPrimaryPodUrl } from '../services/solidPod'
+import { POD_CONTAINERS, getPrimaryPodUrl, saveRdfToPod, resolveOwnerDisplayName, deriveWebIdFromPodUrl } from '../services/solidPod'
+import { useOwnerDisplayName } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { SharePackingListModal } from '../components/SharePackingListModal'
 import { useForeignPod } from '../components/ForeignPodContext'
+import { useSharedListsSync } from '../hooks/useSharedListsSync'
 
 type FormData = {
     items: Record<string, boolean>
@@ -48,6 +50,7 @@ export function ViewPackingList() {
     const foreignPodCtx = useForeignPod()
     // Prefer full-collaboration context over per-list query param (backward compat)
     const foreignPodUrl = foreignPodCtx?.foreignPodUrl ?? searchParams.get('pod') ?? undefined
+    const ownerWebIdFromUrl = searchParams.get('owner') ?? undefined
     const backPath = foreignPodCtx
         ? `/pod/${encodeURIComponent(foreignPodCtx.foreignPodUrl)}/view-lists`
         : '/view-lists'
@@ -73,6 +76,7 @@ export function ViewPackingList() {
     const [renamingGuestName, setRenamingGuestName] = useState('')
     const [guestToRemove, setGuestToRemove] = useState<string | null>(null)
 
+
     const toggleCategory = (key: string) =>
         setCollapsedCategories(prev => {
             const next = new Set(prev)
@@ -92,12 +96,45 @@ export function ViewPackingList() {
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
     const { db } = useDatabase()
+    const { sharedListsWithMe, saveSharedListsWithMe } = useSharedListsSync()
+    const effectiveOwnerWebId = ownerWebIdFromUrl ?? packingList?.ownerWebId
+    const ownerDisplayName = useOwnerDisplayName(foreignPodUrl, effectiveOwnerWebId, session)
 
     useEffect(() => {
-        if (isLoggedIn && session && !foreignPodUrl) {
+        if (isLoggedIn && session) {
             getPrimaryPodUrl(session).then(url => setOwnPodUrl(url ?? null))
         }
-    }, [isLoggedIn, session, foreignPodUrl])
+    }, [isLoggedIn, session])
+
+    useEffect(() => {
+        if (!packingList || !foreignPodUrl || !id || !sharedListsWithMe) return
+        if (sharedListsWithMe.lists.some(l => l.listId === id)) return
+        const fileUrl = `${foreignPodUrl}${POD_CONTAINERS.PACKING_LISTS}${id}.ttl`
+        saveSharedListsWithMe({
+            lists: [...sharedListsWithMe.lists, {
+                listId: id,
+                listUrl: fileUrl,
+                podUrl: foreignPodUrl,
+                ownerWebId: ownerWebIdFromUrl ?? deriveWebIdFromPodUrl(foreignPodUrl),
+                label: packingList.name,
+                addedAt: new Date().toISOString(),
+            }],
+            lastModified: new Date().toISOString(),
+        })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when list identity or registry loads
+    }, [packingList?.id, foreignPodUrl, sharedListsWithMe])
+
+    useEffect(() => {
+        if (!packingList || !foreignPodUrl) return
+        // Prefer the URL param, then the value already stored, then derive as last resort.
+        // Never overwrite a correct ownerWebId with a derived guess.
+        const resolvedOwnerWebId = ownerWebIdFromUrl ?? packingList.ownerWebId ?? deriveWebIdFromPodUrl(foreignPodUrl)
+        if (packingList.sharedFromPodUrl === foreignPodUrl && packingList.ownerWebId === resolvedOwnerWebId) return
+        db.savePackingList({ ...packingList, sharedFromPodUrl: foreignPodUrl, ownerWebId: resolvedOwnerWebId })
+            .then(result => setPackingList(prev => prev ? { ...prev, sharedFromPodUrl: foreignPodUrl, ownerWebId: resolvedOwnerWebId, _rev: result.rev } : prev))
+            .catch(() => {})
+    }, [packingList?.id, foreignPodUrl, ownerWebIdFromUrl, db])
+
 
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
         defaultValues: {
@@ -113,8 +150,8 @@ export function ViewPackingList() {
         useSyncCoordinator<PackingList>({
             currentData: packingList,
             saveToLocalDb: async (data) => {
-                if (foreignPodCtx) return { rev: '' }
-                return await db.savePackingList(data);
+                const dataToSave = foreignPodUrl ? { ...data, sharedFromPodUrl: foreignPodUrl } : data
+                return db.savePackingList(dataToSave)
             },
             updateFormAndState: (data, newRev) => {
                 hasLoadedRef.current = true;
@@ -553,6 +590,15 @@ export function ViewPackingList() {
                 </div>
             </div>
 
+            {/* Persistent "viewing someone else's list" indicator */}
+            {foreignPodUrl && !foreignPodCtx && (
+                <div className="w-full max-w-screen-2xl mb-2 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                    <p className="text-sm text-indigo-800 font-medium">
+                        👤 Viewing a list from <span className="font-semibold">{resolveOwnerDisplayName(ownerDisplayName, effectiveOwnerWebId, foreignPodUrl)}</span>
+                    </p>
+                </div>
+            )}
+
             {/* Slim sticky progress strip */}
             <div className="sticky top-0 z-50 w-full mb-4 flex justify-center">
                 <div className="w-full max-w-screen-2xl">
@@ -851,6 +897,14 @@ export function ViewPackingList() {
                 fileUrl={`${ownPodUrl}${POD_CONTAINERS.PACKING_LISTS}${id}.ttl`}
                 listId={id}
                 sharerPodUrl={ownPodUrl}
+                saveListToPod={packingList ? async () => {
+                    await saveRdfToPod({
+                        session,
+                        fileUrl: `${ownPodUrl}${POD_CONTAINERS.PACKING_LISTS}${id}.ttl`,
+                        data: packingList,
+                        serializer: packingListToDataset,
+                    })
+                } : undefined}
             />
         )}
         </>

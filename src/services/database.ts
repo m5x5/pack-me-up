@@ -1,9 +1,9 @@
 import PouchDB from 'pouchdb'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
-import type { SharedWithMeList } from './rdfSerialization'
+import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
-export type DocumentType = 'question-set' | 'packing-list' | 'shared-with-me'
+export type DocumentType = 'question-set' | 'packing-list' | 'shared-with-me' | 'shared-lists-with-me'
 
 export interface BaseDocument {
     _id: string
@@ -28,7 +28,12 @@ export interface SharedWithMeDocument extends BaseDocument {
     data: SharedWithMeList
 }
 
-export type AppDocument = QuestionSetDocument | PackingListDocument | SharedWithMeDocument
+export interface SharedListsWithMeDocument extends BaseDocument {
+    docType: 'shared-lists-with-me'
+    data: SharedListsWithMe
+}
+
+export type AppDocument = QuestionSetDocument | PackingListDocument | SharedWithMeDocument | SharedListsWithMeDocument
 
 /**
  * Namespace used when the user is not logged into a pod.
@@ -197,6 +202,8 @@ export class PackingAppDatabase {
                         name: packingList.name,
                         createdAt: packingList.createdAt,
                         lastModified: packingList.lastModified,
+                        sharedFromPodUrl: packingList.sharedFromPodUrl,
+                        ownerWebId: packingList.ownerWebId,
                         items: packingList.items,
                         deletedItems: packingList.deletedItems,
                         guests: packingList.guests,
@@ -235,6 +242,8 @@ export class PackingAppDatabase {
                         name: row.doc.data.name,
                         createdAt: row.doc.data.createdAt,
                         lastModified: row.doc.data.lastModified,
+                        sharedFromPodUrl: row.doc.data.sharedFromPodUrl,
+                        ownerWebId: row.doc.data.ownerWebId,
                         items: row.doc.data.items,
                         deletedItems: row.doc.data.deletedItems,
                         guests: row.doc.data.guests,
@@ -314,6 +323,62 @@ export class PackingAppDatabase {
             }
         }
         throw new Error('saveSharedWithMe: max retries exceeded')
+    }
+
+    public async getSharedListsWithMe(): Promise<SharedListsWithMe> {
+        try {
+            const doc = await this.db.get('shared-lists-with-me:1')
+            if (doc.docType !== 'shared-lists-with-me') {
+                throw new Error('Invalid document type for shared-lists-with-me')
+            }
+            return doc.data
+        } catch (err: unknown) {
+            if (hasName(err) && err.name === 'not_found') {
+                throw { name: 'not_found', message: 'SharedListsWithMe not found' }
+            }
+            throw err
+        }
+    }
+
+    public async saveSharedListsWithMe(data: SharedListsWithMe): Promise<{ rev: string }> {
+        const docId = 'shared-lists-with-me:1'
+        const now = new Date().toISOString()
+        const MAX_RETRIES = 3
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                let existingDoc: SharedListsWithMeDocument | undefined
+                try {
+                    const doc = await this.db.get(docId)
+                    if (doc.docType === 'shared-lists-with-me') {
+                        existingDoc = doc
+                    }
+                } catch (err: unknown) {
+                    if (!hasName(err) || err.name !== 'not_found') {
+                        throw err
+                    }
+                }
+
+                const docToSave: SharedListsWithMeDocument = {
+                    _id: docId,
+                    _rev: existingDoc?._rev,
+                    docType: 'shared-lists-with-me',
+                    createdAt: existingDoc?.createdAt || now,
+                    updatedAt: now,
+                    data,
+                }
+
+                const result = await this.db.put(docToSave)
+                return { rev: result.rev }
+            } catch (err) {
+                if (hasName(err) && err.name === 'conflict' && attempt < MAX_RETRIES) {
+                    continue
+                }
+                console.error('Error saving shared-lists-with-me:', err)
+                throw err
+            }
+        }
+        throw new Error('saveSharedListsWithMe: max retries exceeded')
     }
 
     public async migrateFromLegacyDatabases(): Promise<{ migrated: boolean, questionSets: number, packingLists: number }> {

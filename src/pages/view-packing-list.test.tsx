@@ -32,13 +32,29 @@ import { usePodSync } from '../hooks/usePodSync'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
 
 vi.mock('../services/solidPod', () => ({
-    POD_CONTAINERS: { PACKING_LISTS: 'pack-me-up/packing-lists/' },
+    POD_CONTAINERS: {
+        PACKING_LISTS: 'pack-me-up/packing-lists/',
+        SHARED_LISTS_WITH_ME: 'pack-me-up/shared-lists-with-me.ttl',
+    },
     getPrimaryPodUrl: vi.fn().mockResolvedValue('https://own.solidcommunity.net/'),
     grantCollaboratorAccess: vi.fn(),
+    saveRdfToPod: vi.fn().mockResolvedValue(undefined),
+    friendlyPodName: vi.fn((url: string) => url),
+    friendlyWebIdName: vi.fn((url: string) => url),
+    resolveOwnerDisplayName: vi.fn((foafName: string | null | undefined, ownerWebId: string | null | undefined, podUrl: string) => foafName ?? ownerWebId ?? podUrl),
+    getPodOwnerName: vi.fn().mockResolvedValue(null),
+    deriveWebIdFromPodUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/profile/card#me`),
 }))
 
 vi.mock('../components/SharePackingListModal', () => ({
     SharePackingListModal: vi.fn(() => null),
+}))
+
+vi.mock('../hooks/useSharedListsSync', () => ({
+    useSharedListsSync: vi.fn(() => ({
+        sharedListsWithMe: { lists: [], lastModified: '' },
+        saveSharedListsWithMe: vi.fn().mockResolvedValue(null),
+    })),
 }))
 
 const mockUseDatabase = vi.mocked(useDatabase)
@@ -67,6 +83,8 @@ function makeDb() {
     return {
         getPackingList: vi.fn().mockResolvedValue(testPackingList),
         savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+        getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+        saveSharedListsWithMe: vi.fn().mockResolvedValue({ rev: '1' }),
     }
 }
 

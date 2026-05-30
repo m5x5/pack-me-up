@@ -9,18 +9,28 @@ import {
     getFullCollaborators,
     getPrimaryPodUrl,
     getPodOwnerName,
-    friendlyPodName,
-    saveRdfToPod,
+    resolveOwnerDisplayName,
+    buildSharedListPath,
     POD_CONTAINERS,
+    getCollaborators,
+    isPubliclyAccessible,
 } from '../services/solidPod'
-import { sharedWithMeToDataset } from '../services/rdfSerialization'
-import type { SharedContext } from '../services/rdfSerialization'
+import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
+import type { SharedContext, SharedListContext } from '../services/rdfSerialization'
+import { SharePackingListModal } from '../components/SharePackingListModal'
+import type { PackingList } from '../create-packing-list/types'
+import { useSharedListsSync } from '../hooks/useSharedListsSync'
+import { useSharedWithMeSync } from '../hooks/useSharedWithMeSync'
+
+type ListSharingStatus = { collaborators: string[]; isPublic: boolean } | 'loading' | 'error'
 
 export function SharingSettingsPage() {
     const { session, isLoggedIn } = useSolidPod()
     const { db } = useDatabase()
     const { showToast } = useToast()
     const navigate = useNavigate()
+    const { sharedWithMe, saveSharedWithMe } = useSharedWithMeSync()
+    const { sharedListsWithMe: sharedListsWithMeData, saveSharedListsWithMe } = useSharedListsSync()
 
     const [ownPodUrl, setOwnPodUrl] = useState<string | null>(null)
     const [collaboratorWebId, setCollaboratorWebId] = useState('')
@@ -32,6 +42,19 @@ export function SharingSettingsPage() {
     const [sharedContexts, setSharedContexts] = useState<SharedContext[]>([])
     const [podNames, setPodNames] = useState<Record<string, string>>({})
     const [removingPodUrl, setRemovingPodUrl] = useState<string | null>(null)
+
+    // Section 3: individual lists shared with me
+    const [sharedLists, setSharedLists] = useState<SharedListContext[]>([])
+    const [removingListId, setRemovingListId] = useState<string | null>(null)
+    const listOwnerNames = useOwnerDisplayNames(
+        sharedLists.map(ctx => ({ id: ctx.listId, podUrl: ctx.podUrl, ownerWebId: ctx.ownerWebId ?? null })),
+        session
+    )
+
+    // Section 4: individual lists I've shared
+    const [ownLists, setOwnLists] = useState<PackingList[]>([])
+    const [sharingStatusByListId, setSharingStatusByListId] = useState<Record<string, ListSharingStatus>>({})
+    const [managingList, setManagingList] = useState<{ fileUrl: string; listId: string } | null>(null)
 
     useEffect(() => {
         if (!isLoggedIn || !session) return
@@ -56,10 +79,8 @@ export function SharingSettingsPage() {
     }, [ownPodUrl, loadCollaborators])
 
     useEffect(() => {
-        db.getSharedWithMe()
-            .then(swm => setSharedContexts(swm.contexts))
-            .catch(() => setSharedContexts([]))
-    }, [db])
+        if (sharedWithMe) setSharedContexts(sharedWithMe.contexts)
+    }, [sharedWithMe])
 
     useEffect(() => {
         if (!session || sharedContexts.length === 0) return
@@ -74,6 +95,39 @@ export function SharingSettingsPage() {
                 setPodNames(names)
             })
     }, [sharedContexts, session])
+
+    useEffect(() => {
+        if (sharedListsWithMeData) setSharedLists(sharedListsWithMeData.lists)
+    }, [sharedListsWithMeData])
+
+    // Load own lists + sharing status for section 4
+    useEffect(() => {
+        if (!isLoggedIn || !ownPodUrl || !session) return
+        db.getAllPackingLists().then(lists => {
+            const ownOnly = lists.filter(l => !l.sharedFromPodUrl)
+            setOwnLists(ownOnly)
+            const initialStatus: Record<string, ListSharingStatus> = {}
+            for (const list of ownOnly) initialStatus[list.id] = 'loading'
+            setSharingStatusByListId(initialStatus)
+
+            for (const list of ownOnly) {
+                const fileUrl = `${ownPodUrl}${POD_CONTAINERS.PACKING_LISTS}${list.id}.ttl`
+                Promise.all([
+                    getCollaborators(session, fileUrl),
+                    isPubliclyAccessible(session, fileUrl),
+                ])
+                    .then(([col, pub]) => {
+                        setSharingStatusByListId(prev => ({
+                            ...prev,
+                            [list.id]: { collaborators: col, isPublic: pub },
+                        }))
+                    })
+                    .catch(() => {
+                        setSharingStatusByListId(prev => ({ ...prev, [list.id]: 'error' }))
+                    })
+            }
+        }).catch(() => {})
+    }, [isLoggedIn, ownPodUrl, session, db])
 
     const handleGrantAccess = async () => {
         if (!session || !ownPodUrl || !collaboratorWebId.trim()) return
@@ -100,22 +154,11 @@ export function SharingSettingsPage() {
     const handleRemoveSharedContext = async (podUrl: string) => {
         setRemovingPodUrl(podUrl)
         try {
-            const list = await db.getSharedWithMe()
-            const updated = {
-                contexts: list.contexts.filter(c => c.podUrl !== podUrl),
+            const existing = sharedWithMe ?? { contexts: [], lastModified: new Date().toISOString() }
+            await saveSharedWithMe({
+                contexts: existing.contexts.filter(c => c.podUrl !== podUrl),
                 lastModified: new Date().toISOString(),
-            }
-            await db.saveSharedWithMe(updated)
-            setSharedContexts(updated.contexts)
-            const ownPodUrl = await getPrimaryPodUrl(session!)
-            if (ownPodUrl) {
-                await saveRdfToPod({
-                    session: session!,
-                    fileUrl: `${ownPodUrl}${POD_CONTAINERS.SHARED_WITH_ME}`,
-                    data: updated,
-                    serializer: sharedWithMeToDataset,
-                })
-            }
+            })
             showToast('Removed', 'success')
         } catch (err) {
             console.error('SharingSettingsPage: failed to remove shared context', err)
@@ -140,6 +183,24 @@ export function SharingSettingsPage() {
         }
     }
 
+    const handleRemoveSharedList = async (listId: string) => {
+        setRemovingListId(listId)
+        try {
+            const existing = sharedListsWithMeData ?? { lists: [], lastModified: new Date().toISOString() }
+            await saveSharedListsWithMe({
+                lists: existing.lists.filter(l => l.listId !== listId),
+                lastModified: new Date().toISOString(),
+            })
+            await db.deletePackingList(listId).catch(() => {})
+            showToast('Removed', 'success')
+        } catch (err) {
+            console.error('SharingSettingsPage: failed to remove shared list', err)
+            showToast('Failed to remove. Please try again.', 'error')
+        } finally {
+            setRemovingListId(null)
+        }
+    }
+
     if (!isLoggedIn) {
         return (
             <div className="max-w-2xl mx-auto py-8 px-4">
@@ -147,6 +208,12 @@ export function SharingSettingsPage() {
             </div>
         )
     }
+
+    const sharedOwnLists = ownLists.filter(list => {
+        const status = sharingStatusByListId[list.id]
+        if (typeof status !== 'object' || status === null) return false
+        return status.isPublic || status.collaborators.length > 0
+    })
 
     return (
         <div className="max-w-2xl mx-auto py-8 px-4 space-y-10">
@@ -229,7 +296,7 @@ export function SharingSettingsPage() {
                         {sharedContexts.map(ctx => (
                             <li key={ctx.podUrl} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                                 <span className="text-sm text-gray-800 truncate flex-1" title={ctx.podUrl}>
-                                    {ctx.label ?? podNames[ctx.podUrl] ?? (ctx.webId ? friendlyPodName(ctx.webId) : undefined) ?? friendlyPodName(ctx.podUrl)}
+                                    {ctx.label ?? resolveOwnerDisplayName(podNames[ctx.podUrl], ctx.webId, ctx.podUrl)}
                                 </span>
                                 <button
                                     onClick={() => navigate(`/pod/${encodeURIComponent(ctx.podUrl)}/view-lists`)}
@@ -250,6 +317,109 @@ export function SharingSettingsPage() {
                     </ul>
                 )}
             </section>
+
+            {/* Section 3: Individual lists shared with me */}
+            <section className="space-y-4">
+                <h2 className="text-xl font-semibold text-gray-900">Individual lists shared with me</h2>
+                {sharedLists.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                        No individual lists yet. When someone shares a list link with you and you save it, it will appear here.
+                    </p>
+                ) : (
+                    <ul className="space-y-2">
+                        {sharedLists.map(ctx => (
+                            <li key={`${ctx.listId}-${ctx.podUrl}`} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                <div className="flex flex-col flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-gray-800 truncate">
+                                        {ctx.label ?? ctx.listId}
+                                    </span>
+                                    <span className="text-xs text-gray-500 truncate" title={ctx.podUrl}>
+                                        {resolveOwnerDisplayName(listOwnerNames[ctx.listId], ctx.ownerWebId, ctx.podUrl)}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => navigate(buildSharedListPath(ctx.listId, ctx.podUrl, ctx.ownerWebId ?? undefined))}
+                                    className="ml-3 px-3 py-1 text-xs font-semibold rounded-md bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors"
+                                >
+                                    Open
+                                </button>
+                                <button
+                                    onClick={() => handleRemoveSharedList(ctx.listId)}
+                                    disabled={removingListId === ctx.listId}
+                                    aria-label={`Remove shared list ${ctx.label ?? ctx.listId}`}
+                                    className="ml-2 px-3 py-1 text-xs font-semibold rounded-md bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                                >
+                                    {removingListId === ctx.listId ? 'Removing…' : 'Remove'}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            {/* Section 4: Individual lists I've shared */}
+            <section className="space-y-4">
+                <h2 className="text-xl font-semibold text-gray-900">Individual lists I've shared</h2>
+                <p className="text-sm text-gray-600">
+                    Lists you've shared with specific people or publicly. Use "Manage sharing" to update access.
+                </p>
+                {ownLists.length === 0 ? (
+                    <p className="text-sm text-gray-500">No packing lists yet.</p>
+                ) : sharedOwnLists.length === 0 && Object.values(sharingStatusByListId).every(s => s !== 'loading') ? (
+                    <p className="text-sm text-gray-500">You haven't shared any individual lists yet.</p>
+                ) : (
+                    <ul className="space-y-2">
+                        {ownLists
+                            .filter(list => {
+                                const status = sharingStatusByListId[list.id]
+                                if (status === 'loading') return true
+                                if (typeof status !== 'object' || status === null) return false
+                                return status.isPublic || status.collaborators.length > 0
+                            })
+                            .map(list => {
+                                const status = sharingStatusByListId[list.id]
+                                return (
+                                    <li key={list.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                        <div className="flex flex-col flex-1 min-w-0">
+                                            <span className="text-sm font-medium text-gray-800 truncate">✈️ {list.name}</span>
+                                            <span className="text-xs text-gray-500">
+                                                {status === 'loading' ? 'Loading sharing info…' :
+                                                    status === 'error' ? 'Could not load sharing info' :
+                                                    [
+                                                        status.isPublic ? '🌐 Public' : null,
+                                                        status.collaborators.length > 0 ? `👤 ${status.collaborators.length} person${status.collaborators.length > 1 ? 's' : ''}` : null,
+                                                    ].filter(Boolean).join(' · ')}
+                                            </span>
+                                        </div>
+                                        {ownPodUrl && session && (
+                                            <button
+                                                onClick={() => setManagingList({
+                                                    fileUrl: `${ownPodUrl}${POD_CONTAINERS.PACKING_LISTS}${list.id}.ttl`,
+                                                    listId: list.id,
+                                                })}
+                                                className="ml-3 px-3 py-1 text-xs font-semibold rounded-md bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors"
+                                            >
+                                                Manage sharing
+                                            </button>
+                                        )}
+                                    </li>
+                                )
+                            })}
+                    </ul>
+                )}
+            </section>
+
+            {/* Manage sharing modal for section 4 */}
+            {managingList && session && ownPodUrl && (
+                <SharePackingListModal
+                    isOpen={managingList !== null}
+                    onClose={() => setManagingList(null)}
+                    session={session}
+                    fileUrl={managingList.fileUrl}
+                    listId={managingList.listId}
+                    sharerPodUrl={ownPodUrl}
+                />
+            )}
         </div>
     )
 }

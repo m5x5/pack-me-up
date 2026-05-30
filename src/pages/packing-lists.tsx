@@ -6,10 +6,13 @@ import { useSolidPod } from '../components/SolidPodContext'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { Modal } from '../components/Modal'
-import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES } from '../services/solidPod'
+import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES, getCollaborators, isPubliclyAccessible, resolveOwnerDisplayName, buildSharedListPath } from '../services/solidPod'
+import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
 import { usePodErrorHandler } from '../hooks/usePodErrorHandler'
 import { generateUUID } from '../utils/uuid'
+
+type SharingStatus = 'public' | 'shared' | 'private'
 
 export function PackingLists() {
     const [packingLists, setPackingLists] = useState<PackingList[]>([])
@@ -17,8 +20,15 @@ export function PackingLists() {
     const [listToDelete, setListToDelete] = useState<{ id: string; name: string } | null>(null)
     const [listToRename, setListToRename] = useState<{ id: string; name: string } | null>(null)
     const [renameValue, setRenameValue] = useState('')
+    const [sharingStatus, setSharingStatus] = useState<Record<string, SharingStatus>>({})
     const navigate = useNavigate()
     const { isLoggedIn, session } = useSolidPod()
+    const ownerNames = useOwnerDisplayNames(
+        packingLists
+            .filter(l => !!l.sharedFromPodUrl)
+            .map(l => ({ id: l.id, podUrl: l.sharedFromPodUrl!, ownerWebId: l.ownerWebId })),
+        session
+    )
     const { db, loginSyncVersion, loginSyncInProgress } = useDatabase()
     const handlePodError = usePodErrorHandler()
 
@@ -38,7 +48,7 @@ export function PackingLists() {
         try {
             const list = packingLists.find(l => l.id === listToRename.id)
             if (!list) return
-            const updatedList = { ...list, name: renameValue }
+            const updatedList = { ...list, name: renameValue, lastModified: new Date().toISOString() }
             await db.savePackingList(updatedList)
             setPackingLists(packingLists.map(l => l.id === listToRename.id ? updatedList : l))
             await syncListToPod(updatedList)
@@ -56,6 +66,7 @@ export function PackingLists() {
                 id: generateUUID(),
                 name: `Copy of ${list.name}`,
                 createdAt: new Date().toISOString(),
+                lastModified: new Date().toISOString(),
                 items: list.items.map(item => ({ ...item, id: generateUUID(), packed: false })),
             }
             await db.savePackingList(newList)
@@ -118,9 +129,29 @@ export function PackingLists() {
                 setIsLoading(false)
             }
         }
-
         fetchPackingLists()
     }, [db, isLoggedIn, loginSyncVersion])
+
+    // Lazy-load sharing status badges for own lists only
+    useEffect(() => {
+        if (!isLoggedIn || !session || packingLists.length === 0) return
+        getPrimaryPodUrl(session).then(podUrl => {
+            if (!podUrl) return
+            for (const list of packingLists) {
+                if (list.sharedFromPodUrl) continue  // skip foreign lists
+                const fileUrl = `${podUrl}${POD_CONTAINERS.PACKING_LISTS}${list.id}.ttl`
+                Promise.all([
+                    getCollaborators(session, fileUrl),
+                    isPubliclyAccessible(session, fileUrl),
+                ])
+                    .then(([collaborators, pub]) => {
+                        const status: SharingStatus = pub ? 'public' : collaborators.length > 0 ? 'shared' : 'private'
+                        setSharingStatus(prev => ({ ...prev, [list.id]: status }))
+                    })
+                    .catch(() => {})
+            }
+        }).catch(() => {})
+    }, [packingLists, isLoggedIn, session])
 
     if (isLoading || loginSyncInProgress) {
         return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-700 font-semibold">Loading packing lists...</div>
@@ -162,11 +193,33 @@ export function PackingLists() {
                         return (
                             <div
                                 key={list.id}
-                                onClick={() => navigate(`/view-lists/${list.id}`)}
+                                onClick={() => {
+                                    if (list.sharedFromPodUrl) {
+                                        navigate(buildSharedListPath(list.id, list.sharedFromPodUrl, list.ownerWebId))
+                                    } else {
+                                        navigate(`/view-lists/${list.id}`)
+                                    }
+                                }}
                                 className={`bg-gradient-to-br ${gradient} rounded-2xl shadow-soft border-2 p-6 hover:shadow-glow-primary hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
                             >
                                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-3">
-                                    <h3 className="text-xl font-bold text-gray-900">✈️ {list.name}</h3>
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                                        ✈️ {list.name}
+                                        {list.sharedFromPodUrl ? (
+                                            <span className="text-xs font-medium bg-white/60 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                                👤 From {resolveOwnerDisplayName(ownerNames[list.id], list.ownerWebId, list.sharedFromPodUrl)}
+                                            </span>
+                                        ) : (
+                                            <>
+                                                {sharingStatus[list.id] === 'public' && (
+                                                    <span className="text-xs font-medium bg-white/60 text-blue-700 px-2 py-0.5 rounded-full">🌐 Public</span>
+                                                )}
+                                                {sharingStatus[list.id] === 'shared' && (
+                                                    <span className="text-xs font-medium bg-white/60 text-indigo-700 px-2 py-0.5 rounded-full">👤 Shared</span>
+                                                )}
+                                            </>
+                                        )}
+                                    </h3>
                                     <div data-testid="list-actions" className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-medium text-gray-600 bg-white/60 px-3 py-1 rounded-lg">
                                             📅 {new Date(list.createdAt).toLocaleDateString()}
