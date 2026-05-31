@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
+import { svelte } from '@sveltejs/vite-plugin-svelte'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  plugins: [svelte({ hot: false }), react()],
   test: {
     environment: 'happy-dom',
     globals: true,
