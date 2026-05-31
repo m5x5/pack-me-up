@@ -20,15 +20,23 @@
   let { question, questionIndex, allPeople, allItemNames, forceCollapsed, onRemove, onChange, onMoveUp, onMoveDown, scrollToOptionIndex, scrollToLastVersion }: Props = $props()
 
   let isExpanded = $state(true)
+  // Questions start expanded so everExpanded starts true
+  let everExpanded = $state(true)
+
+  function expand() {
+    if (!everExpanded) everExpanded = true
+    isExpanded = true
+  }
 
   $effect(() => {
     if (forceCollapsed !== null && forceCollapsed !== undefined) {
-      isExpanded = !forceCollapsed
+      if (forceCollapsed) isExpanded = false
+      else expand()
     }
   })
 
   $effect(() => {
-    if (scrollToLastVersion != null) isExpanded = true
+    if (scrollToLastVersion != null) expand()
   })
 
   function updateText(text: string) {
@@ -59,7 +67,7 @@
     <div class="flex items-center gap-2 sm:gap-4 mb-6">
       <button
         type="button"
-        onclick={() => (isExpanded = !isExpanded)}
+        onclick={() => isExpanded ? (isExpanded = false) : expand()}
         class="text-gray-400 hover:text-gray-600 transition-colors duration-200"
         title={isExpanded ? 'Collapse' : 'Expand'}
       >
@@ -120,53 +128,55 @@
       </button>
     </div>
 
-    {#if isExpanded}
-      <div class="mb-4 pb-4 border-b border-gray-200">
-        <p class="block text-sm font-medium text-gray-700 mb-2">Question Type</p>
-        <div class="flex gap-4">
-          <label class="flex items-center">
-            <input
-              type="radio"
-              value="single-choice"
-              checked={question.questionType === 'single-choice' || !question.questionType}
-              onchange={() => updateQuestionType('single-choice')}
-              class="mr-2"
-            />
-            <span class="text-sm text-gray-700">Single Choice</span>
-          </label>
-          <label class="flex items-center">
-            <input
-              type="radio"
-              value="multiple-choice"
-              checked={question.questionType === 'multiple-choice'}
-              onchange={() => updateQuestionType('multiple-choice')}
-              class="mr-2"
-            />
-            <span class="text-sm text-gray-700">Multiple Choice</span>
-          </label>
+    {#if everExpanded}
+      <div class:hidden={!isExpanded}>
+        <div class="mb-4 pb-4 border-b border-gray-200">
+          <p class="block text-sm font-medium text-gray-700 mb-2">Question Type</p>
+          <div class="flex gap-4">
+            <label class="flex items-center">
+              <input
+                type="radio"
+                value="single-choice"
+                checked={question.questionType === 'single-choice' || !question.questionType}
+                onchange={() => updateQuestionType('single-choice')}
+                class="mr-2"
+              />
+              <span class="text-sm text-gray-700">Single Choice</span>
+            </label>
+            <label class="flex items-center">
+              <input
+                type="radio"
+                value="multiple-choice"
+                checked={question.questionType === 'multiple-choice'}
+                onchange={() => updateQuestionType('multiple-choice')}
+                class="mr-2"
+              />
+              <span class="text-sm text-gray-700">Multiple Choice</span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="space-y-4">
-        {#each question.options as option, oi (option.id)}
-          <OptionSection
-            {option}
-            optionIndex={oi}
-            {allPeople}
-            {allItemNames}
-            onRemove={() => removeOption(oi)}
-            onChange={(updated) => changeOption(oi, updated)}
-            scrollToLastVersion={oi === scrollToOptionIndex ? scrollToLastVersion : undefined}
-          />
-        {/each}
-        <div class="mt-4">
-          <button
-            type="button"
-            onclick={addOption}
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200"
-          >
-            Add Option
-          </button>
+        <div class="space-y-4">
+          {#each question.options as option, oi (option.id)}
+            <OptionSection
+              {option}
+              optionIndex={oi}
+              {allPeople}
+              {allItemNames}
+              onRemove={() => removeOption(oi)}
+              onChange={(updated) => changeOption(oi, updated)}
+              scrollToLastVersion={oi === scrollToOptionIndex ? scrollToLastVersion : undefined}
+            />
+          {/each}
+          <div class="mt-4">
+            <button
+              type="button"
+              onclick={addOption}
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200"
+            >
+              Add Option
+            </button>
+          </div>
         </div>
       </div>
     {/if}

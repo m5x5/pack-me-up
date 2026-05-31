@@ -16,12 +16,18 @@
   let { option, optionIndex, allPeople, allItemNames, onRemove, onChange, scrollToLastVersion }: Props = $props()
 
   let isExpanded = $state(false)
+  let everExpanded = $state(false)
   let newItemIndex = $state<number | null>(null)
   let itemEls: HTMLDivElement[] = []
 
+  function expand() {
+    if (!everExpanded) everExpanded = true
+    isExpanded = true
+  }
+
   $effect(() => {
     if (!scrollToLastVersion) return
-    isExpanded = true
+    expand()
     requestAnimationFrame(() => {
       const idx = option.items.length - 1
       if (idx >= 0) {
@@ -56,7 +62,7 @@
   <div class="flex items-start gap-2 sm:gap-4 {isExpanded ? 'mb-4' : ''}">
     <button
       type="button"
-      onclick={() => (isExpanded = !isExpanded)}
+      onclick={() => isExpanded ? (isExpanded = false) : expand()}
       class="text-gray-400 hover:text-gray-600 transition-colors duration-200 mt-7"
       title={isExpanded ? 'Collapse' : 'Expand'}
     >
@@ -90,8 +96,8 @@
     </button>
   </div>
 
-  {#if isExpanded}
-    <div class="ml-0 sm:ml-4 space-y-3">
+  {#if everExpanded}
+    <div class="ml-0 sm:ml-4 space-y-3" class:hidden={!isExpanded}>
       <div class="text-sm font-medium text-gray-700 mb-2">Items:</div>
       {#each option.items as item, i}
         <div
