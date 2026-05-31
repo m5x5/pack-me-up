@@ -5,6 +5,16 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte(), react(), tailwindcss()],
+  plugins: [
+    svelte({
+      onwarn(warning, defaultHandler) {
+        // Intentional: initialData is captured once as the initial $state value
+        if (warning.code === 'state_referenced_locally') return
+        defaultHandler?.(warning)
+      },
+    }),
+    react(),
+    tailwindcss(),
+  ],
   define: { global: "window" }
 })
