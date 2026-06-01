@@ -8,7 +8,6 @@ import { Navigation } from './components/Navigation'
 import { SessionExpiredBanner } from './components/SessionExpiredBanner'
 import { ToastProvider } from './components/ToastContext'
 import { LandingPage } from './pages/landing-page'
-import { EditQuestionsForm } from './pages/edit-questions-form'
 import { CreatePackingList } from './pages/create-packing-list'
 import { PackingLists } from './pages/packing-lists'
 import { ViewPackingList } from './pages/view-packing-list'
@@ -20,6 +19,7 @@ import { BackupsPage } from './pages/backups'
 import { ForeignPodLayout } from './components/ForeignPodLayout'
 import { ForeignPackingListsPage } from './pages/foreign-packing-lists'
 import { SharingSettingsPage } from './pages/sharing-settings'
+import { QuestionsPage } from './pages/questions-page'
 
 function App() {
   return (
@@ -35,7 +35,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/wizard" element={<Wizard />} />
-                <Route path="/manage-questions" element={<EditQuestionsForm />} />
+                <Route path="/manage-questions" element={<QuestionsPage />} />
                 <Route path="/create-packing-list" element={<CreatePackingList />} />
                 <Route path="/view-lists" element={<PackingLists />} />
                 <Route path="/view-lists/:id" element={<ViewPackingList />} />
@@ -46,7 +46,7 @@ function App() {
                   <Route index element={<Navigate to="view-lists" replace />} />
                   <Route path="view-lists" element={<ForeignPackingListsPage />} />
                   <Route path="view-lists/:id" element={<ViewPackingList />} />
-                  <Route path="manage-questions" element={<EditQuestionsForm />} />
+                  <Route path="manage-questions" element={<QuestionsPage />} />
                   <Route path="create-packing-list" element={<CreatePackingList />} />
                 </Route>
               </Routes>
