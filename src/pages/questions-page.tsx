@@ -52,10 +52,10 @@ function PersonLegend({ people, onEdit }: { people: Person[]; onEdit?: () => voi
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="p-1 text-gray-300 hover:text-gray-600 rounded"
+                    className="p-2 text-gray-300 hover:text-gray-600 rounded"
                     title="Edit people"
                 >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                 </button>
@@ -115,21 +115,21 @@ function OptionSection({ option, optionIndex, people, onEdit, onDelete }: {
                     </span>
                     <span className="text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
                 </button>
-                <div className="flex items-center gap-0.5 flex-shrink-0">
+                <div className="flex items-center gap-1 flex-shrink-0">
                     {confirmDelete ? (
                         <div className="flex items-center gap-1.5">
                             <span className="text-xs text-gray-500">Delete?</span>
                             <button
                                 type="button"
                                 onClick={() => { onDelete?.(); setConfirmDelete(false) }}
-                                className="px-2 py-0.5 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                                className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
                             >
                                 Yes
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setConfirmDelete(false)}
-                                className="px-2 py-0.5 text-xs text-gray-500 rounded hover:bg-gray-100"
+                                className="px-2 py-1 text-xs text-gray-500 rounded hover:bg-gray-100"
                             >
                                 No
                             </button>
@@ -139,20 +139,20 @@ function OptionSection({ option, optionIndex, people, onEdit, onDelete }: {
                             <button
                                 type="button"
                                 onClick={onEdit}
-                                className="p-1 text-gray-300 hover:text-gray-600 rounded"
+                                className="p-2 text-gray-300 hover:text-gray-600 rounded"
                                 title="Edit option"
                             >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setConfirmDelete(true)}
-                                className="p-1 text-gray-300 hover:text-red-400 rounded"
+                                className="p-2 text-gray-300 hover:text-red-400 rounded"
                                 title="Delete option"
                             >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                             </button>
@@ -201,7 +201,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                     </span>
                     <span className="text-xs text-gray-400 flex-shrink-0 mr-2">{question.options.length} options</span>
                 </button>
-                <div className="flex items-center gap-0.5 pr-3 flex-shrink-0">
+                <div className="flex items-center gap-1 pr-3 flex-shrink-0">
                     {confirmDelete ? (
                         <div className="flex items-center gap-1.5">
                             <span className="text-xs text-gray-500">Delete?</span>
@@ -226,7 +226,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                                 type="button"
                                 onClick={onMoveUp}
                                 disabled={!onMoveUp}
-                                className={`p-1.5 rounded ${onMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                                className={`p-2.5 rounded ${onMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
                                 title="Move up"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -237,7 +237,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                                 type="button"
                                 onClick={onMoveDown}
                                 disabled={!onMoveDown}
-                                className={`p-1.5 rounded ${onMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                                className={`p-2.5 rounded ${onMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
                                 title="Move down"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -247,7 +247,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                             <button
                                 type="button"
                                 onClick={onEdit}
-                                className="p-1.5 text-gray-300 hover:text-gray-600 rounded"
+                                className="p-2.5 text-gray-300 hover:text-gray-600 rounded"
                                 title="Edit question"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -257,7 +257,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                             <button
                                 type="button"
                                 onClick={() => setConfirmDelete(true)}
-                                className="p-1.5 text-gray-300 hover:text-red-400 rounded"
+                                className="p-2.5 text-gray-300 hover:text-red-400 rounded"
                                 title="Delete question"
                             >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -314,7 +314,7 @@ function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Perso
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="p-1.5 text-gray-300 hover:text-gray-600 rounded flex-shrink-0"
+                    className="p-2.5 text-gray-300 hover:text-gray-600 rounded flex-shrink-0"
                     title="Edit always needed items"
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,7 +408,7 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
                                             type="button"
                                             onClick={() => togglePerson(itemIdx, personIdx)}
                                             title={person.name}
-                                            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF}`}
+                                            className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF}`}
                                         >
                                             {person.name.charAt(0).toUpperCase()}
                                         </button>
