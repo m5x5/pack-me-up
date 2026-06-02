@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion } from '../edit-questions/types'
@@ -87,15 +88,54 @@ function ItemRow({ item, people }: { item: Item; people: Person[] }) {
     )
 }
 
-function OptionSection({ option, optionIndex, people, onEdit, onDelete }: {
+function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+    return (
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+                <button
+                    type="button"
+                    className="p-2 text-gray-400 hover:text-gray-700 rounded"
+                    title="More actions"
+                >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="5" r="1.5" />
+                        <circle cx="12" cy="12" r="1.5" />
+                        <circle cx="12" cy="19" r="1.5" />
+                    </svg>
+                </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                    align="end"
+                    sideOffset={4}
+                    className="w-32 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                >
+                    <DropdownMenu.Item
+                        onSelect={onEdit}
+                        className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none"
+                    >
+                        Edit
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                        onSelect={onDelete}
+                        className="px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 cursor-default outline-none"
+                    >
+                        Delete
+                    </DropdownMenu.Item>
+                </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+    )
+}
+
+function OptionSection({ option, people, onEdit, onDelete }: {
     option: Option
-    optionIndex: number
     people: Person[]
     onEdit: () => void
     onDelete: () => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
-    const [confirmDelete, setConfirmDelete] = useState(false)
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
     return (
         <div className="bg-gray-50 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
@@ -111,53 +151,41 @@ function OptionSection({ option, optionIndex, people, onEdit, onDelete }: {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                     <span className="text-sm font-medium text-gray-800 flex-1 min-w-0">
-                        Option {optionIndex + 1}{option.text ? `: ${option.text}` : ''}
+                        {option.text || <em className="text-gray-400 font-normal">Untitled option</em>}
                     </span>
-                    <span className="text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
+                    <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
                 </button>
-                <div className="flex items-center gap-0.5 flex-shrink-0">
-                    {confirmDelete ? (
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-gray-500">Delete?</span>
-                            <button
-                                type="button"
-                                onClick={() => { onDelete?.(); setConfirmDelete(false) }}
-                                className="px-2 py-0.5 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                            >
-                                Yes
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setConfirmDelete(false)}
-                                className="px-2 py-0.5 text-xs text-gray-500 rounded hover:bg-gray-100"
-                            >
-                                No
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <button
-                                type="button"
-                                onClick={onEdit}
-                                className="p-1 text-gray-300 hover:text-gray-600 rounded"
-                                title="Edit option"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setConfirmDelete(true)}
-                                className="p-1 text-gray-300 hover:text-red-400 rounded"
-                                title="Delete option"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            </button>
-                        </>
-                    )}
+                <div className="flex items-center flex-shrink-0">
+                    {/* Mobile: context menu */}
+                    <div className="sm:hidden">
+                        <OptionContextMenu
+                            onEdit={onEdit}
+                            onDelete={() => setShowDeleteModal(true)}
+                        />
+                    </div>
+                    {/* Desktop: inline buttons */}
+                    <div className="hidden sm:flex items-center gap-0.5">
+                        <button
+                            type="button"
+                            onClick={onEdit}
+                            className="p-1 text-gray-300 hover:text-gray-600 rounded"
+                            title="Edit option"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowDeleteModal(true)}
+                            className="p-1 text-gray-300 hover:text-red-400 rounded"
+                            title="Delete option"
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
@@ -165,7 +193,116 @@ function OptionSection({ option, optionIndex, people, onEdit, onDelete }: {
                     <ItemRow key={i} item={item} people={people} />
                 ))}
             </div>
+            {showDeleteModal && (
+                <DeleteConfirmModal
+                    onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
+                    onCancel={() => setShowDeleteModal(false)}
+                />
+            )}
         </div>
+    )
+}
+
+function DeleteConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+    return (
+        <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            onClick={onCancel}
+            onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
+        >
+            <div
+                className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
+                onClick={e => e.stopPropagation()}
+            >
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete question?</h2>
+                <p className="text-sm text-gray-500 mb-6">This will permanently remove the question and all its options.</p>
+                <div className="flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        className="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
+    onMoveUp?: () => void
+    onMoveDown?: () => void
+    onEdit: () => void
+    onDelete: () => void
+}) {
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
+
+    return (
+        <>
+            <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                    <button
+                        type="button"
+                        className="p-2 text-gray-400 hover:text-gray-700 rounded"
+                        title="More actions"
+                    >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="5" r="1.5" />
+                            <circle cx="12" cy="12" r="1.5" />
+                            <circle cx="12" cy="19" r="1.5" />
+                        </svg>
+                    </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                    <DropdownMenu.Content
+                        align="end"
+                        sideOffset={4}
+                        className="w-40 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                    >
+                        <DropdownMenu.Item
+                            onSelect={onEdit}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none"
+                        >
+                            Edit
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            onSelect={onMoveUp}
+                            disabled={!onMoveUp}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
+                        >
+                            Move Up
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            onSelect={onMoveDown}
+                            disabled={!onMoveDown}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
+                        >
+                            Move Down
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Item
+                            onSelect={e => { e.preventDefault(); setShowDeleteModal(true) }}
+                            className="px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 cursor-default outline-none"
+                        >
+                            Delete
+                        </DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            {showDeleteModal && (
+                <DeleteConfirmModal
+                    onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
+                    onCancel={() => setShowDeleteModal(false)}
+                />
+            )}
+        </>
     )
 }
 
@@ -181,7 +318,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
     onMoveDown?: () => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
-    const [confirmDelete, setConfirmDelete] = useState(false)
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="flex items-stretch">
@@ -199,81 +336,70 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                     <span className="font-medium text-gray-900 flex-1 min-w-0">
                         {question.text || <em className="text-gray-400 font-normal">Untitled question</em>}
                     </span>
-                    <span className="text-xs text-gray-400 flex-shrink-0 mr-2">{question.options.length} options</span>
+                    <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-2">{question.options.length} options</span>
                 </button>
-                <div className="flex items-center gap-0.5 pr-3 flex-shrink-0">
-                    {confirmDelete ? (
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-gray-500">Delete?</span>
-                            <button
-                                type="button"
-                                onClick={() => { onDelete(); setConfirmDelete(false) }}
-                                className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                            >
-                                Yes
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setConfirmDelete(false)}
-                                className="px-2 py-1 text-xs text-gray-500 rounded hover:bg-gray-100"
-                            >
-                                No
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            <button
-                                type="button"
-                                onClick={onMoveUp}
-                                disabled={!onMoveUp}
-                                className={`p-1.5 rounded ${onMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
-                                title="Move up"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                </svg>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onMoveDown}
-                                disabled={!onMoveDown}
-                                className={`p-1.5 rounded ${onMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
-                                title="Move down"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onEdit}
-                                className="p-1.5 text-gray-300 hover:text-gray-600 rounded"
-                                title="Edit question"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setConfirmDelete(true)}
-                                className="p-1.5 text-gray-300 hover:text-red-400 rounded"
-                                title="Delete question"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            </button>
-                        </>
-                    )}
+                <div className="flex items-center pr-3 flex-shrink-0">
+                    {/* Mobile: context menu */}
+                    <div className="sm:hidden">
+                        <QuestionContextMenu
+                            onMoveUp={onMoveUp}
+                            onMoveDown={onMoveDown}
+                            onEdit={onEdit}
+                            onDelete={onDelete}
+                        />
+                    </div>
+                    {/* Desktop: inline buttons */}
+                    <div className="hidden sm:flex items-center gap-0.5">
+                        <button
+                            type="button"
+                            onClick={onMoveUp}
+                            disabled={!onMoveUp}
+                            className={`p-1.5 rounded ${onMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            title="Move up"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onMoveDown}
+                            disabled={!onMoveDown}
+                            className={`p-1.5 rounded ${onMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            title="Move down"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onEdit}
+                            className="p-1.5 text-gray-300 hover:text-gray-600 rounded"
+                            title="Edit question"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowDeleteModal(true)}
+                            className="p-1.5 text-gray-300 hover:text-red-400 rounded"
+                            title="Delete question"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div className={isExpanded ? 'px-4 sm:px-6 pb-4 sm:pb-6 space-y-2' : 'hidden'}>
-                {question.options.map((option, oi) => (
+                {question.options.map((option) => (
                     <OptionSection
                         key={option.id}
                         option={option}
-                        optionIndex={oi}
                         people={people}
                         onEdit={() => onEditOption(option)}
                         onDelete={() => onDeleteOption(option.id)}
@@ -287,6 +413,12 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                     + Add Option
                 </button>
             </div>
+            {showDeleteModal && (
+                <DeleteConfirmModal
+                    onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
+                    onCancel={() => setShowDeleteModal(false)}
+                />
+            )}
         </div>
     )
 }
@@ -307,17 +439,18 @@ function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Perso
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
-                    <span className="font-medium text-gray-900">
-                        Always Needed Items <span className="text-sm font-normal text-gray-500">({items.length} items)</span>
+                    <span className="flex flex-col min-w-0">
+                        <span className="font-medium text-gray-900">Always Needed Items</span>
+                        <span className="hidden sm:inline text-sm font-normal text-gray-500">{items.length} items</span>
                     </span>
                 </button>
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="p-1.5 text-gray-300 hover:text-gray-600 rounded flex-shrink-0"
+                    className="p-4 -m-2 text-gray-300 hover:text-gray-600 rounded flex-shrink-0"
                     title="Edit always needed items"
                 >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                 </button>
@@ -388,18 +521,49 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
             )}
             <div className="space-y-2">
                 {items.map((item, itemIdx) => (
-                    <div key={itemIdx} className="flex items-center gap-2">
-                        <div className="flex-1 min-w-0">
-                            <CustomCreatableSelect
-                                value={item.text}
-                                onChange={val => updateItemText(itemIdx, val)}
-                                options={allItemNames}
-                                placeholder="Item name"
-                                menuPortalTarget={document.body}
-                            />
+                    <div key={itemIdx} className="sm:flex sm:items-center sm:gap-2 rounded-lg border border-gray-200 sm:border-transparent p-2 sm:p-0">
+                        {/* Item name + desktop people + remove */}
+                        <div className="flex items-center gap-2 sm:flex-1 sm:min-w-0">
+                            <div className="flex-1 min-w-0">
+                                <CustomCreatableSelect
+                                    value={item.text}
+                                    onChange={val => updateItemText(itemIdx, val)}
+                                    options={allItemNames}
+                                    placeholder="Item name"
+                                    menuPortalTarget={document.body}
+                                />
+                            </div>
+                            {/* Desktop: inline avatars */}
+                            {people.length > 1 && (
+                                <div className="hidden sm:flex gap-0.5 shrink-0">
+                                    {people.map((person, personIdx) => {
+                                        const selected = item.personSelections?.[personIdx]?.selected ?? false
+                                        return (
+                                            <button
+                                                key={person.id}
+                                                type="button"
+                                                onClick={() => togglePerson(itemIdx, personIdx)}
+                                                title={person.name}
+                                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF}`}
+                                            >
+                                                {person.name.charAt(0).toUpperCase()}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => removeItem(itemIdx)}
+                                className="shrink-0 text-gray-300 hover:text-red-400 text-xl leading-none"
+                                title="Remove item"
+                            >
+                                ×
+                            </button>
                         </div>
+                        {/* Mobile: people on their own row as large labelled tiles */}
                         {people.length > 1 && (
-                            <div className="flex gap-0.5 shrink-0">
+                            <div className="mt-2 sm:hidden flex gap-2">
                                 {people.map((person, personIdx) => {
                                     const selected = item.personSelections?.[personIdx]?.selected ?? false
                                     return (
@@ -407,23 +571,19 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
                                             key={person.id}
                                             type="button"
                                             onClick={() => togglePerson(itemIdx, personIdx)}
-                                            title={person.name}
-                                            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF}`}
+                                            className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${AVATAR_ON[personIdx % AVATAR_ON.length]} border-transparent` : `bg-white border-gray-200 text-gray-400`}`}
                                         >
-                                            {person.name.charAt(0).toUpperCase()}
+                                            <span className="text-lg font-bold leading-none">
+                                                {person.name.charAt(0).toUpperCase()}
+                                            </span>
+                                            <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
+                                                {person.name}
+                                            </span>
                                         </button>
                                     )
                                 })}
                             </div>
                         )}
-                        <button
-                            type="button"
-                            onClick={() => removeItem(itemIdx)}
-                            className="shrink-0 text-gray-300 hover:text-red-400 text-xl leading-none"
-                            title="Remove item"
-                        >
-                            ×
-                        </button>
                     </div>
                 ))}
             </div>
