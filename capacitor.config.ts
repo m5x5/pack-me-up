@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.packmeup.app',
+  appId: 'com.timgent.packmeup',
   appName: 'Pack Me Up',
   webDir: 'dist',
   server: {

@@ -8,10 +8,10 @@ if (keystorePropsFile.exists()) {
 }
 
 android {
-    namespace = "com.packmeup.app"
+    namespace = "com.timgent.packmeup"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.packmeup.app"
+        applicationId "com.timgent.packmeup"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
