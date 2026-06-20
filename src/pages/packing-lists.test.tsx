@@ -51,6 +51,12 @@ vi.mock('../services/solidPod', () => ({
     },
 }))
 
+vi.mock('../components/SolidProviderSelector', () => ({
+    SolidProviderSelector: vi.fn(({ isOpen }: { isOpen: boolean }) =>
+        isOpen ? <div data-testid="sign-in-modal">Sign in to share</div> : null
+    ),
+}))
+
 vi.mock('../components/SharePackingListModal', () => ({
     SharePackingListModal: vi.fn(({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
         isOpen ? <div data-testid="share-modal"><button onClick={onClose}>Close</button></div> : null
@@ -683,7 +689,7 @@ describe('PackingLists share', () => {
         fireEvent.click(screen.getByRole('button', { name: /share/i }))
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: /^sign in$/i })).toBeTruthy()
+            expect(screen.getByTestId('sign-in-modal')).toBeTruthy()
         })
     })
 

@@ -7,6 +7,7 @@ import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { Modal } from '../components/Modal'
 import { SharePackingListModal } from '../components/SharePackingListModal'
+import { SolidProviderSelector } from '../components/SolidProviderSelector'
 import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES, getCollaborators, isPubliclyAccessible, resolveOwnerDisplayName, buildSharedListPath } from '../services/solidPod'
 import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
@@ -25,7 +26,7 @@ export function PackingLists() {
     const [listToShare, setListToShare] = useState<{ id: string; fileUrl: string; podUrl: string } | null>(null)
     const [showSignInPrompt, setShowSignInPrompt] = useState(false)
     const navigate = useNavigate()
-    const { isLoggedIn, session } = useSolidPod()
+    const { isLoggedIn, session, login } = useSolidPod()
     const ownerNames = useOwnerDisplayNames(
         packingLists
             .filter(l => !!l.sharedFromPodUrl)
@@ -311,15 +312,11 @@ export function PackingLists() {
                 </div>
             </Modal>
 
-            <Modal isOpen={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} title="Sign in to share">
-                <div className="space-y-4">
-                    <p className="text-gray-700">You need to sign in to share a list with friends for your holiday.</p>
-                    <div className="flex gap-3 justify-end">
-                        <Button variant="ghost" onClick={() => setShowSignInPrompt(false)}>Cancel</Button>
-                        <Button variant="primary" onClick={() => { setShowSignInPrompt(false); navigate('/') }}>Sign in</Button>
-                    </div>
-                </div>
-            </Modal>
+            <SolidProviderSelector
+                isOpen={showSignInPrompt}
+                onClose={() => setShowSignInPrompt(false)}
+                onSelect={(issuer) => login(issuer)}
+            />
 
             {listToShare && session && (
                 <SharePackingListModal
