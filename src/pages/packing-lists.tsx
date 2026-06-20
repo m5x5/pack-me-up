@@ -13,8 +13,7 @@ import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
 import { usePodErrorHandler } from '../hooks/usePodErrorHandler'
 import { generateUUID } from '../utils/uuid'
-
-const PENDING_SHARE_KEY = 'pendingShareAction'
+import { PENDING_SHARE_KEY } from './solid-pod-handle-redirect-page'
 
 type SharingStatus = 'public' | 'shared' | 'private'
 

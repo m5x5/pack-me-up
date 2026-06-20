@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 export const AUTH_RETURN_TO_KEY = "authReturnTo";
+export const PENDING_SHARE_KEY = "pendingShareAction";
 
 export const SolidPodHandleRedirectPage = () => {
     const navigate = useNavigate();

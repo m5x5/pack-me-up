@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ViewPackingList } from './view-packing-list'
@@ -508,6 +508,87 @@ describe('ViewPackingList checked item styling', () => {
 
         const span = screen.getByText('Passport')
         expect(span.className).not.toContain('line-through')
+    })
+})
+
+describe('ViewPackingList share while logged out', () => {
+    const mockLogin = vi.fn()
+
+    beforeEach(() => {
+        sessionStorage.clear()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn(), syncFromPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({ saveWithSyncPrevention: vi.fn() })
+    })
+
+    afterEach(() => {
+        sessionStorage.clear()
+        vi.clearAllMocks()
+    })
+
+    it('shows the Share button even when logged out', async () => {
+        renderComponent()
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+        expect(screen.getByRole('button', { name: /share/i })).toBeTruthy()
+    })
+
+    it('shows a contextual sign-in modal with the list name when Share is clicked while logged out', async () => {
+        renderComponent()
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+
+        await waitFor(() => {
+            const modal = screen.getByTestId('share-sign-in-modal')
+            expect(within(modal).getByText(/Test Trip/)).toBeTruthy()
+        })
+    })
+
+    it('saves pendingShareAction and calls login when a provider is selected', async () => {
+        renderComponent()
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+        await screen.findByTestId('share-sign-in-modal')
+
+        const providerBtn = screen.getAllByTestId('share-sign-in-provider').at(0)!
+        fireEvent.click(providerBtn)
+
+        await waitFor(() => {
+            expect(mockLogin).toHaveBeenCalled()
+            expect(sessionStorage.getItem('pendingShareAction')).toContain('test-list-1')
+        })
+    })
+
+    it('auto-opens SharePackingListModal when pendingShareAction matches list id on mount', async () => {
+        sessionStorage.setItem('pendingShareAction', JSON.stringify({ listId: 'test-list-1' }))
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { fetch: vi.fn(), info: { webId: 'https://user.pod/profile/card#me' } },
+            webId: 'https://user.pod/profile/card#me',
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        })
+        const { SharePackingListModal } = await import('../components/SharePackingListModal')
+        const mockModal = vi.mocked(SharePackingListModal)
+        mockModal.mockImplementation(({ isOpen }) => isOpen ? <div data-testid="share-modal" /> : null)
+
+        renderComponent()
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+
+        await waitFor(() => {
+            expect(screen.getByTestId('share-modal')).toBeTruthy()
+            expect(sessionStorage.getItem('pendingShareAction')).toBeNull()
+        })
     })
 })
 

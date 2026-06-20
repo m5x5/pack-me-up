@@ -14,9 +14,12 @@ import { POD_CONTAINERS, getPrimaryPodUrl, saveRdfToPod, resolveOwnerDisplayName
 import { useOwnerDisplayName } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { SharePackingListModal } from '../components/SharePackingListModal'
+import { Modal } from '../components/Modal'
+import { COMMON_PROVIDERS } from '../components/SolidProviderSelector'
 import { useForeignPod } from '../components/ForeignPodContext'
 import { useSharedListsSync } from '../hooks/useSharedListsSync'
 import { mergePackingLists } from '../utils/mergePackingLists'
+import { PENDING_SHARE_KEY } from './solid-pod-handle-redirect-page'
 
 type FormData = {
     items: Record<string, boolean>
@@ -58,6 +61,7 @@ export function ViewPackingList() {
     const [packingList, setPackingList] = useState<PackingList | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [shareModalOpen, setShareModalOpen] = useState(false)
+    const [showShareSignIn, setShowShareSignIn] = useState(false)
     const [ownPodUrl, setOwnPodUrl] = useState<string | null>(null)
     // Tracks whether initial data has been loaded (local DB or pod).
     // Used to surface a real error to the user instead of hanging on "Loading…"
@@ -94,7 +98,7 @@ export function ViewPackingList() {
 
     const handleCheckAll = (items: PackingListItem[]) =>
         items.forEach(item => setValue(`items.${item.id}`, true))
-    const { isLoggedIn, session } = useSolidPod()
+    const { isLoggedIn, session, login } = useSolidPod()
     const { showToast } = useToast()
     const { db } = useDatabase()
     const { sharedListsWithMe, saveSharedListsWithMe } = useSharedListsSync()
@@ -106,6 +110,18 @@ export function ViewPackingList() {
             getPrimaryPodUrl(session).then(url => setOwnPodUrl(url ?? null))
         }
     }, [isLoggedIn, session])
+
+    // Auto-resume a pending share action after login redirect
+    useEffect(() => {
+        if (!isLoggedIn || !id) return
+        const raw = sessionStorage.getItem(PENDING_SHARE_KEY)
+        if (!raw) return
+        let pending: { listId: string }
+        try { pending = JSON.parse(raw) } catch { return }
+        if (pending.listId !== id) return
+        sessionStorage.removeItem(PENDING_SHARE_KEY)
+        setShareModalOpen(true)
+    }, [isLoggedIn, id])
 
     useEffect(() => {
         if (!packingList || !foreignPodUrl || !id || !sharedListsWithMe) return
@@ -557,6 +573,13 @@ export function ViewPackingList() {
         .map(g => [g.name, groupedItems[g.name] ?? []] as [string, PackingListItem[]])
     const personSections = [...regularSections, ...guestSections]
 
+    const handleShareSignIn = (issuer: string) => {
+        if (!id) return
+        sessionStorage.setItem(PENDING_SHARE_KEY, JSON.stringify({ listId: id }))
+        setShowShareSignIn(false)
+        login(issuer, `/view-list/${id}`)
+    }
+
     return (
         <>
         <div className="w-full flex flex-col items-center py-8 px-4">
@@ -589,12 +612,12 @@ export function ViewPackingList() {
                                 + Add Guest
                             </Button>
                         )}
-                        {isLoggedIn && !foreignPodUrl && (
+                        {!foreignPodUrl && (
                             <Button
                                 type="button"
                                 variant="secondary"
-                                onClick={() => setShareModalOpen(true)}
-                                disabled={!ownPodUrl}
+                                onClick={() => isLoggedIn ? setShareModalOpen(true) : setShowShareSignIn(true)}
+                                disabled={isLoggedIn && !ownPodUrl}
                             >
                                 Share
                             </Button>
@@ -909,6 +932,37 @@ export function ViewPackingList() {
             confirmText="Remove"
             confirmVariant="danger"
         />
+        <Modal
+            isOpen={showShareSignIn}
+            onClose={() => setShowShareSignIn(false)}
+            title={`Share "${packingList?.name}"`}
+        >
+            <div className="space-y-4" data-testid="share-sign-in-modal">
+                <p className="text-sm text-gray-700">
+                    To share <strong>{packingList?.name}</strong> with friends for your trip, you need a free Solid Pod — your personal storage that keeps your data yours.
+                </p>
+                <p className="text-xs text-indigo-600 font-medium">
+                    After signing in we'll bring you right back here to complete the share. ✨
+                </p>
+                <div className="space-y-2 pt-1">
+                    {COMMON_PROVIDERS.map(provider => (
+                        <button
+                            key={provider.issuer}
+                            data-testid="share-sign-in-provider"
+                            onClick={() => handleShareSignIn(provider.issuer)}
+                            className="w-full text-left px-4 py-3 border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl transition-all duration-150 group"
+                        >
+                            <div className="font-semibold text-gray-900 group-hover:text-indigo-900">{provider.name}</div>
+                            {provider.description && (
+                                <div className="text-xs text-green-700 font-medium">{provider.description}</div>
+                            )}
+                            <div className="text-xs text-gray-400">{provider.issuer}</div>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </Modal>
+
         {session && ownPodUrl && id && (
             <SharePackingListModal
                 isOpen={shareModalOpen}
