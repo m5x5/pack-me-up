@@ -38,6 +38,9 @@ vi.mock('../services/solidPod', () => ({
     getCollaborators: vi.fn().mockResolvedValue([]),
     isPubliclyAccessible: vi.fn().mockResolvedValue(false),
     friendlyPodName: vi.fn((url: string) => url),
+    buildSharedListPath: vi.fn((id: string) => `/view-lists/${id}`),
+    resolveOwnerDisplayName: vi.fn(() => 'Owner'),
+    getPodOwnerName: vi.fn().mockResolvedValue(null),
     POD_CONTAINERS: { PACKING_LISTS: '/packing-lists/' },
     POD_ERROR_MESSAGES: {
         NOT_LOGGED_IN: 'Not logged in',
@@ -48,16 +51,24 @@ vi.mock('../services/solidPod', () => ({
     },
 }))
 
+vi.mock('../components/SharePackingListModal', () => ({
+    SharePackingListModal: vi.fn(({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
+        isOpen ? <div data-testid="share-modal"><button onClick={onClose}>Close</button></div> : null
+    ),
+}))
+
 import type { AppSession as Session } from '../types/AppSession'
 import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod } from '../services/solidPod'
+import { SharePackingListModal } from '../components/SharePackingListModal'
 
 const mockUseDatabase = vi.mocked(useDatabase)
 const mockUseSolidPod = vi.mocked(useSolidPod)
 const mockGetPrimaryPodUrl = vi.mocked(getPrimaryPodUrl)
 const mockSaveRdfToPod = vi.mocked(saveRdfToPod)
 const mockDeleteFileFromPod = vi.mocked(deleteFileFromPod)
+const mockSharePackingListModal = vi.mocked(SharePackingListModal)
 
 const testPackingList = {
     id: 'list-1',
@@ -563,6 +574,141 @@ describe('PackingLists pod sync on mutation', () => {
             expect(makeDb().savePackingList).toBeDefined()
         })
         expect(mockSaveRdfToPod).not.toHaveBeenCalled()
+    })
+})
+
+describe('PackingLists share', () => {
+    const loggedInSession = { fetch: vi.fn(), info: { webId: 'https://user.solidcommunity.net/profile/card#me' } } as unknown as Session
+
+    function makeShareDb() {
+        return {
+            getAllPackingLists: vi.fn().mockResolvedValue([testList]),
+            deletePackingList: vi.fn().mockResolvedValue(undefined),
+            savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+            getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+        }
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockSharePackingListModal.mockImplementation(
+            ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
+                isOpen ? <div data-testid="share-modal"><button onClick={onClose}>Close</button></div> : null
+        )
+        mockGetPrimaryPodUrl.mockResolvedValue('https://user.solidcommunity.net')
+    })
+
+    it('shows a Share button on each own list card', async () => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+
+        expect(screen.getByRole('button', { name: /share/i })).toBeTruthy()
+    })
+
+    it('does not show Share button on foreign (shared-with-me) lists', async () => {
+        const foreignList = {
+            ...testList,
+            id: 'foreign-1',
+            name: 'Friend Holiday',
+            sharedFromPodUrl: 'https://friend.solidcommunity.net',
+        }
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: loggedInSession,
+            webId: 'https://user.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn().mockResolvedValue([foreignList]),
+                deletePackingList: vi.fn(),
+                savePackingList: vi.fn(),
+                getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            } as unknown as PackingAppDatabase,
+        })
+
+        renderComponent()
+        await screen.findByText(/Friend Holiday/)
+
+        expect(screen.queryByRole('button', { name: /🔗 share/i })).toBeNull()
+    })
+
+    it('opens the SharePackingListModal when Share is clicked while logged in', async () => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: loggedInSession,
+            webId: 'https://user.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+
+        await waitFor(() => {
+            expect(screen.getByTestId('share-modal')).toBeTruthy()
+        })
+    })
+
+    it('shows a sign-in prompt when Share is clicked while logged out', async () => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /^sign in$/i })).toBeTruthy()
+        })
+    })
+
+    it('closes the SharePackingListModal when onClose is called', async () => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: loggedInSession,
+            webId: 'https://user.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+        await screen.findByTestId('share-modal')
+
+        fireEvent.click(screen.getByRole('button', { name: /close/i }))
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('share-modal')).toBeNull()
+        })
     })
 })
 

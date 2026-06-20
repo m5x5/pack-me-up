@@ -6,6 +6,7 @@ import { useSolidPod } from '../components/SolidPodContext'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { Modal } from '../components/Modal'
+import { SharePackingListModal } from '../components/SharePackingListModal'
 import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES, getCollaborators, isPubliclyAccessible, resolveOwnerDisplayName, buildSharedListPath } from '../services/solidPod'
 import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
@@ -21,6 +22,8 @@ export function PackingLists() {
     const [listToRename, setListToRename] = useState<{ id: string; name: string } | null>(null)
     const [renameValue, setRenameValue] = useState('')
     const [sharingStatus, setSharingStatus] = useState<Record<string, SharingStatus>>({})
+    const [listToShare, setListToShare] = useState<{ id: string; fileUrl: string; podUrl: string } | null>(null)
+    const [showSignInPrompt, setShowSignInPrompt] = useState(false)
     const navigate = useNavigate()
     const { isLoggedIn, session } = useSolidPod()
     const ownerNames = useOwnerDisplayNames(
@@ -75,6 +78,18 @@ export function PackingLists() {
         } catch (err) {
             console.error('Error duplicating packing list:', err)
         }
+    }
+
+    const handleSharePackingList = async (list: PackingList, event: React.MouseEvent) => {
+        event.stopPropagation()
+        if (!isLoggedIn) {
+            setShowSignInPrompt(true)
+            return
+        }
+        const podUrl = await getPrimaryPodUrl(session)
+        if (!podUrl) return
+        const fileUrl = `${podUrl}${POD_CONTAINERS.PACKING_LISTS}${list.id}.ttl`
+        setListToShare({ id: list.id, fileUrl, podUrl })
     }
 
     const confirmDeletePackingList = async () => {
@@ -242,6 +257,14 @@ export function PackingLists() {
                                         >
                                             🗑️ Delete
                                         </button>
+                                        {!list.sharedFromPodUrl && (
+                                            <button
+                                                onClick={(e) => handleSharePackingList(list, e)}
+                                                className="text-blue-600 hover:text-blue-800 text-sm font-bold hover:scale-110 transition-transform duration-200 bg-white/60 px-3 py-1 rounded-lg"
+                                            >
+                                                🔗 Share
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -287,6 +310,27 @@ export function PackingLists() {
                     </div>
                 </div>
             </Modal>
+
+            <Modal isOpen={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} title="Sign in to share">
+                <div className="space-y-4">
+                    <p className="text-gray-700">You need to sign in to share a list with friends for your holiday.</p>
+                    <div className="flex gap-3 justify-end">
+                        <Button variant="ghost" onClick={() => setShowSignInPrompt(false)}>Cancel</Button>
+                        <Button variant="primary" onClick={() => { setShowSignInPrompt(false); navigate('/') }}>Sign in</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {listToShare && session && (
+                <SharePackingListModal
+                    isOpen={listToShare !== null}
+                    onClose={() => setListToShare(null)}
+                    session={session}
+                    fileUrl={listToShare.fileUrl}
+                    listId={listToShare.id}
+                    sharerPodUrl={listToShare.podUrl}
+                />
+            )}
         </div>
     )
 }
