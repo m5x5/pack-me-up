@@ -51,12 +51,6 @@ vi.mock('../services/solidPod', () => ({
     },
 }))
 
-vi.mock('../components/SolidProviderSelector', () => ({
-    SolidProviderSelector: vi.fn(({ isOpen }: { isOpen: boolean }) =>
-        isOpen ? <div data-testid="sign-in-modal">Sign in to share</div> : null
-    ),
-}))
-
 vi.mock('../components/SharePackingListModal', () => ({
     SharePackingListModal: vi.fn(({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) =>
         isOpen ? <div data-testid="share-modal"><button onClick={onClose}>Close</button></div> : null
@@ -672,7 +666,7 @@ describe('PackingLists share', () => {
         })
     })
 
-    it('shows a sign-in prompt when Share is clicked while logged out', async () => {
+    it('shows a contextual sign-in modal with the list name when Share is clicked while logged out', async () => {
         mockUseSolidPod.mockReturnValue({
             isLoggedIn: false,
             session: null,
@@ -689,7 +683,59 @@ describe('PackingLists share', () => {
         fireEvent.click(screen.getByRole('button', { name: /share/i }))
 
         await waitFor(() => {
-            expect(screen.getByTestId('sign-in-modal')).toBeTruthy()
+            expect(screen.getByTestId('share-sign-in-modal')).toBeTruthy()
+            // Shows the list name in the modal
+            expect(screen.getByTestId('share-sign-in-modal').textContent).toContain('Summer Holiday')
+        })
+    })
+
+    it('calls login with the selected provider and saves pendingShareAction when provider clicked', async () => {
+        const mockLogin = vi.fn()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+        fireEvent.click(screen.getByRole('button', { name: /share/i }))
+        await screen.findByTestId('share-sign-in-modal')
+
+        // Click the first provider button
+        const providerBtn = screen.getAllByTestId('share-sign-in-provider').at(0)!
+        fireEvent.click(providerBtn)
+
+        await waitFor(() => {
+            expect(mockLogin).toHaveBeenCalled()
+            expect(sessionStorage.getItem('pendingShareAction')).toContain('list-1')
+        })
+    })
+
+    it('auto-opens SharePackingListModal for pending list when already logged in on mount', async () => {
+        sessionStorage.setItem('pendingShareAction', JSON.stringify({ listId: 'list-1' }))
+        const loggedInSession = { fetch: vi.fn(), info: { webId: 'https://user.solidcommunity.net/profile/card#me' } } as unknown as Session
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: loggedInSession,
+            webId: 'https://user.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockGetPrimaryPodUrl.mockResolvedValue('https://user.solidcommunity.net')
+        mockUseDatabase.mockReturnValue({ db: makeShareDb() as unknown as PackingAppDatabase })
+
+        renderComponent()
+        await screen.findByText(/Summer Holiday/)
+
+        await waitFor(() => {
+            expect(screen.getByTestId('share-modal')).toBeTruthy()
+            expect(sessionStorage.getItem('pendingShareAction')).toBeNull()
         })
     })
 
