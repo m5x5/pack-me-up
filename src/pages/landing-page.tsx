@@ -77,7 +77,7 @@ export const LandingPage = () => {
 
                 <div className="mt-10 p-4 rounded-xl border border-gray-200 bg-gray-50 text-center text-sm text-gray-500">
                     <h2 className="font-semibold text-gray-600 inline">Own Your Data</h2>
-                    {' '}— Login with your Solid Pod to store your lists in your own free personal storage you control. Your data saves locally in your browser automatically, even without an account.
+                    {' '}— Sign in to sync across devices and share lists. Your data saves locally in your browser automatically, even without an account. Uses your own free Solid Pod — you control your data.
                     {!isLoggedIn && (
                         <span className="block mt-1">
                             <button

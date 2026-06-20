@@ -76,7 +76,7 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
   const isLastUsed = localStorage.getItem(LAST_PROVIDER_KEY) === primaryProvider.issuer;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Login with Your Solid Pod">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Sign in to Sync &amp; Share">
       <div className="space-y-4">
         {/* Explanation section */}
         <div className="bg-blue-50 border border-blue-200 rounded-md p-4 space-y-2">

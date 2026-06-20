@@ -142,9 +142,9 @@ export const Navigation = () => {
                                         className="px-4 py-2 rounded-xl text-sm font-semibold bg-white/90 text-primary-700 hover:bg-white hover:scale-105 transition-all duration-200 shadow-soft"
                                         title="Store your packing lists in your own personal Pod - you own your data"
                                     >
-                                        Login with Solid Pod
+                                        Sign in
                                     </button>
-                                    <span className="text-xs text-white mt-1 font-medium">Own your data</span>
+                                    <span className="text-xs text-white mt-1 font-medium">Sync &amp; share lists</span>
                                 </div>
                             )}
                         </div>
@@ -257,9 +257,9 @@ export const Navigation = () => {
                                         className="w-full text-left px-3 py-3 rounded-xl text-base font-semibold bg-white/90 text-primary-700 hover:bg-white transition-all duration-200"
                                         title="Store your packing lists in your own personal Pod - you own your data"
                                     >
-                                        Login with Solid Pod
+                                        Sign in
                                     </button>
-                                    <p className="px-3 py-1 text-xs text-white font-medium">Own your data</p>
+                                    <p className="px-3 py-1 text-xs text-white font-medium">Sync &amp; share lists</p>
                                 </div>
                             )}
                         </div>

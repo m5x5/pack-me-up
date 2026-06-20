@@ -680,15 +680,15 @@ export function CreatePackingList() {
 
                             {!isLoggedIn && (
                                 <div className="bg-gradient-to-br from-accent-50 to-accent-100 p-6 rounded-xl border-2 border-accent-200">
-                                    <h3 className="text-lg font-bold text-accent-900 mb-2">🔒 Login to Sync Questions</h3>
+                                    <h3 className="text-lg font-bold text-accent-900 mb-2">🔒 Sync Your Questions</h3>
                                     <p className="text-gray-700 mb-4">
-                                        If you've already created questions and saved them to your Solid Pod, login to sync them.
+                                        Already created questions? Sign in to sync them across devices (stored in your own Solid Pod).
                                     </p>
                                     <button
                                         className="text-sm font-semibold text-accent-700 underline hover:text-accent-900"
                                         onClick={() => setIsProviderSelectorOpen(true)}
                                     >
-                                        Login with Solid Pod
+                                        Sign in to sync your questions
                                     </button>
                                 </div>
                             )}

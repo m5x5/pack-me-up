@@ -71,6 +71,17 @@ describe('Navigation', () => {
         expect(feedbackLinks[0].getAttribute('href')).toBe('mailto:tim.packmeup@gmail.com')
     })
 
+    it('shows "Sign in" button (not "Login with Solid Pod") when not logged in', () => {
+        render(
+            <MemoryRouter>
+                <Navigation />
+            </MemoryRouter>
+        )
+
+        expect(screen.getAllByRole('button', { name: /sign in/i }).length).toBeGreaterThan(0)
+        expect(screen.queryByRole('button', { name: /login with solid pod/i })).toBeNull()
+    })
+
     it('shows Backups link when logged in', () => {
         mockUseSolidPod.mockReturnValue({
             session: null,
