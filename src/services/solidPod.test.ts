@@ -398,6 +398,36 @@ describe('syncAllDataFromPod', () => {
             expect(result.packingListsUploaded).toBe(1)
         })
 
+        it('merges a pod list with the existing local list of the same ID instead of overwriting', async () => {
+            // Local (e.g. anonymous-session) copy has an item the pod copy lacks.
+            const localItem = { id: 'local-item', itemText: 'Towel', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }
+            const localList = makePackingList('shared-list', {
+                items: [localItem],
+                lastModified: '2024-06-01T12:00:00.000Z',
+            })
+            const podItem = { id: 'pod-item', itemText: 'Passport', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }
+            const podList = makePackingList('shared-list', {
+                items: [podItem],
+                lastModified: '2024-01-01T10:00:00.000Z',
+            })
+            const db = makeDb({ questionSet: null, packingLists: [localList] })
+
+            const listUrl = `${LISTS_CONTAINER_URL}shared-list.ttl`
+            mockGetSolidDataset
+                .mockRejectedValueOnce({ statusCode: 404 }) // no question set
+                .mockResolvedValueOnce(makeContainerDataset([listUrl]))
+                .mockResolvedValueOnce(makeRdfListDataset(podList))
+
+            await syncAllDataFromPod(mockSession, POD_URL, db)
+
+            // The saved list must contain BOTH the local and pod items (a merge),
+            // not just the pod copy.
+            expect(db.savePackingList).toHaveBeenCalledTimes(1)
+            const saved = (db.savePackingList as ReturnType<typeof vi.fn>).mock.calls[0][0] as PackingList
+            const savedItemIds = saved.items.map(i => i.id).sort()
+            expect(savedItemIds).toEqual(['local-item', 'pod-item'])
+        })
+
         it('returns correct counts when both pod and local lists exist', async () => {
             const podList = makePackingList('pod-list')
             const localOnlyList = makePackingList('local-only')

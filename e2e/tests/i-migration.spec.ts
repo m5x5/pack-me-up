@@ -42,7 +42,7 @@ test.describe('I – Data Migration', () => {
     await loginToCss(localPage, CSS_ISSUER, migrationEmail, migrationPassword, { waitForLoggedIn: false })
     // DatabaseContext detects: pod empty + local has data → migration prompt
     await expect(
-      localPage.getByRole('heading', { name: /You have local data/i })
+      localPage.getByRole('heading', { name: /Add your browser lists/i })
     ).toBeVisible({ timeout: 15_000 })
     await localCtx.close()
   })
@@ -52,9 +52,9 @@ test.describe('I – Data Migration', () => {
     const localPage = await localCtx.newPage()
     await generateLocalData(localPage)
     await loginToCss(localPage, CSS_ISSUER, migrationEmail, migrationPassword, { waitForLoggedIn: false })
-    // Accept migration: confirm button text is "Use my local data"
+    // Accept migration: confirm button text is "Add to my Pod"
     const dialog = localPage.getByRole('dialog')
-    const confirmBtn = dialog.getByRole('button').filter({ hasText: /use my local data|use.*local|local/i }).first()
+    const confirmBtn = dialog.getByRole('button').filter({ hasText: /add to my pod|add/i }).first()
     await confirmBtn.click({ timeout: 10_000 })
     // Wait for copyAllDataFrom to finish and dialog to close
     await expect(localPage.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 })
@@ -70,9 +70,9 @@ test.describe('I – Data Migration', () => {
     const localPage = await localCtx.newPage()
     await generateLocalData(localPage)
     await loginToCss(localPage, CSS_ISSUER, migrationEmail, migrationPassword, { waitForLoggedIn: false })
-    // Cancel migration: cancel button text is "Start fresh"
+    // Cancel migration: cancel button text is "Not now"
     const dialog = localPage.getByRole('dialog')
-    const cancelBtn = dialog.getByRole('button').filter({ hasText: /no|cancel|skip|start fresh/i }).first()
+    const cancelBtn = dialog.getByRole('button').filter({ hasText: /not now|no|cancel|skip/i }).first()
     await cancelBtn.click({ timeout: 10_000 })
     // Landing page should show "Get Started" (empty pod namespace)
     await localPage.goto('/')

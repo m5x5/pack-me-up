@@ -5,6 +5,7 @@ const { getAgentAccessAll, setPublicAccess, getPublicAccess } = universalAccess
 import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
+import { mergePackingLists } from '../utils/mergePackingLists'
 import { packingListToDataset, datasetToPackingList, datasetToQuestionSet, datasetToSharedWithMe, datasetToSharedListsWithMe } from './rdfSerialization'
 import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
@@ -1014,9 +1015,18 @@ export async function syncAllDataFromPod(
     const { data: podLists } = podListsResult.value
     const podListIds = new Set(podLists.map((l) => l.id))
 
-    // Save all pod lists to local DB in parallel (pod wins for conflicting IDs)
+    // Merge each pod list with any existing local list of the same ID so that
+    // unsynced local edits (e.g. lists created in an anonymous session before
+    // login) are preserved rather than clobbered by the pod copy.
+    const existingLocalLists = await db.getAllPackingLists()
+    const localListsById = new Map(existingLocalLists.map(l => [l.id, l]))
+
     const saveResults = await Promise.allSettled(
-        podLists.map(podList => db.savePackingList({ ...podList, _rev: undefined }))
+        podLists.map(podList => {
+            const localList = localListsById.get(podList.id)
+            const toSave = localList ? mergePackingLists(localList, podList) : podList
+            return db.savePackingList({ ...toSave, _rev: undefined })
+        })
     )
     for (let i = 0; i < saveResults.length; i++) {
         if (saveResults[i].status === 'fulfilled') {

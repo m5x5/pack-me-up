@@ -44,6 +44,11 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     // do not trigger a second full syncAllDataFromPod call.
     const syncedNamespaceRef = useRef<string | null>(null)
 
+    // Holds the background-sync closure for the current pod identity while the
+    // migration prompt is open, so the dialog handlers can start the sync once
+    // the user has chosen whether to bring their local data across.
+    const deferredSyncRef = useRef<(() => void) | null>(null)
+
     useEffect(() => {
         // While session is still initialising, wait
         if (isLoading) {
@@ -92,33 +97,10 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
             // a DPoP nonce race on CSS and results in TypeError: Failed to fetch.
             let cachedFormat: 'rdf' | 'json' | 'empty' | null = null
 
-            if (!dismissed && podUrl && session) {
-                const [format, localEmpty] = await Promise.all([
-                    detectPodDataFormat(session, podUrl),
-                    local.isEmpty()
-                ])
-                cachedFormat = format
-                const podHasRemoteData = format !== 'empty'
-                if (!podHasRemoteData && !localEmpty) {
-                    if (cancelled) return
-                    setLocalDb(local)
-                    setNamespace(resolvedNamespace)
-                    setDb(podDb)
-                    setShowMigrationPrompt(true)
-                    setIsResolvingPod(false)
-                    return
-                }
-            }
-
-            if (cancelled) return
-            setNamespace(resolvedNamespace)
-            setDb(podDb)
-            setIsResolvingPod(false)
-
-            // Background: migrate if needed, then sync.
-            // Only run once per namespace (login event), not on every session refresh.
-            // Fire-and-forget – failures must not block the app.
-            if (podUrl && session) {
+            // Background: migrate if needed, then sync. Only runs once per
+            // namespace (login event). Fire-and-forget – failures must not block.
+            const startBackgroundSync = () => {
+                if (!podUrl || !session) return
                 syncedNamespaceRef.current = resolvedNamespace
                 setLoginSyncInProgress(true)
                 ;(async () => {
@@ -140,6 +122,36 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
                     }
                 })()
             }
+
+            // If there is local (anonymous-session) data, offer to bring it across
+            // before syncing — regardless of whether the pod already has data. The
+            // copy/sync paths merge by list ID, so existing pod data is never lost.
+            if (!dismissed && podUrl && session) {
+                const [format, localEmpty] = await Promise.all([
+                    detectPodDataFormat(session, podUrl),
+                    local.isEmpty()
+                ])
+                cachedFormat = format
+                if (!localEmpty) {
+                    if (cancelled) return
+                    setLocalDb(local)
+                    setNamespace(resolvedNamespace)
+                    setDb(podDb)
+                    deferredSyncRef.current = startBackgroundSync
+                    setShowMigrationPrompt(true)
+                    setIsResolvingPod(false)
+                    return
+                }
+            }
+
+            if (cancelled) return
+            setNamespace(resolvedNamespace)
+            setDb(podDb)
+            setIsResolvingPod(false)
+
+            if (podUrl && session) {
+                startBackgroundSync()
+            }
         })
 
         return () => {
@@ -155,21 +167,23 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         return (
             <ConfirmationDialog
                 isOpen
-                title="You have local data"
-                message={"You have data saved locally in this browser.\nWould you like to copy it to your Pod so it's available across all your devices?"}
-                confirmText="Use my local data"
-                cancelText="Start fresh"
+                title="Add your browser lists to your Pod?"
+                message={"You have packing lists saved in this browser. Would you like to add them to your Pod so they're available on all your devices?\n\nYour existing Pod data is kept — nothing is overwritten."}
+                confirmText="Add to my Pod"
+                cancelText="Not now"
                 onConfirm={async () => {
+                    // Merge local data into the pod database, then sync with the
+                    // remote pod. Merging (by list ID) means existing pod data is
+                    // preserved alongside the browser's lists.
                     await db.copyAllDataFrom(localDb)
-                    // Mark as dismissed so a full-page reload doesn't re-prompt
-                    // (local data was copied; pod will be out of sync until next
-                    // explicit save, but hasPodData checks the remote pod)
                     localStorage.setItem(`pod-migration-dismissed-${namespace}`, 'true')
                     setShowMigrationPrompt(false)
+                    deferredSyncRef.current?.()
                 }}
                 onClose={() => {
                     localStorage.setItem(`pod-migration-dismissed-${namespace}`, 'true')
                     setShowMigrationPrompt(false)
+                    deferredSyncRef.current?.()
                 }}
             />
         )

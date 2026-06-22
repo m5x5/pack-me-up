@@ -1,6 +1,7 @@
 import PouchDB from 'pouchdb'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
+import { mergePackingLists } from '../utils/mergePackingLists'
 import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
 export type DocumentType = 'question-set' | 'packing-list' | 'shared-with-me' | 'shared-lists-with-me'
@@ -439,9 +440,15 @@ export class PackingAppDatabase {
             if (!hasName(err) || err.name !== 'not_found') throw err
         }
 
-        const lists = await source.getAllPackingLists()
-        for (const list of lists) {
-            await this.savePackingList({ ...list, _rev: undefined })
+        const sourceLists = await source.getAllPackingLists()
+        const existingLists = await this.getAllPackingLists()
+        const existingById = new Map(existingLists.map(l => [l.id, l]))
+        for (const list of sourceLists) {
+            // Merge rather than overwrite if a list with this ID already exists
+            // in the target, so neither side's items are lost.
+            const existing = existingById.get(list.id)
+            const toSave = existing ? mergePackingLists(list, existing) : list
+            await this.savePackingList({ ...toSave, _rev: undefined })
         }
     }
 }

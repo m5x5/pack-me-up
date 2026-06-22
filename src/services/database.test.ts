@@ -511,6 +511,34 @@ describe('PackingAppDatabase', () => {
       const qs = await target.getQuestionSet()
       expect(qs._rev).toBeTruthy()
     })
+
+    it('merges items rather than overwriting when a list with the same ID exists in the target', async () => {
+      const source = PackingAppDatabase.getInstance('copy-merge-source')
+      const target = PackingAppDatabase.getInstance('copy-merge-target')
+      // Target already has the list with one item
+      await target.savePackingList({
+        id: 'shared-list',
+        name: 'Trip',
+        createdAt: '2025-06-01T00:00:00.000Z',
+        lastModified: '2025-06-01T00:00:00.000Z',
+        items: [{ id: 'a', itemText: 'Passport', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }],
+      })
+      // Source (local) has the same list with a different item, modified later
+      await source.savePackingList({
+        id: 'shared-list',
+        name: 'Trip',
+        createdAt: '2025-06-01T00:00:00.000Z',
+        lastModified: '2025-06-02T00:00:00.000Z',
+        items: [{ id: 'b', itemText: 'Towel', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }],
+      })
+
+      await target.copyAllDataFrom(source)
+
+      const lists = await target.getAllPackingLists()
+      expect(lists).toHaveLength(1)
+      const itemIds = lists[0].items.map(i => i.id).sort()
+      expect(itemIds).toEqual(['a', 'b'])
+    })
   })
 
   describe('Stale Revision Handling', () => {

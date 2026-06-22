@@ -57,9 +57,9 @@ function makeDb(namespace: string, overrides: {
   }
 }
 
-/** Default instance factory: local db is non-empty by default (avoids migration prompt) */
+/** Default instance factory: local db is empty by default (avoids migration prompt) */
 function defaultInstanceFactory(namespace: string) {
-  return makeDb(namespace)
+  return makeDb(namespace, { isEmpty: true })
 }
 
 function NamespaceDisplay() {
@@ -232,11 +232,13 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByText(/you have local data/i))
+      await waitFor(() => screen.getByText(/add your browser lists/i))
       expect(screen.queryByTestId('child')).toBeNull()
     })
 
-    it('does not show migration dialog when pod already has remote data', async () => {
+    it('shows migration dialog when pod already has remote data and local has data', async () => {
+      // Anonymous session data must not be silently stranded when signing into
+      // a pod that already contains lists — the prompt should still appear.
       mockDetectPodDataFormat.mockResolvedValue('rdf')
       mockGetInstance.mockImplementation((ns: string) => makeDb(ns, { isEmpty: false }))
 
@@ -246,8 +248,8 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByTestId('child'))
-      expect(screen.queryByText(/you have local data/i)).toBeNull()
+      await waitFor(() => screen.getByText(/add your browser lists/i))
+      expect(screen.queryByTestId('child')).toBeNull()
     })
 
     it('does not show migration dialog when local db is empty', async () => {
@@ -262,7 +264,7 @@ describe('DatabaseContext', () => {
       )
 
       await waitFor(() => screen.getByTestId('child'))
-      expect(screen.queryByText(/you have local data/i)).toBeNull()
+      expect(screen.queryByText(/add your browser lists/i)).toBeNull()
     })
 
     it('does not show migration dialog when localStorage dismissed key is set', async () => {
@@ -277,10 +279,10 @@ describe('DatabaseContext', () => {
       )
 
       await waitFor(() => screen.getByTestId('child'))
-      expect(screen.queryByText(/you have local data/i)).toBeNull()
+      expect(screen.queryByText(/add your browser lists/i)).toBeNull()
     })
 
-    it('copies data to pod and renders children when user clicks "Use my local data"', async () => {
+    it('copies data to pod and renders children when user clicks "Add to my Pod"', async () => {
       mockDetectPodDataFormat.mockResolvedValue('empty')
       const copyAllDataFrom = vi.fn().mockResolvedValue(undefined)
       mockGetInstance.mockImplementation((ns: string) =>
@@ -293,13 +295,32 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByText('Use my local data'))
-      fireEvent.click(screen.getByText('Use my local data'))
+      await waitFor(() => screen.getByText('Add to my Pod'))
+      fireEvent.click(screen.getByText('Add to my Pod'))
       await waitFor(() => screen.getByTestId('child'))
       expect(copyAllDataFrom).toHaveBeenCalledOnce()
     })
 
-    it('skips migration and renders children when user clicks "Start fresh"', async () => {
+    it('runs syncAllDataFromPod after the user accepts the merge', async () => {
+      mockDetectPodDataFormat.mockResolvedValue('rdf')
+      const copyAllDataFrom = vi.fn().mockResolvedValue(undefined)
+      mockGetInstance.mockImplementation((ns: string) =>
+        makeDb(ns, { isEmpty: false, copyAllDataFrom })
+      )
+
+      render(
+        <DatabaseProvider>
+          <div data-testid="child" />
+        </DatabaseProvider>
+      )
+
+      await waitFor(() => screen.getByText('Add to my Pod'))
+      fireEvent.click(screen.getByText('Add to my Pod'))
+      await waitFor(() => expect(copyAllDataFrom).toHaveBeenCalledOnce())
+      await waitFor(() => expect(mockSyncAllDataFromPod).toHaveBeenCalled())
+    })
+
+    it('skips migration and renders children when user clicks "Not now"', async () => {
       mockDetectPodDataFormat.mockResolvedValue('empty')
       const copyAllDataFrom = vi.fn()
       mockGetInstance.mockImplementation((ns: string) =>
@@ -312,13 +333,28 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByText('Start fresh'))
-      fireEvent.click(screen.getByText('Start fresh'))
+      await waitFor(() => screen.getByText('Not now'))
+      fireEvent.click(screen.getByText('Not now'))
       await waitFor(() => screen.getByTestId('child'))
       expect(copyAllDataFrom).not.toHaveBeenCalled()
     })
 
-    it('sets localStorage dismissed key when user clicks "Start fresh"', async () => {
+    it('still runs syncAllDataFromPod after the user declines the merge', async () => {
+      mockDetectPodDataFormat.mockResolvedValue('rdf')
+      mockGetInstance.mockImplementation((ns: string) => makeDb(ns, { isEmpty: false }))
+
+      render(
+        <DatabaseProvider>
+          <div data-testid="child" />
+        </DatabaseProvider>
+      )
+
+      await waitFor(() => screen.getByText('Not now'))
+      fireEvent.click(screen.getByText('Not now'))
+      await waitFor(() => expect(mockSyncAllDataFromPod).toHaveBeenCalled())
+    })
+
+    it('sets localStorage dismissed key when user clicks "Not now"', async () => {
       mockDetectPodDataFormat.mockResolvedValue('empty')
       mockGetInstance.mockImplementation((ns: string) => makeDb(ns, { isEmpty: false }))
 
@@ -328,8 +364,8 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByText('Start fresh'))
-      fireEvent.click(screen.getByText('Start fresh'))
+      await waitFor(() => screen.getByText('Not now'))
+      fireEvent.click(screen.getByText('Not now'))
       expect(localStorage.getItem('pod-migration-dismissed-example.com')).toBe('true')
     })
   })
@@ -394,7 +430,7 @@ describe('DatabaseContext', () => {
         </DatabaseProvider>
       )
 
-      await waitFor(() => screen.getByText(/you have local data/i))
+      await waitFor(() => screen.getByText(/add your browser lists/i))
       expect(mockSyncAllDataFromPod).not.toHaveBeenCalled()
     })
 
