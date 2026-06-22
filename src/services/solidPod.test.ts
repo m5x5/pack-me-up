@@ -309,9 +309,11 @@ describe('syncAllDataFromPod', () => {
             expect(result.questionSetSynced).toBe(true)
         })
 
-        it('does not overwrite local question set when local is newer', async () => {
-            const podQs = makeQuestionSet({ lastModified: '2024-01-01T10:00:00.000Z' })
-            const localQs = makeQuestionSet({ lastModified: '2024-06-01T12:00:00.000Z' })
+        it('merges local and pod question sets, preserving people from both sides', async () => {
+            const localPerson = { id: 'local-person', name: 'Alice' }
+            const podPerson = { id: 'pod-person', name: 'Bob' }
+            const podQs = makeQuestionSet({ lastModified: '2024-01-01T10:00:00.000Z', people: [podPerson] })
+            const localQs = makeQuestionSet({ lastModified: '2024-06-01T12:00:00.000Z', people: [localPerson] })
             const db = makeDb({ questionSet: localQs, packingLists: [] })
 
             mockGetSolidDataset
@@ -320,8 +322,11 @@ describe('syncAllDataFromPod', () => {
 
             const result = await syncAllDataFromPod(mockSession, POD_URL, db)
 
-            expect(db.saveQuestionSet).not.toHaveBeenCalled()
-            expect(result.questionSetSynced).toBe(false)
+            expect(db.saveQuestionSet).toHaveBeenCalledOnce()
+            const saved = (db.saveQuestionSet as ReturnType<typeof vi.fn>).mock.calls[0][0]
+            const savedPersonIds = saved.people.map((p: { id: string }) => p.id).sort()
+            expect(savedPersonIds).toEqual(['local-person', 'pod-person'])
+            expect(result.questionSetSynced).toBe(true)
         })
 
         it('saves pod question set when no local copy exists', async () => {
@@ -426,6 +431,32 @@ describe('syncAllDataFromPod', () => {
             const saved = (db.savePackingList as ReturnType<typeof vi.fn>).mock.calls[0][0] as PackingList
             const savedItemIds = saved.items.map(i => i.id).sort()
             expect(savedItemIds).toEqual(['local-item', 'pod-item'])
+        })
+
+        it('writes the merged list back to the pod so the remote copy is updated', async () => {
+            const localItem = { id: 'local-item', itemText: 'Towel', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }
+            const localList = makePackingList('shared-list', { items: [localItem], lastModified: '2024-06-01T12:00:00.000Z' })
+            const podItem   = { id: 'pod-item', itemText: 'Passport', personId: 'p1', personName: 'Alice', questionId: 'q', optionId: 'o', packed: false }
+            const podList   = makePackingList('shared-list', { items: [podItem], lastModified: '2024-01-01T10:00:00.000Z' })
+            const db = makeDb({ questionSet: null, packingLists: [localList] })
+
+            const listUrl = `${LISTS_CONTAINER_URL}shared-list.ttl`
+            mockGetSolidDataset
+                .mockRejectedValueOnce({ statusCode: 404 })
+                .mockResolvedValueOnce(makeContainerDataset([listUrl]))
+                .mockResolvedValueOnce(makeRdfListDataset(podList))
+
+            mockOverwriteFile.mockResolvedValue({} as unknown as Response & { internal_resourceInfo: unknown })
+
+            const result = await syncAllDataFromPod(mockSession, POD_URL, db)
+
+            // The merged list should be written back to the pod
+            expect(mockOverwriteFile).toHaveBeenCalledWith(
+                expect.stringContaining('shared-list.ttl'),
+                expect.any(Blob),
+                expect.objectContaining({ fetch: mockSession.fetch })
+            )
+            expect(result.packingListsUploaded).toBe(1)
         })
 
         it('returns correct counts when both pod and local lists exist', async () => {

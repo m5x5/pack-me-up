@@ -512,6 +512,29 @@ describe('PackingAppDatabase', () => {
       expect(qs._rev).toBeTruthy()
     })
 
+    it('merges question sets rather than overwriting when target already has one', async () => {
+      const source = PackingAppDatabase.getInstance('copy-qs-merge-source')
+      const target = PackingAppDatabase.getInstance('copy-qs-merge-target')
+      await target.saveQuestionSet({
+        _id: '1',
+        people: [{ id: 'pod-person', name: 'Bob' }],
+        alwaysNeededItems: [],
+        questions: [],
+      })
+      await source.saveQuestionSet({
+        _id: '1',
+        people: [{ id: 'local-person', name: 'Alice' }],
+        alwaysNeededItems: [],
+        questions: [],
+      })
+
+      await target.copyAllDataFrom(source)
+
+      const qs = await target.getQuestionSet()
+      const personIds = qs.people.map(p => p.id).sort()
+      expect(personIds).toEqual(['local-person', 'pod-person'])
+    })
+
     it('merges items rather than overwriting when a list with the same ID exists in the target', async () => {
       const source = PackingAppDatabase.getInstance('copy-merge-source')
       const target = PackingAppDatabase.getInstance('copy-merge-target')

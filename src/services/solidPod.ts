@@ -6,6 +6,7 @@ import { PackingAppDatabase } from './database'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
 import { mergePackingLists } from '../utils/mergePackingLists'
+import { mergeQuestionSets } from '../utils/mergeQuestionSets'
 import { packingListToDataset, datasetToPackingList, datasetToQuestionSet, datasetToSharedWithMe, datasetToSharedListsWithMe } from './rdfSerialization'
 import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
@@ -982,14 +983,11 @@ export async function syncAllDataFromPod(
                 // not_found is expected for a fresh login
             }
 
-            const podTime = podQs.lastModified ? new Date(podQs.lastModified).getTime() : 0
-            const localTime = localQs?.lastModified ? new Date(localQs.lastModified).getTime() : 0
-
-            // Fallback-to-pod: save when there is no local copy OR pod is newer
-            if (!localQs || podTime > localTime) {
-                await db.saveQuestionSet({ ...podQs, _rev: undefined })
-                questionSetSynced = true
-            }
+            // Merge so neither side's people/questions are lost; if no local copy
+            // exists the pod version is taken as-is.
+            const toSave = localQs ? mergeQuestionSets(localQs, podQs) : podQs
+            await db.saveQuestionSet({ ...toSave, _rev: undefined })
+            questionSetSynced = true
         } catch (err: unknown) {
             if (err instanceof AuthenticationError) throw err
             console.error('syncAllDataFromPod: error syncing question set', err)
@@ -1021,11 +1019,18 @@ export async function syncAllDataFromPod(
     const existingLocalLists = await db.getAllPackingLists()
     const localListsById = new Map(existingLocalLists.map(l => [l.id, l]))
 
+    // Track which pod lists were merged so we can write the richer result back.
+    const mergedLists: PackingList[] = []
+
     const saveResults = await Promise.allSettled(
         podLists.map(podList => {
             const localList = localListsById.get(podList.id)
-            const toSave = localList ? mergePackingLists(localList, podList) : podList
-            return db.savePackingList({ ...toSave, _rev: undefined })
+            if (localList) {
+                const merged = mergePackingLists(localList, podList)
+                mergedLists.push(merged)
+                return db.savePackingList({ ...merged, _rev: undefined })
+            }
+            return db.savePackingList({ ...podList, _rev: undefined })
         })
     )
     for (let i = 0; i < saveResults.length; i++) {
@@ -1036,7 +1041,24 @@ export async function syncAllDataFromPod(
         }
     }
 
-    // Upload any local-only lists to the pod so they are not lost
+    // Push merged lists back to the pod so the richer (merged) content is
+    // reflected remotely, not just locally.
+    for (const merged of mergedLists) {
+        try {
+            await saveRdfToPod({
+                session,
+                fileUrl: `${containerUrl}${merged.id}.ttl`,
+                data: merged,
+                serializer: packingListToDataset,
+            })
+            packingListsUploaded++
+        } catch (err) {
+            if (err instanceof AuthenticationError) throw err
+            console.error(`syncAllDataFromPod: error writing back merged list ${merged.id}`, err)
+        }
+    }
+
+    // Upload any local-only lists to the pod so they are not lost.
     const localLists = await db.getAllPackingLists()
     for (const localList of localLists) {
         if (podListIds.has(localList.id)) continue

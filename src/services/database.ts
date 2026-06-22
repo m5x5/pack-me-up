@@ -2,6 +2,7 @@ import PouchDB from 'pouchdb'
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList } from '../create-packing-list/types'
 import { mergePackingLists } from '../utils/mergePackingLists'
+import { mergeQuestionSets } from '../utils/mergeQuestionSets'
 import type { SharedWithMeList, SharedListsWithMe } from './rdfSerialization'
 
 export type DocumentType = 'question-set' | 'packing-list' | 'shared-with-me' | 'shared-lists-with-me'
@@ -434,8 +435,11 @@ export class PackingAppDatabase {
 
     public async copyAllDataFrom(source: PackingAppDatabase): Promise<void> {
         try {
-            const questionSet = await source.getQuestionSet()
-            await this.saveQuestionSet({ ...questionSet, _rev: undefined })
+            const sourceQs = await source.getQuestionSet()
+            let existingQs: Awaited<ReturnType<typeof this.getQuestionSet>> | null = null
+            try { existingQs = await this.getQuestionSet() } catch { /* not_found = ok */ }
+            const toSave = existingQs ? mergeQuestionSets(existingQs, sourceQs) : sourceQs
+            await this.saveQuestionSet({ ...toSave, _rev: undefined })
         } catch (err: unknown) {
             if (!hasName(err) || err.name !== 'not_found') throw err
         }
