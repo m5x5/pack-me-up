@@ -22,6 +22,20 @@ type FormData = {
     items: Record<string, boolean>
 }
 
+// Reserved section key for communal items — cannot collide with a person's
+// name used as a key for the other sections.
+const SHARED_SECTION_KEY = '__shared__'
+
+interface ListSection {
+    key: string
+    title: string
+    items: PackingListItem[]
+    // Name used in aria-labels and guest actions; '' for the shared section
+    name: string
+    guestId?: string
+    communal?: boolean
+}
+
 function groupByCategory(items: PackingListItem[]) {
     const map = new Map<string, PackingListItem[]>()
     for (const item of items) {
@@ -72,6 +86,9 @@ export function ViewPackingList() {
     const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
     const [collapsedPersons, setCollapsedPersons] = useState<Set<string>>(new Set())
     const [showAddGuest, setShowAddGuest] = useState(false)
+    // Reveals an empty Shared Items section on lists that have no communal
+    // items yet; once an item is added the section persists from the data.
+    const [showSharedSection, setShowSharedSection] = useState(false)
     const [newGuestName, setNewGuestName] = useState('')
     const [renamingGuestId, setRenamingGuestId] = useState<string | null>(null)
     const [renamingGuestName, setRenamingGuestName] = useState('')
@@ -434,10 +451,10 @@ export function ViewPackingList() {
         }
     }
 
-    const handleAddItem = async (personName: string, personId: string = '') => {
+    const handleAddItem = async (section: ListSection) => {
         if (!packingList) return
 
-        const newItemText = newItemInputs[personName]?.trim()
+        const newItemText = newItemInputs[section.key]?.trim()
         if (!newItemText) return
 
         try {
@@ -446,17 +463,18 @@ export function ViewPackingList() {
             const newItem = {
                 id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
                 itemText: newItemText,
-                personName: personName,
-                personId: personId,
+                personName: section.communal ? '' : section.name,
+                personId: section.guestId ?? '',
                 questionId: '',
                 optionId: '',
                 packed: false,
+                ...(section.communal ? { communal: true } : {}),
                 lastModified: new Date().toISOString(),
             }
 
             // Add to form values and clear the input before saving
             setValue(`items.${newItem.id}`, false)
-            setNewItemInputs({ ...newItemInputs, [personName]: '' })
+            setNewItemInputs({ ...newItemInputs, [section.key]: '' })
 
             await persistPackingList({ ...packingList, items: [...packingList.items, newItem] })
 
@@ -529,33 +547,50 @@ export function ViewPackingList() {
     const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
     const allPacked = totalCount > 0 && packedCount === totalCount
 
-    const personStats = packingList.items.reduce((acc, item) => {
-        if (!acc[item.personName]) acc[item.personName] = { packed: 0, total: 0 }
-        acc[item.personName].total++
-        if (watchedItems[item.id]) acc[item.personName].packed++
+    const sectionStats = packingList.items.reduce((acc, item) => {
+        const key = item.communal ? SHARED_SECTION_KEY : item.personName
+        if (!acc[key]) acc[key] = { packed: 0, total: 0 }
+        acc[key].total++
+        if (watchedItems[item.id]) acc[key].packed++
         return acc
     }, {} as Record<string, { packed: number; total: number }>)
 
-    const guestPersonIdByName = new Map(
-        (packingList.guests ?? []).map(g => [g.name, g.id])
-    )
     const guestNames = new Set((packingList.guests ?? []).map(g => g.name))
 
     // Build grouped item map, seeding guest names so their sections exist even when empty
     const groupedItems: Record<string, PackingListItem[]> = {}
     for (const guest of (packingList.guests ?? [])) groupedItems[guest.name] = []
     for (const item of filteredItems) {
+        if (item.communal) continue
         if (!groupedItems[item.personName]) groupedItems[item.personName] = []
         groupedItems[item.personName].push(item)
     }
 
-    // Regular people (from question set) alphabetically first, then guests in add-order
-    const regularSections = Object.entries(groupedItems)
+    // Shared section first (when the list has communal items), then regular
+    // people (from question set) alphabetically, then guests in add-order
+    const hasCommunalItems = packingList.items.some(i => i.communal)
+    const sharedSections: ListSection[] = (hasCommunalItems || showSharedSection)
+        ? [{
+            key: SHARED_SECTION_KEY,
+            title: 'Shared Items',
+            name: '',
+            communal: true,
+            items: filteredItems.filter(i => i.communal),
+        }]
+        : []
+    const regularSections: ListSection[] = Object.entries(groupedItems)
         .filter(([name]) => !guestNames.has(name))
         .sort(([a], [b]) => a.localeCompare(b))
-    const guestSections = (packingList.guests ?? [])
-        .map(g => [g.name, groupedItems[g.name] ?? []] as [string, PackingListItem[]])
-    const personSections = [...regularSections, ...guestSections]
+        .map(([name, items]) => ({ key: name, title: `${name}'s Items`, name, items }))
+    const guestSections: ListSection[] = (packingList.guests ?? [])
+        .map(g => ({
+            key: g.name,
+            title: `${g.name}'s Items`,
+            name: g.name,
+            guestId: g.id,
+            items: groupedItems[g.name] ?? [],
+        }))
+    const listSections = [...sharedSections, ...regularSections, ...guestSections]
 
     return (
         <>
@@ -580,6 +615,15 @@ export function ViewPackingList() {
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        {!foreignPodUrl && !hasCommunalItems && !showSharedSection && (
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => setShowSharedSection(true)}
+                            >
+                                + Add Shared Items
+                            </Button>
+                        )}
                         {!foreignPodUrl && (
                             <Button
                                 type="button"
@@ -700,12 +744,14 @@ export function ViewPackingList() {
                 )}
                 <div>
                     <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-                        {personSections.map(([personName, items]) => {
-                            const stats = personStats[personName] ?? { packed: 0, total: 0 }
-                            const guestId = guestPersonIdByName.get(personName)
+                        {listSections.map((section) => {
+                            const { key: sectionKey, title, items, guestId } = section
+                            const stats = sectionStats[sectionKey] ?? { packed: 0, total: 0 }
                             const isGuest = guestId !== undefined
+                            const isShared = section.communal === true
+                            const collapseLabelTarget = isShared ? 'the shared items' : `${section.name}'s`
                             return (
-                            <div key={personName} className={`border rounded-lg p-4 bg-white shadow-sm ${isGuest ? 'border-amber-200' : 'border-gray-200'}`}>
+                            <div key={sectionKey} className={`border rounded-lg p-4 bg-white shadow-sm ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`}>
                                 <div className="mb-4 pb-2 border-b border-gray-200">
                                     <div className="flex items-center gap-1 min-h-[2rem]">
                                         {isGuest && renamingGuestId === guestId ? (
@@ -727,22 +773,27 @@ export function ViewPackingList() {
                                         ) : (
                                             <button
                                                 type="button"
-                                                aria-label={`${collapsedPersons.has(personName) ? 'Expand' : 'Collapse'} ${personName}'s list`}
-                                                onClick={() => togglePerson(personName)}
+                                                aria-label={`${collapsedPersons.has(sectionKey) ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
+                                                onClick={() => togglePerson(sectionKey)}
                                                 className="flex items-center gap-2 flex-1 text-left"
                                             >
-                                                <span className="text-sm text-gray-400">{collapsedPersons.has(personName) ? '▶' : '▼'}</span>
-                                                <span className="text-xl font-semibold text-gray-800">{personName}'s Items</span>
+                                                <span className="text-sm text-gray-400">{collapsedPersons.has(sectionKey) ? '▶' : '▼'}</span>
+                                                <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 <span className="ml-1 text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
                                             </button>
+                                        )}
+                                        {isShared && (
+                                            <span className="text-xs font-medium text-blue-700 bg-blue-100 rounded-full px-2 py-0.5 shrink-0" title="Packed once for the whole group">
+                                                👥 For everyone
+                                            </span>
                                         )}
                                         {isGuest && renamingGuestId !== guestId && (
                                             <>
                                                 <span className="text-xs font-medium text-amber-700 bg-amber-100 rounded-full px-2 py-0.5 shrink-0">Guest</span>
                                                 <button
                                                     type="button"
-                                                    aria-label={`Rename ${personName}`}
-                                                    onClick={() => { setRenamingGuestId(guestId); setRenamingGuestName(personName) }}
+                                                    aria-label={`Rename ${section.name}`}
+                                                    onClick={() => { setRenamingGuestId(guestId); setRenamingGuestName(section.name) }}
                                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -751,7 +802,7 @@ export function ViewPackingList() {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    aria-label={`Remove ${personName}`}
+                                                    aria-label={`Remove ${section.name}`}
                                                     onClick={() => setGuestToRemove(guestId)}
                                                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                                 >
@@ -763,18 +814,18 @@ export function ViewPackingList() {
                                         )}
                                     </div>
                                 </div>
-                                {!collapsedPersons.has(personName) && <div>
+                                {!collapsedPersons.has(sectionKey) && <div>
                                     {/* Add new item input */}
                                     <div className="mb-4 pb-4 border-b border-gray-200">
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
-                                                value={newItemInputs[personName] || ''}
-                                                onChange={(e) => setNewItemInputs({ ...newItemInputs, [personName]: e.target.value })}
+                                                value={newItemInputs[sectionKey] || ''}
+                                                onChange={(e) => setNewItemInputs({ ...newItemInputs, [sectionKey]: e.target.value })}
                                                 onKeyPress={(e) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault()
-                                                        handleAddItem(personName, guestPersonIdByName.get(personName) ?? '')
+                                                        handleAddItem(section)
                                                     }
                                                 }}
                                                 placeholder="Add new item..."
@@ -782,7 +833,7 @@ export function ViewPackingList() {
                                             />
                                             <button
                                                 type="button"
-                                                onClick={() => handleAddItem(personName, guestPersonIdByName.get(personName) ?? '')}
+                                                onClick={() => handleAddItem(section)}
                                                 className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
                                             >
                                                 Add
@@ -790,15 +841,15 @@ export function ViewPackingList() {
                                         </div>
                                     </div>
                                     {groupByCategory(items).map(({ category, items: catItems }) => {
-                                        const sectionKey = `${personName}::${category}`
-                                        const isCollapsed = collapsedCategories.has(sectionKey)
+                                        const categoryKey = `${sectionKey}::${category}`
+                                        const isCollapsed = collapsedCategories.has(categoryKey)
                                         return (
-                                            <div key={sectionKey} className="mb-3">
+                                            <div key={categoryKey} className="mb-3">
                                                 <div className="flex items-center justify-between py-1 mb-1">
                                                     <button
                                                         type="button"
                                                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${category}`}
-                                                        onClick={() => toggleCategory(sectionKey)}
+                                                        onClick={() => toggleCategory(categoryKey)}
                                                         className="flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-900"
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
@@ -820,7 +871,7 @@ export function ViewPackingList() {
                                                     <div className="space-y-2">
                                                         {catItems.map((item) => (
                                                             <div
-                                                                key={`${item.id}-${personName}`}
+                                                                key={`${item.id}-${sectionKey}`}
                                                                 className="bg-gray-50 rounded-lg p-3"
                                                             >
                                                                 <div className="flex items-center justify-between">
