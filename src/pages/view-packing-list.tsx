@@ -93,6 +93,8 @@ export function ViewPackingList() {
     const [renamingGuestId, setRenamingGuestId] = useState<string | null>(null)
     const [renamingGuestName, setRenamingGuestName] = useState('')
     const [guestToRemove, setGuestToRemove] = useState<string | null>(null)
+    const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null)
+    const itemRowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
 
     const toggleCategory = (key: string) =>
@@ -153,6 +155,10 @@ export function ViewPackingList() {
             .catch(() => {})
     }, [packingList?.id, foreignPodUrl, ownerWebIdFromUrl, db])
 
+    useEffect(() => {
+        if (!recentlyAddedItemId) return
+        itemRowRefs.current.get(recentlyAddedItemId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, [recentlyAddedItemId])
 
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
         defaultValues: {
@@ -476,10 +482,22 @@ export function ViewPackingList() {
             setValue(`items.${newItem.id}`, false)
             setNewItemInputs({ ...newItemInputs, [section.key]: '' })
 
+            // Make sure the category the new item lands in is expanded so it's visible
+            setCollapsedCategories(prev => {
+                const categoryKey = `${section.key}::Other`
+                if (!prev.has(categoryKey)) return prev
+                const next = new Set(prev)
+                next.delete(categoryKey)
+                return next
+            })
+
             await persistPackingList({ ...packingList, items: [...packingList.items, newItem] })
 
             setAutoSaveStatus('saved')
             setTimeout(() => setAutoSaveStatus('idle'), 2000)
+
+            setRecentlyAddedItemId(newItem.id)
+            setTimeout(() => setRecentlyAddedItemId(null), 2000)
         } catch (err) {
             console.error('Error adding item:', err)
             setAutoSaveStatus('error')
@@ -875,7 +893,11 @@ export function ViewPackingList() {
                                                         {catItems.map((item) => (
                                                             <div
                                                                 key={`${item.id}-${sectionKey}`}
-                                                                className="bg-gray-50 rounded-lg p-3"
+                                                                ref={(el) => {
+                                                                    if (el) itemRowRefs.current.set(item.id, el)
+                                                                    else itemRowRefs.current.delete(item.id)
+                                                                }}
+                                                                className={`rounded-lg p-3 transition-colors duration-1000 ${item.id === recentlyAddedItemId ? 'bg-green-100 ring-2 ring-green-400' : 'bg-gray-50'}`}
                                                             >
                                                                 <div className="flex items-center justify-between">
                                                                     <label className="flex items-center space-x-3 cursor-pointer flex-1">
