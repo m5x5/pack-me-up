@@ -11,6 +11,7 @@ import { useDatabase } from '../components/DatabaseContext'
 import { wizardSchema, WizardFormData, WizardEntry } from './wizard-types'
 import { useWizardGeneration } from './useWizardGeneration'
 import { AGE_RANGE_OPTIONS, GENDER_OPTIONS, PET_SPECIES_OPTIONS } from '../edit-questions/types'
+import { deriveAgeRange } from '../edit-questions/age-derivation'
 
 const SOLID_POD_UPSELL_SHOWN_KEY = 'solid-pod-upsell-shown'
 
@@ -25,7 +26,7 @@ export const Wizard = () => {
     const { db } = useDatabase()
     const { isLoading, isSuccess, generateAndSave } = useWizardGeneration()
 
-    const { register, control, handleSubmit, watch, formState: { errors } } = useForm<WizardFormData>({
+    const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<WizardFormData>({
         resolver: zodResolver(wizardSchema),
         defaultValues: {
             people: [{ kind: 'person', name: 'Me', ageRange: undefined, gender: undefined }],
@@ -149,7 +150,10 @@ export const Wizard = () => {
                     </div>
 
                     <div className="space-y-4">
-                        {fields.map((field, index) => (
+                        {fields.map((field, index) => {
+                            const dob = field.kind === 'person' ? watch(`people.${index}.dateOfBirth`) : undefined
+                            const derivedAgeRange = dob ? deriveAgeRange(dob) : undefined
+                            return (
                             <div key={field.id} className="bg-primary-50 p-4 rounded-xl border border-primary-200">
                                 <div className="flex items-start gap-4">
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -189,6 +193,24 @@ export const Wizard = () => {
                                             </div>
                                         ) : (
                                             <>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                                        Birthday <span className="text-gray-400 font-normal">(optional)</span>
+                                                    </label>
+                                                    <input
+                                                        type="date"
+                                                        {...register(`people.${index}.dateOfBirth`, {
+                                                            onChange: (e) => {
+                                                                const derived = deriveAgeRange(e.target.value)
+                                                                if (derived) setValue(`people.${index}.ageRange`, derived)
+                                                            },
+                                                        })}
+                                                        className="w-full px-4 py-2 border-2 border-gray-300 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
+                                                    />
+                                                    {derivedAgeRange && (
+                                                        <p className="text-xs text-gray-500 mt-1">Age group filled in from birthday — adjust it if they're ahead or behind</p>
+                                                    )}
+                                                </div>
                                                 <div>
                                                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                                                         Age Range
@@ -239,7 +261,8 @@ export const Wizard = () => {
                                     </button>
                                 </div>
                             </div>
-                        ))}
+                            )
+                        })}
                     </div>
 
                     {fields.length < 10 && (
