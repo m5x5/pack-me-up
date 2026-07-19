@@ -132,6 +132,12 @@ export function useSyncCoordinator<T extends TimestampedData>(
   // Track if we're currently handling a local change to prevent sync loops
   const isLocalChangeRef = useRef(false);
 
+  // Callers pass saveToLocalDb as a fresh closure on every render; reading it
+  // through a ref keeps saveWithSyncPrevention's identity stable so consumers
+  // can safely use it in useCallback dependencies without churning.
+  const saveToLocalDbRef = useRef(saveToLocalDb);
+  saveToLocalDbRef.current = saveToLocalDb;
+
   // Track whether a save is currently in-progress (set before first await, cleared in finally)
   const saveInProgressRef = useRef(false);
 
@@ -275,7 +281,7 @@ export function useSyncCoordinator<T extends TimestampedData>(
         delete (resolved as Record<string, unknown>)._rev;
 
         // Save to local database to get the proper _rev
-        const dbResult = await saveToLocalDb(resolved);
+        const dbResult = await saveToLocalDbRef.current(resolved);
 
         const resolvedWithRev = { ...resolved, _rev: dbResult.rev } as T;
 
@@ -305,7 +311,6 @@ export function useSyncCoordinator<T extends TimestampedData>(
     },
     [
       currentData,
-      saveToLocalDb,
       updateFormAndState,
       shouldApplyPodData,
       preserveFocusAndSelection,
@@ -347,7 +352,7 @@ export function useSyncCoordinator<T extends TimestampedData>(
         lastSavedTimestampRef.current = dataWithTimestamp.lastModified!;
 
         // Save to local database first (guaranteed)
-        const dbResult = await saveToLocalDb(dataWithTimestamp);
+        const dbResult = await saveToLocalDbRef.current(dataWithTimestamp);
 
         // Update with new revision
         const savedData = {
@@ -375,7 +380,7 @@ export function useSyncCoordinator<T extends TimestampedData>(
         saveInProgressRef.current = false;
       }
     },
-    [saveToLocalDb]
+    []
   );
 
   return {

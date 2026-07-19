@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { DatabaseMigration } from '../services/migration'
@@ -15,6 +15,7 @@ import { CustomCreatableSelect } from '../components/CreatableSelect'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { AgeTransition } from '../edit-questions/age-derivation'
+import { useIsDesktop } from '../hooks/useIsDesktop'
 
 // One distinct colour per person slot (by index). Tailwind classes must be literal strings.
 const AVATAR_ON = [
@@ -38,7 +39,7 @@ function PersonDot({ person, index, selected }: { person: Person; index: number;
     )
 }
 
-function PersonLegend({ people, onEdit }: { people: Person[]; onEdit?: () => void }) {
+const PersonLegend = memo(function PersonLegend({ people, onEdit }: { people: Person[]; onEdit?: () => void }) {
     if (people.length < 2 && !onEdit) return null
     return (
         <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -67,9 +68,9 @@ function PersonLegend({ people, onEdit }: { people: Person[]; onEdit?: () => voi
             )}
         </div>
     )
-}
+})
 
-function ItemRow({ item, people }: { item: Item; people: Person[] }) {
+const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Person[] }) {
     const showDots = people.length > 1
     return (
         <div className="flex items-center gap-2 py-0.5 px-2 text-sm">
@@ -106,7 +107,7 @@ function ItemRow({ item, people }: { item: Item; people: Person[] }) {
             )}
         </div>
     )
-}
+})
 
 function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
     return (
@@ -156,6 +157,10 @@ function OptionSection({ option, people, onEdit, onDelete }: {
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
+    // Items aren't mounted until first expand (cheap initial render for large
+    // sets), but stay mounted afterwards so re-expanding is instant.
+    const hasExpandedRef = useRef(isExpanded)
+    if (isExpanded) hasExpandedRef.current = true
     return (
         <div className="bg-gray-50 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
@@ -208,11 +213,13 @@ function OptionSection({ option, people, onEdit, onDelete }: {
                     </div>
                 </div>
             </div>
-            <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
-                {option.items.map((item, i) => (
-                    <ItemRow key={i} item={item} people={people} />
-                ))}
-            </div>
+            {hasExpandedRef.current && (
+                <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
+                    {option.items.map((item, i) => (
+                        <ItemRow key={i} item={item} people={people} />
+                    ))}
+                </div>
+            )}
             {showDeleteModal && (
                 <DeleteConfirmModal
                     onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
@@ -326,19 +333,29 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
     )
 }
 
-function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMoveUp, onMoveDown }: {
+// Memoized with id-based handlers whose identity survives page re-renders, so
+// opening a modal (or a background sync tick) doesn't re-render every question.
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove }: {
     question: Question
     people: Person[]
-    onEdit: () => void
-    onDelete: () => void
-    onAddOption: () => void
-    onEditOption: (option: Option) => void
-    onDeleteOption: (optionId: string) => void
-    onMoveUp?: () => void
-    onMoveDown?: () => void
+    canMoveUp: boolean
+    canMoveDown: boolean
+    onEdit: (question: Question) => void
+    onDelete: (id: string) => void
+    onAddOption: (questionId: string) => void
+    onEditOption: (questionId: string, option: Option) => void
+    onDeleteOption: (questionId: string, optionId: string) => void
+    onMove: (id: string, direction: 'up' | 'down') => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
+    // Once expanded, keep the options mounted (hidden) so re-expanding is instant.
+    const hasExpandedRef = useRef(isExpanded)
+    if (isExpanded) hasExpandedRef.current = true
+    const handleEdit = () => onEdit(question)
+    const handleDelete = () => onDelete(question.id)
+    const moveUp = canMoveUp ? () => onMove(question.id, 'up') : undefined
+    const moveDown = canMoveDown ? () => onMove(question.id, 'down') : undefined
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="flex items-stretch">
@@ -362,19 +379,19 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                     {/* Mobile: context menu */}
                     <div className="sm:hidden">
                         <QuestionContextMenu
-                            onMoveUp={onMoveUp}
-                            onMoveDown={onMoveDown}
-                            onEdit={onEdit}
-                            onDelete={onDelete}
+                            onMoveUp={moveUp}
+                            onMoveDown={moveDown}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
                         />
                     </div>
                     {/* Desktop: inline buttons */}
                     <div className="hidden sm:flex items-center gap-0.5">
                         <button
                             type="button"
-                            onClick={onMoveUp}
-                            disabled={!onMoveUp}
-                            className={`p-1.5 rounded ${onMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            onClick={moveUp}
+                            disabled={!canMoveUp}
+                            className={`p-1.5 rounded ${canMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
                             title="Move up"
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -383,9 +400,9 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                         </button>
                         <button
                             type="button"
-                            onClick={onMoveDown}
-                            disabled={!onMoveDown}
-                            className={`p-1.5 rounded ${onMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            onClick={moveDown}
+                            disabled={!canMoveDown}
+                            className={`p-1.5 rounded ${canMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
                             title="Move down"
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -394,7 +411,7 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                         </button>
                         <button
                             type="button"
-                            onClick={onEdit}
+                            onClick={handleEdit}
                             className="p-1.5 text-gray-300 hover:text-gray-600 rounded"
                             title="Edit question"
                         >
@@ -415,36 +432,41 @@ function QuestionSection({ question, people, onEdit, onDelete, onAddOption, onEd
                     </div>
                 </div>
             </div>
-            <div className={isExpanded ? 'px-4 sm:px-6 pb-4 sm:pb-6 space-y-2' : 'hidden'}>
-                {question.options.map((option) => (
-                    <OptionSection
-                        key={option.id}
-                        option={option}
-                        people={people}
-                        onEdit={() => onEditOption(option)}
-                        onDelete={() => onDeleteOption(option.id)}
-                    />
-                ))}
-                <button
-                    type="button"
-                    onClick={onAddOption}
-                    className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                >
-                    + Add Option
-                </button>
-            </div>
+            {hasExpandedRef.current && (
+                <div className={isExpanded ? 'px-4 sm:px-6 pb-4 sm:pb-6 space-y-2' : 'hidden'}>
+                    {question.options.map((option) => (
+                        <OptionSection
+                            key={option.id}
+                            option={option}
+                            people={people}
+                            onEdit={() => onEditOption(question.id, option)}
+                            onDelete={() => onDeleteOption(question.id, option.id)}
+                        />
+                    ))}
+                    <button
+                        type="button"
+                        onClick={() => onAddOption(question.id)}
+                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                    >
+                        + Add Option
+                    </button>
+                </div>
+            )}
             {showDeleteModal && (
                 <DeleteConfirmModal
-                    onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
+                    onConfirm={() => { handleDelete(); setShowDeleteModal(false) }}
                     onCancel={() => setShowDeleteModal(false)}
                 />
             )}
         </div>
     )
-}
+})
 
-function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Person[]; onEdit: () => void }) {
+const AlwaysSection = memo(function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Person[]; onEdit: () => void }) {
     const [isExpanded, setIsExpanded] = useState(false)
+    // Same lazy-mount-then-keep pattern as the sections above.
+    const hasExpandedRef = useRef(isExpanded)
+    if (isExpanded) hasExpandedRef.current = true
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
             <div className="flex items-center">
@@ -475,14 +497,16 @@ function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Perso
                     </svg>
                 </button>
             </div>
-            <div className={`mt-3 space-y-1${isExpanded ? '' : ' hidden'}`}>
-                {items.map((item, i) => (
-                    <ItemRow key={i} item={item} people={people} />
-                ))}
-            </div>
+            {hasExpandedRef.current && (
+                <div className={`mt-3 space-y-1${isExpanded ? '' : ' hidden'}`}>
+                    {items.map((item, i) => (
+                        <ItemRow key={i} item={item} people={people} />
+                    ))}
+                </div>
+            )}
         </div>
     )
-}
+})
 
 function useItemListState(initialItems: Item[], people: Person[]) {
     const [items, setItems] = useState<Item[]>(initialItems)
@@ -498,10 +522,12 @@ function useItemListState(initialItems: Item[], people: Person[]) {
         prevCountRef.current = items.length
     }, [items.length])
 
-    const updateItemText = (idx: number, text: string) =>
-        setItems(prev => prev.map((item, i) => i === idx ? { ...item, text } : item))
+    // All handlers are useCallback'd so the memoized per-item rows only
+    // re-render when their own item changes, not on every keystroke or toggle.
+    const updateItemText = useCallback((idx: number, text: string) =>
+        setItems(prev => prev.map((item, i) => i === idx ? { ...item, text } : item)), [])
 
-    const togglePerson = (itemIdx: number, personIdx: number) =>
+    const togglePerson = useCallback((itemIdx: number, personIdx: number) =>
         setItems(prev => prev.map((item, i) => {
             if (i !== itemIdx) return item
             const selections = people.map((p, pi) => ({
@@ -510,45 +536,45 @@ function useItemListState(initialItems: Item[], people: Person[]) {
             }))
             selections[personIdx] = { ...selections[personIdx], selected: !selections[personIdx].selected }
             return { ...item, personSelections: selections }
-        }))
+        })), [people])
 
-    const toggleCommunal = (itemIdx: number) =>
+    const toggleCommunal = useCallback((itemIdx: number) =>
         setItems(prev => prev.map((item, i) =>
             i === itemIdx ? { ...item, communal: item.communal ? undefined : true } : item
-        ))
+        )), [])
 
-    const updatePerNight = (itemIdx: number, perNight: number | undefined) =>
+    const updatePerNight = useCallback((itemIdx: number, perNight: number | undefined) =>
         setItems(prev => prev.map((item, i) =>
             i === itemIdx ? { ...item, perNight } : item
-        ))
+        )), [])
 
-    const updatePerNights = (itemIdx: number, perNights: number | undefined) =>
+    const updatePerNights = useCallback((itemIdx: number, perNights: number | undefined) =>
         setItems(prev => prev.map((item, i) =>
             i === itemIdx ? { ...item, perNights } : item
-        ))
+        )), [])
 
-    const updateMaxQuantity = (itemIdx: number, maxQuantity: number | undefined) =>
+    const updateMaxQuantity = useCallback((itemIdx: number, maxQuantity: number | undefined) =>
         setItems(prev => prev.map((item, i) =>
             i === itemIdx ? { ...item, maxQuantity } : item
-        ))
+        )), [])
 
-    const removeItem = (idx: number) =>
-        setItems(prev => prev.filter((_, i) => i !== idx))
+    const removeItem = useCallback((idx: number) =>
+        setItems(prev => prev.filter((_, i) => i !== idx)), [])
 
-    const moveItem = (idx: number, direction: 'up' | 'down') =>
+    const moveItem = useCallback((idx: number, direction: 'up' | 'down') =>
         setItems(prev => {
             const swapIdx = direction === 'up' ? idx - 1 : idx + 1
             if (swapIdx < 0 || swapIdx >= prev.length) return prev
             const next = [...prev]
             ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
             return next
-        })
+        }), [])
 
-    const addItem = () =>
+    const addItem = useCallback(() =>
         setItems(prev => [...prev, {
             text: '',
             personSelections: people.map(p => ({ personId: p.id, selected: true })),
-        }])
+        }]), [people])
 
     return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem }
 }
@@ -558,6 +584,199 @@ function rateLabel(item: Item): string {
     const nights = item.perNights ?? 1
     return nights > 1 ? `${item.perNight} per ${nights} nights` : `${item.perNight} per night`
 }
+
+function parseQty(raw: string): number | undefined {
+    const n = parseInt(raw, 10)
+    return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+// One editable item row. Memoized (with stable handlers from useItemListState)
+// so toggling a person or typing in one row doesn't re-render every other row —
+// with dozens of items and a large family that re-render is what made the
+// editor modals feel sluggish on phones. Renders only the variant for the
+// current form factor instead of both (CSS-hidden DOM is still DOM).
+const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allItemNames, isDesktop, quantityOpen, onToggleQuantity, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem }: {
+    item: Item
+    itemIdx: number
+    people: Person[]
+    allItemNames: string[]
+    isDesktop: boolean
+    quantityOpen: boolean
+    onToggleQuantity: (idx: number) => void
+    updateItemText: (idx: number, text: string) => void
+    togglePerson: (itemIdx: number, personIdx: number) => void
+    toggleCommunal: (itemIdx: number) => void
+    updatePerNight: (itemIdx: number, perNight: number | undefined) => void
+    updatePerNights: (itemIdx: number, perNights: number | undefined) => void
+    updateMaxQuantity: (itemIdx: number, maxQuantity: number | undefined) => void
+    removeItem: (idx: number) => void
+}) {
+    const isCommunal = item.communal === true
+    const communalTitle = isCommunal
+        ? 'Shared item — packed once for the group. Click to make per-person.'
+        : 'Make this a shared item, packed once for the group'
+    const personTitle = (name: string) => isCommunal
+        ? `Needed when ${name} is on the trip`
+        : name
+    const hasRate = item.perNight !== undefined
+    const quantityTitle = hasRate
+        ? `Suggested quantity: ${rateLabel(item)}${item.maxQuantity !== undefined ? `, up to ${item.maxQuantity}` : ''}`
+        : 'Suggest a quantity based on nights away (e.g. 1 pair of socks per night, or 1 jumper per 4 nights)'
+    return (
+        // content-visibility lets the browser skip layout/paint for rows that
+        // are scrolled out of view — noticeable when a list has dozens of items.
+        <div
+            className="sm:flex sm:flex-wrap sm:items-center sm:gap-2 rounded-lg border border-gray-200 sm:border-transparent p-2 sm:p-0"
+            style={{ contentVisibility: 'auto', containIntrinsicSize: isDesktop ? 'auto 44px' : 'auto 132px' }}
+        >
+            {/* Item name + desktop people + remove */}
+            <div className="flex items-center gap-2 sm:flex-1 sm:min-w-0">
+                <div className="flex-1 min-w-0">
+                    <CustomCreatableSelect
+                        value={item.text}
+                        onChange={val => updateItemText(itemIdx, val)}
+                        options={allItemNames}
+                        placeholder="Item name"
+                        menuPortalTarget={document.body}
+                    />
+                </div>
+                {/* Desktop: shared toggle + inline avatars */}
+                {isDesktop && (
+                    <div className="flex gap-0.5 shrink-0 items-center">
+                        <button
+                            type="button"
+                            onClick={() => toggleCommunal(itemIdx)}
+                            title={communalTitle}
+                            aria-label={`Toggle shared for ${item.text || 'item'}`}
+                            aria-pressed={isCommunal}
+                            className={`inline-flex items-center justify-center h-5 rounded-full px-1 text-[10px] transition-colors mr-1 ${isCommunal ? 'bg-blue-600 text-white' : AVATAR_OFF}`}
+                        >
+                            👥
+                        </button>
+                        {people.length > 1 && people.map((person, personIdx) => {
+                            const selected = item.personSelections?.[personIdx]?.selected ?? false
+                            return (
+                                <button
+                                    key={person.id}
+                                    type="button"
+                                    onClick={() => togglePerson(itemIdx, personIdx)}
+                                    title={personTitle(person.name)}
+                                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF} ${isCommunal && selected ? 'ring-2 ring-blue-300 ring-offset-1' : ''}`}
+                                >
+                                    {person.name.charAt(0).toUpperCase()}
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
+                <button
+                    type="button"
+                    onClick={() => onToggleQuantity(itemIdx)}
+                    title={quantityTitle}
+                    aria-label={`Set suggested quantity for ${item.text || 'item'}`}
+                    aria-expanded={quantityOpen}
+                    className={`inline-flex items-center justify-center h-5 rounded-full px-1.5 text-[10px] font-medium shrink-0 transition-colors ${hasRate ? 'bg-emerald-600 text-white' : AVATAR_OFF}`}
+                >
+                    {hasRate
+                        ? ((item.perNights ?? 1) > 1 ? `×${item.perNight}/${item.perNights}nt` : `×${item.perNight}/nt`)
+                        : '×n'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => removeItem(itemIdx)}
+                    className="shrink-0 text-gray-300 hover:text-red-400 text-xl leading-none"
+                    title="Remove item"
+                >
+                    ×
+                </button>
+            </div>
+            {/* Mobile: shared toggle + people on their own row as large labelled tiles */}
+            {!isDesktop && (
+                <div className="mt-2 flex gap-2">
+                    <button
+                        type="button"
+                        onClick={() => toggleCommunal(itemIdx)}
+                        title={communalTitle}
+                        aria-pressed={isCommunal}
+                        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${isCommunal ? 'bg-blue-600 text-white border-transparent' : 'bg-white border-gray-200 text-gray-400'}`}
+                    >
+                        <span className="text-lg font-bold leading-none">👥</span>
+                        <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
+                            Shared
+                        </span>
+                    </button>
+                    {people.length > 1 && people.map((person, personIdx) => {
+                        const selected = item.personSelections?.[personIdx]?.selected ?? false
+                        return (
+                            <button
+                                key={person.id}
+                                type="button"
+                                onClick={() => togglePerson(itemIdx, personIdx)}
+                                title={personTitle(person.name)}
+                                className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${AVATAR_ON[personIdx % AVATAR_ON.length]} border-transparent` : `bg-white border-gray-200 text-gray-400`}`}
+                            >
+                                <span className="text-lg font-bold leading-none">
+                                    {person.name.charAt(0).toUpperCase()}
+                                </span>
+                                <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
+                                    {person.name}
+                                </span>
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+            {!isDesktop && isCommunal && people.length > 1 && (
+                <div className="mt-1 text-[11px] text-blue-600 px-1">
+                    Packed once for the group — included when a highlighted person is going
+                </div>
+            )}
+            {quantityOpen && (
+                <div className="mt-2 sm:mt-0 w-full flex items-center gap-3 flex-wrap text-xs text-gray-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
+                    <span className="flex items-center gap-1.5">
+                        Pack
+                        <input
+                            type="number"
+                            min={1}
+                            value={item.perNight ?? ''}
+                            onChange={e => updatePerNight(itemIdx, parseQty(e.target.value))}
+                            aria-label={`Quantity to pack for ${item.text || 'item'}`}
+                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        />
+                        per
+                        <input
+                            type="number"
+                            min={1}
+                            placeholder="1"
+                            value={item.perNights ?? ''}
+                            onChange={e => updatePerNights(itemIdx, parseQty(e.target.value))}
+                            disabled={!hasRate}
+                            aria-label={`Number of nights per ${item.text || 'item'}`}
+                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-40"
+                        />
+                        night{(item.perNights ?? 1) > 1 ? 's' : ''}
+                    </span>
+                    <label className={`flex items-center gap-1.5 ${hasRate ? '' : 'opacity-40'}`}>
+                        Max
+                        <input
+                            type="number"
+                            min={1}
+                            value={item.maxQuantity ?? ''}
+                            onChange={e => updateMaxQuantity(itemIdx, parseQty(e.target.value))}
+                            disabled={!hasRate}
+                            aria-label={`Maximum quantity for ${item.text || 'item'}`}
+                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                        />
+                    </label>
+                    <span className="text-gray-400">
+                        e.g. socks: 1 per night; a jumper: 1 per 4 nights. Suggests a
+                        quantity when a list has nights away — leave blank to skip
+                    </span>
+                </div>
+            )}
+        </div>
+    )
+})
 
 function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem }: {
     items: Item[]
@@ -576,14 +795,13 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
 }) {
     const [openQuantityIdx, setOpenQuantityIdx] = useState<number | null>(null)
     const [reorderMode, setReorderMode] = useState(false)
+    const isDesktop = useIsDesktop()
+    const toggleQuantity = useCallback((idx: number) =>
+        setOpenQuantityIdx(prev => prev === idx ? null : idx), [])
     // Reorder mode only makes sense with something to reorder; if there aren't
     // at least two items the toggle is hidden and we render the normal editor.
     const canReorder = items.length > 1
     const inReorder = reorderMode && canReorder
-    const parseQty = (raw: string): number | undefined => {
-        const n = parseInt(raw, 10)
-        return Number.isFinite(n) && n > 0 ? n : undefined
-    }
     return (
         <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
             {items.length > 0 && (
@@ -643,165 +861,25 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
                         </div>
                     </div>
                 ))}
-                {!inReorder && items.map((item, itemIdx) => {
-                    const isCommunal = item.communal === true
-                    const communalTitle = isCommunal
-                        ? 'Shared item — packed once for the group. Click to make per-person.'
-                        : 'Make this a shared item, packed once for the group'
-                    const personTitle = (name: string) => isCommunal
-                        ? `Needed when ${name} is on the trip`
-                        : name
-                    const hasRate = item.perNight !== undefined
-                    const quantityOpen = openQuantityIdx === itemIdx
-                    const quantityTitle = hasRate
-                        ? `Suggested quantity: ${rateLabel(item)}${item.maxQuantity !== undefined ? `, up to ${item.maxQuantity}` : ''}`
-                        : 'Suggest a quantity based on nights away (e.g. 1 pair of socks per night, or 1 jumper per 4 nights)'
-                    return (
-                    <div key={itemIdx} className="sm:flex sm:flex-wrap sm:items-center sm:gap-2 rounded-lg border border-gray-200 sm:border-transparent p-2 sm:p-0">
-                        {/* Item name + desktop people + remove */}
-                        <div className="flex items-center gap-2 sm:flex-1 sm:min-w-0">
-                            <div className="flex-1 min-w-0">
-                                <CustomCreatableSelect
-                                    value={item.text}
-                                    onChange={val => updateItemText(itemIdx, val)}
-                                    options={allItemNames}
-                                    placeholder="Item name"
-                                    menuPortalTarget={document.body}
-                                />
-                            </div>
-                            {/* Desktop: shared toggle + inline avatars */}
-                            <div className="hidden sm:flex gap-0.5 shrink-0 items-center">
-                                <button
-                                    type="button"
-                                    onClick={() => toggleCommunal(itemIdx)}
-                                    title={communalTitle}
-                                    aria-label={`Toggle shared for ${item.text || 'item'}`}
-                                    aria-pressed={isCommunal}
-                                    className={`inline-flex items-center justify-center h-5 rounded-full px-1 text-[10px] transition-colors mr-1 ${isCommunal ? 'bg-blue-600 text-white' : AVATAR_OFF}`}
-                                >
-                                    👥
-                                </button>
-                                {people.length > 1 && people.map((person, personIdx) => {
-                                    const selected = item.personSelections?.[personIdx]?.selected ?? false
-                                    return (
-                                        <button
-                                            key={person.id}
-                                            type="button"
-                                            onClick={() => togglePerson(itemIdx, personIdx)}
-                                            title={personTitle(person.name)}
-                                            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF} ${isCommunal && selected ? 'ring-2 ring-blue-300 ring-offset-1' : ''}`}
-                                        >
-                                            {person.name.charAt(0).toUpperCase()}
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setOpenQuantityIdx(quantityOpen ? null : itemIdx)}
-                                title={quantityTitle}
-                                aria-label={`Set suggested quantity for ${item.text || 'item'}`}
-                                aria-expanded={quantityOpen}
-                                className={`inline-flex items-center justify-center h-5 rounded-full px-1.5 text-[10px] font-medium shrink-0 transition-colors ${hasRate ? 'bg-emerald-600 text-white' : AVATAR_OFF}`}
-                            >
-                                {hasRate
-                                    ? ((item.perNights ?? 1) > 1 ? `×${item.perNight}/${item.perNights}nt` : `×${item.perNight}/nt`)
-                                    : '×n'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => removeItem(itemIdx)}
-                                className="shrink-0 text-gray-300 hover:text-red-400 text-xl leading-none"
-                                title="Remove item"
-                            >
-                                ×
-                            </button>
-                        </div>
-                        {/* Mobile: shared toggle + people on their own row as large labelled tiles */}
-                        <div className="mt-2 sm:hidden flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => toggleCommunal(itemIdx)}
-                                title={communalTitle}
-                                aria-pressed={isCommunal}
-                                className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${isCommunal ? 'bg-blue-600 text-white border-transparent' : 'bg-white border-gray-200 text-gray-400'}`}
-                            >
-                                <span className="text-lg font-bold leading-none">👥</span>
-                                <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
-                                    Shared
-                                </span>
-                            </button>
-                            {people.length > 1 && people.map((person, personIdx) => {
-                                const selected = item.personSelections?.[personIdx]?.selected ?? false
-                                return (
-                                    <button
-                                        key={person.id}
-                                        type="button"
-                                        onClick={() => togglePerson(itemIdx, personIdx)}
-                                        title={personTitle(person.name)}
-                                        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${AVATAR_ON[personIdx % AVATAR_ON.length]} border-transparent` : `bg-white border-gray-200 text-gray-400`}`}
-                                    >
-                                        <span className="text-lg font-bold leading-none">
-                                            {person.name.charAt(0).toUpperCase()}
-                                        </span>
-                                        <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
-                                            {person.name}
-                                        </span>
-                                    </button>
-                                )
-                            })}
-                        </div>
-                        {isCommunal && people.length > 1 && (
-                            <div className="mt-1 sm:mt-0 sm:hidden text-[11px] text-blue-600 px-1">
-                                Packed once for the group — included when a highlighted person is going
-                            </div>
-                        )}
-                        {quantityOpen && (
-                            <div className="mt-2 sm:mt-0 w-full flex items-center gap-3 flex-wrap text-xs text-gray-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
-                                <span className="flex items-center gap-1.5">
-                                    Pack
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        value={item.perNight ?? ''}
-                                        onChange={e => updatePerNight(itemIdx, parseQty(e.target.value))}
-                                        aria-label={`Quantity to pack for ${item.text || 'item'}`}
-                                        className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                                    />
-                                    per
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        placeholder="1"
-                                        value={item.perNights ?? ''}
-                                        onChange={e => updatePerNights(itemIdx, parseQty(e.target.value))}
-                                        disabled={!hasRate}
-                                        aria-label={`Number of nights per ${item.text || 'item'}`}
-                                        className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-40"
-                                    />
-                                    night{(item.perNights ?? 1) > 1 ? 's' : ''}
-                                </span>
-                                <label className={`flex items-center gap-1.5 ${hasRate ? '' : 'opacity-40'}`}>
-                                    Max
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        value={item.maxQuantity ?? ''}
-                                        onChange={e => updateMaxQuantity(itemIdx, parseQty(e.target.value))}
-                                        disabled={!hasRate}
-                                        aria-label={`Maximum quantity for ${item.text || 'item'}`}
-                                        className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                                    />
-                                </label>
-                                <span className="text-gray-400">
-                                    e.g. socks: 1 per night; a jumper: 1 per 4 nights. Suggests a
-                                    quantity when a list has nights away — leave blank to skip
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                    )
-                })}
+                {!inReorder && items.map((item, itemIdx) => (
+                    <ItemEditorRow
+                        key={itemIdx}
+                        item={item}
+                        itemIdx={itemIdx}
+                        people={people}
+                        allItemNames={allItemNames}
+                        isDesktop={isDesktop}
+                        quantityOpen={openQuantityIdx === itemIdx}
+                        onToggleQuantity={toggleQuantity}
+                        updateItemText={updateItemText}
+                        togglePerson={togglePerson}
+                        toggleCommunal={toggleCommunal}
+                        updatePerNight={updatePerNight}
+                        updatePerNights={updatePerNights}
+                        updateMaxQuantity={updateMaxQuantity}
+                        removeItem={removeItem}
+                    />
+                ))}
             </div>
             {!inReorder && (
                 <button
@@ -1139,6 +1217,11 @@ export function QuestionsPage() {
     const isForeign = !!foreignPodUrl
 
     const [data, setData] = useState<PackingListQuestionSet | null>(null)
+    // Render-time snapshot of `data` so section handlers can read the latest
+    // value without depending on it — keeps their identity stable across data
+    // changes, which is what lets the memoized QuestionSections skip renders.
+    const dataRef = useRef<PackingListQuestionSet | null>(null)
+    dataRef.current = data
     const [rev, setRev] = useState<string | undefined>(undefined)
     const [error, setError] = useState<string | null>(null)
     const [questionModal, setQuestionModal] = useState<{ question: Question | null } | null>(null)
@@ -1197,11 +1280,12 @@ export function QuestionsPage() {
     }, [loginSyncInProgress])
 
     const saveData = useCallback(async (updated: PackingListQuestionSet) => {
+        const previous = dataRef.current
         setData(updated)
         const saved = await saveWithSyncPrevention(updated, saveToPod)
         if (saved) setData(saved)
-        else setData(data)
-    }, [data, saveWithSyncPrevention, saveToPod])
+        else setData(previous)
+    }, [saveWithSyncPrevention, saveToPod])
 
     const handleQuestionModalSave = useCallback(async (text: string, type: QuestionType) => {
         if (!data || questionModal === null) return
@@ -1221,15 +1305,17 @@ export function QuestionsPage() {
     }, [data, questionModal, saveData])
 
     const handleDeleteQuestion = useCallback(async (id: string) => {
+        const data = dataRef.current
         if (!data) return
         const now = new Date().toISOString()
         await saveData({
             ...data,
             questions: data.questions.map(q => q.id === id ? { ...q, deletedAt: now } : q),
         })
-    }, [data, saveData])
+    }, [saveData])
 
     const handleMoveQuestion = useCallback(async (id: string, direction: 'up' | 'down') => {
+        const data = dataRef.current
         if (!data) return
         const active = data.questions.filter(q => !q.deletedAt)
         const idx = active.findIndex(q => q.id === id)
@@ -1248,7 +1334,7 @@ export function QuestionsPage() {
         // Rebuild full questions array preserving deleted ones
         const deletedQuestions = data.questions.filter(q => q.deletedAt)
         await saveData({ ...data, questions: [...renumbered, ...deletedQuestions] })
-    }, [data, saveData])
+    }, [saveData])
 
     const handleOptionModalSave = useCallback(async (updatedOption: Option) => {
         if (!data || optionModal === null) return
@@ -1323,12 +1409,20 @@ export function QuestionsPage() {
     }, [data, saveData])
 
     const handleDeleteOption = useCallback(async (questionId: string, optionId: string) => {
+        const data = dataRef.current
         if (!data) return
         const newQuestions = data.questions.map(q =>
             q.id === questionId ? { ...q, options: q.options.filter(o => o.id !== optionId) } : q
         )
         await saveData({ ...data, questions: newQuestions })
-    }, [data, saveData])
+    }, [saveData])
+
+    // Stable modal openers — inline closures here would defeat the sections' memo.
+    const openEditQuestion = useCallback((question: Question) => setQuestionModal({ question }), [])
+    const openAddOption = useCallback((questionId: string) => setOptionModal({ questionId, option: null }), [])
+    const openEditOption = useCallback((questionId: string, option: Option) => setOptionModal({ questionId, option }), [])
+    const openPeopleModal = useCallback(() => setPeopleModal(true), [])
+    const openAlwaysModal = useCallback(() => setAlwaysModal(true), [])
 
     const allItemNames = useMemo(() => {
         if (!data) return []
@@ -1339,12 +1433,14 @@ export function QuestionsPage() {
         return [...new Set(names)]
     }, [data])
 
+    // Memoized so their identity is stable across re-renders that don't change
+    // the data (modal opens, sync ticks) — they feed the memoized sections.
+    const people = useMemo(() => (data?.people ?? []).filter(p => !p.deletedAt), [data])
+    const activeQuestions = useMemo(() => (data?.questions ?? []).filter(q => !q.deletedAt), [data])
+    const activeAlwaysNeededItems = useMemo(() => (data?.alwaysNeededItems ?? []).filter(i => !i.deletedAt), [data])
+
     if (error) return <div className="p-8 text-red-600">Error: {error}</div>
     if (!data) return <div className="p-8 text-gray-500">Loading…</div>
-
-    const people = (data.people ?? []).filter(p => !p.deletedAt)
-    const activeQuestions = data.questions.filter(q => !q.deletedAt)
-    const activeAlwaysNeededItems = (data.alwaysNeededItems ?? []).filter(i => !i.deletedAt)
 
     return (
         <div className="w-full flex flex-col items-center py-8 px-4">
@@ -1363,20 +1459,21 @@ export function QuestionsPage() {
                     />
                 )}
                 {!isForeign && <TemplateUpdatesCard questionSet={data} onApply={saveData} />}
-                <PersonLegend people={people} onEdit={() => setPeopleModal(true)} />
-                <AlwaysSection items={activeAlwaysNeededItems} people={people} onEdit={() => setAlwaysModal(true)} />
+                <PersonLegend people={people} onEdit={openPeopleModal} />
+                <AlwaysSection items={activeAlwaysNeededItems} people={people} onEdit={openAlwaysModal} />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
                         key={q.id}
                         question={q}
                         people={people}
-                        onEdit={() => setQuestionModal({ question: q })}
-                        onDelete={() => handleDeleteQuestion(q.id)}
-                        onAddOption={() => setOptionModal({ questionId: q.id, option: null })}
-                        onEditOption={(option) => setOptionModal({ questionId: q.id, option })}
-                        onDeleteOption={(optionId) => handleDeleteOption(q.id, optionId)}
-                        onMoveUp={qi > 0 ? () => handleMoveQuestion(q.id, 'up') : undefined}
-                        onMoveDown={qi < activeQuestions.length - 1 ? () => handleMoveQuestion(q.id, 'down') : undefined}
+                        canMoveUp={qi > 0}
+                        canMoveDown={qi < activeQuestions.length - 1}
+                        onEdit={openEditQuestion}
+                        onDelete={handleDeleteQuestion}
+                        onAddOption={openAddOption}
+                        onEditOption={openEditOption}
+                        onDeleteOption={handleDeleteOption}
+                        onMove={handleMoveQuestion}
                     />
                 ))}
                 <button
