@@ -14,7 +14,7 @@ import { getPrimaryPodUrl, saveRdfToPod, POD_CONTAINERS, loadMultipleRdfFromPod 
 import { usePodSync } from '../hooks/usePodSync'
 import { questionSetToDataset, datasetToQuestionSet, packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { useForeignPod } from '../components/ForeignPodContext'
-import { generateQuestionBasedItems, generateAlwaysNeededItems } from '../create-packing-list/generatePackingListItems'
+import { generateQuestionBasedItems, generateAlwaysNeededItems, withItemOrder } from '../create-packing-list/generatePackingListItems'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 
 export function deduplicateItems(items: PackingListItem[]): PackingListItem[] {
@@ -600,7 +600,7 @@ export function CreatePackingList() {
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString(),
             ...(nights !== undefined ? { nights } : {}),
-            items: deduplicateItems([...questionBasedItems, ...alwaysNeededItems])
+            items: withItemOrder(deduplicateItems([...questionBasedItems, ...alwaysNeededItems]))
         }
         try {
             if (foreignPodUrl) {

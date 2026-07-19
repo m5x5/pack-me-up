@@ -65,6 +65,8 @@ export const PersonSelectionSchema = z.object({
 // filter record which brackets they apply to, so age-up transitions can
 // suggest selecting/deselecting a person. User-created items have no tag and
 // are never touched by those suggestions.
+// `order` is optional and additive: items without it sort after ordered ones
+// in their original position, so legacy data keeps its array order.
 // Quantity-suggestion fields, all optional and additive: the item's rate is
 // "pack `perNight` per `perNights` nights" (perNights defaults to 1, so
 // perNight alone means a per-night amount, e.g. socks 1/night; perNights: 4
@@ -77,6 +79,7 @@ export const ItemSchema = z.object({
   personSelections: z.array(PersonSelectionSchema),
   communal: z.boolean().optional(),
   ageRanges: z.array(AgeRangeSchema).optional(),
+  order: z.number().optional(),
   perNight: z.number().optional(),
   perNights: z.number().optional(),
   maxQuantity: z.number().optional(),
@@ -143,6 +146,15 @@ export function newDraftQuestion(order: number): DraftQuestion {
     order,
     questionType: "single-choice"
   }
+}
+
+// Renumber items to match their array position after an edit or reorder.
+// Only moved items get a fresh lastModified, so sync's per-item LWW carries
+// the new positions without phantom edits on untouched items.
+export function renumberItemOrder(items: Item[], now: string): Item[] {
+  return items.map((item, i) =>
+    item.order === i ? item : { ...item, order: i, lastModified: now }
+  )
 }
 
 export function newOption(order: number): Option {

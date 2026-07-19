@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { DatabaseMigration } from '../services/migration'
-import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, AGE_RANGE_OPTIONS } from '../edit-questions/types'
+import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
 import { Link } from 'react-router-dom'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
 import { usePodSync } from '../hooks/usePodSync'
@@ -534,13 +534,22 @@ function useItemListState(initialItems: Item[], people: Person[]) {
     const removeItem = (idx: number) =>
         setItems(prev => prev.filter((_, i) => i !== idx))
 
+    const moveItem = (idx: number, direction: 'up' | 'down') =>
+        setItems(prev => {
+            const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+            if (swapIdx < 0 || swapIdx >= prev.length) return prev
+            const next = [...prev]
+            ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
+            return next
+        })
+
     const addItem = () =>
         setItems(prev => [...prev, {
             text: '',
             personSelections: people.map(p => ({ personId: p.id, selected: true })),
         }])
 
-    return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem }
+    return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem }
 }
 
 // "2 per night" / "1 per 4 nights" — the human phrasing of an item's rate
@@ -549,7 +558,7 @@ function rateLabel(item: Item): string {
     return nights > 1 ? `${item.perNight} per ${nights} nights` : `${item.perNight} per night`
 }
 
-function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem }: {
+function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem }: {
     items: Item[]
     people: Person[]
     allItemNames: string[]
@@ -561,9 +570,15 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
     updatePerNights: (itemIdx: number, perNights: number | undefined) => void
     updateMaxQuantity: (itemIdx: number, maxQuantity: number | undefined) => void
     removeItem: (idx: number) => void
+    moveItem: (idx: number, direction: 'up' | 'down') => void
     addItem: () => void
 }) {
     const [openQuantityIdx, setOpenQuantityIdx] = useState<number | null>(null)
+    const [reorderMode, setReorderMode] = useState(false)
+    // Reorder mode only makes sense with something to reorder; if there aren't
+    // at least two items the toggle is hidden and we render the normal editor.
+    const canReorder = items.length > 1
+    const inReorder = reorderMode && canReorder
     const parseQty = (raw: string): number | undefined => {
         const n = parseInt(raw, 10)
         return Number.isFinite(n) && n > 0 ? n : undefined
@@ -571,10 +586,63 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
     return (
         <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
             {items.length > 0 && (
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Items</div>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Items</div>
+                    {canReorder && (
+                        <button
+                            type="button"
+                            onClick={() => setReorderMode(m => !m)}
+                            aria-pressed={reorderMode}
+                            className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 transition-colors ${reorderMode ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+                        >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                            </svg>
+                            {reorderMode ? 'Finish reordering' : 'Reorder items'}
+                        </button>
+                    )}
+                </div>
+            )}
+            {inReorder && (
+                <div className="text-[11px] text-gray-400 mb-2 px-0.5">
+                    Use the arrows to change the order, then tap Finish reordering.
+                </div>
             )}
             <div className="space-y-2">
-                {items.map((item, itemIdx) => {
+                {inReorder && items.map((item, itemIdx) => (
+                    <div key={itemIdx} className="flex items-center gap-2 rounded-lg border border-gray-200 p-2">
+                        <span className="flex-1 min-w-0 truncate text-sm text-gray-800 px-1">
+                            {item.text || <span className="text-gray-400 italic">Unnamed item</span>}
+                        </span>
+                        <div className="flex gap-1 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => moveItem(itemIdx, 'up')}
+                                disabled={itemIdx === 0}
+                                className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${itemIdx === 0 ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
+                                title="Move item up"
+                                aria-label={`Move ${item.text || 'item'} up`}
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => moveItem(itemIdx, 'down')}
+                                disabled={itemIdx === items.length - 1}
+                                className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${itemIdx === items.length - 1 ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
+                                title="Move item down"
+                                aria-label={`Move ${item.text || 'item'} down`}
+                            >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                {!inReorder && items.map((item, itemIdx) => {
                     const isCommunal = item.communal === true
                     const communalTitle = isCommunal
                         ? 'Shared item — packed once for the group. Click to make per-person.'
@@ -734,13 +802,15 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
                     )
                 })}
             </div>
-            <button
-                type="button"
-                onClick={addItem}
-                className="mt-3 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-            >
-                + Add Item
-            </button>
+            {!inReorder && (
+                <button
+                    type="button"
+                    onClick={addItem}
+                    className="mt-3 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                >
+                    + Add Item
+                </button>
+            )}
         </div>
     )
 }
@@ -753,13 +823,13 @@ function OptionEditModal({ option, people, allItemNames, onSave, onClose }: {
     onClose: () => void
 }) {
     const [text, setText] = useState(option?.text ?? '')
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem } = useItemListState(option?.items ?? [], people)
+    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem } = useItemListState(option?.items ?? [], people)
 
     const handleSave = () => onSave({
         id: option?.id ?? crypto.randomUUID(),
         order: option?.order ?? 0,
         text: text.trim(),
-        items,
+        items: renumberItemOrder(items, new Date().toISOString()),
     })
 
     return (
@@ -803,7 +873,7 @@ function OptionEditModal({ option, people, allItemNames, onSave, onClose }: {
                     scrollRef={scrollRef} updateItemText={updateItemText}
                     togglePerson={togglePerson} toggleCommunal={toggleCommunal}
                     updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} addItem={addItem}
+                    removeItem={removeItem} moveItem={moveItem} addItem={addItem}
                 />
                 <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
@@ -825,7 +895,7 @@ function AlwaysNeededModal({ initialItems, people, allItemNames, onSave, onClose
     onSave: (items: Item[]) => void
     onClose: () => void
 }) {
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem } = useItemListState(initialItems, people)
+    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, addItem } = useItemListState(initialItems, people)
 
     return (
         <div
@@ -857,13 +927,13 @@ function AlwaysNeededModal({ initialItems, people, allItemNames, onSave, onClose
                     scrollRef={scrollRef} updateItemText={updateItemText}
                     togglePerson={togglePerson} toggleCommunal={toggleCommunal}
                     updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} addItem={addItem}
+                    removeItem={removeItem} moveItem={moveItem} addItem={addItem}
                 />
                 <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
                         Cancel
                     </button>
-                    <button type="button" onClick={() => onSave(items)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+                    <button type="button" onClick={() => onSave(renumberItemOrder(items, new Date().toISOString()))} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
                         Save changes
                     </button>
                 </div>
@@ -1167,9 +1237,16 @@ export function QuestionsPage() {
         if (swapIdx < 0 || swapIdx >= active.length) return
         const newActive = [...active]
         ;[newActive[idx], newActive[swapIdx]] = [newActive[swapIdx], newActive[idx]]
+        // Renumber order to match the new positions and stamp lastModified on
+        // moved questions, so the reorder survives pod round-trips (deserialize
+        // sorts by order) and wins per-question LWW during sync merges.
+        const now = new Date().toISOString()
+        const renumbered = newActive.map((q, i) =>
+            q.order === i ? q : { ...q, order: i, lastModified: now }
+        )
         // Rebuild full questions array preserving deleted ones
         const deletedQuestions = data.questions.filter(q => q.deletedAt)
-        await saveData({ ...data, questions: [...newActive, ...deletedQuestions] })
+        await saveData({ ...data, questions: [...renumbered, ...deletedQuestions] })
     }, [data, saveData])
 
     const handleOptionModalSave = useCallback(async (updatedOption: Option) => {

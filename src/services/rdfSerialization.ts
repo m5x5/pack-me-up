@@ -122,6 +122,7 @@ function packingListItemToThing(item: PackingListItem, itemUrl: string): Thing {
     if (item.quantity !== undefined) t = t.addInteger(PMU.quantity, item.quantity)
     if (item.category !== undefined) t = t.addStringNoLocale(PMU.category, item.category)
     if (item.reviewed !== undefined) t = t.addBoolean(PMU.reviewed, item.reviewed)
+    if (item.order !== undefined) t = t.addInteger(PMU.order, item.order)
     if (item.lastModified !== undefined) t = t.addDatetime(PMU.itemLastModified, new Date(item.lastModified))
 
     return t.build()
@@ -142,6 +143,7 @@ function thingToPackingListItem(thing: Thing | null, url: string): PackingListIt
     const quantity = getInteger(thing, PMU.quantity)
     const category = getStringNoLocale(thing, PMU.category) ?? undefined
     const reviewed = getBoolean(thing, PMU.reviewed)
+    const order = getInteger(thing, PMU.order)
     const itemLastModified = getDatetime(thing, PMU.itemLastModified)?.toISOString()
 
     return {
@@ -156,6 +158,7 @@ function thingToPackingListItem(thing: Thing | null, url: string): PackingListIt
         ...(quantity !== null ? { quantity } : {}),
         ...(category !== undefined ? { category } : {}),
         ...(reviewed !== null ? { reviewed } : {}),
+        ...(order !== null ? { order } : {}),
         ...(itemLastModified !== undefined ? { lastModified: itemLastModified } : {}),
     }
 }
@@ -219,9 +222,9 @@ export function datasetToQuestionSet(dataset: SolidDataset, datasetUrl: string):
         const ib = parseInt(b.split('#always-item-')[1] ?? '0')
         return ia - ib
     })
-    const alwaysNeededItems = alwaysItemUrls
+    const alwaysNeededItems = sortItemsByOrder(alwaysItemUrls
         .map(url => thingToQuestionItem(dataset, url))
-        .filter((item): item is Item => item !== null)
+        .filter((item): item is Item => item !== null))
 
     return {
         _id: '1',
@@ -369,11 +372,20 @@ function thingToOption(dataset: SolidDataset, url: string): Option | null {
         const ib = parseInt(b.split('-').pop() ?? '0')
         return ia - ib
     })
-    const items = itemUrls
+    const items = sortItemsByOrder(itemUrls
         .map(itemUrl => thingToQuestionItem(dataset, itemUrl))
-        .filter((item): item is Item => item !== null)
+        .filter((item): item is Item => item !== null))
 
     return { id, text, order, items }
+}
+
+// Explicit order wins where present; items without one keep their URL-index
+// position (legacy data written before items carried an order field).
+function sortItemsByOrder(items: Item[]): Item[] {
+    return items
+        .map((item, index) => ({ item, key: item.order ?? index }))
+        .sort((a, b) => a.key - b.key)
+        .map(({ item }) => item)
 }
 
 function questionItemToThings(
@@ -387,6 +399,7 @@ function questionItemToThings(
         .addStringNoLocale(PMU.text, item.text)
 
     if (item.id) itemBuilder = itemBuilder.addStringNoLocale(PMU.questionItemId, item.id)
+    if (item.order !== undefined) itemBuilder = itemBuilder.addInteger(PMU.order, item.order)
     if (item.communal !== undefined) itemBuilder = itemBuilder.addBoolean(PMU.communal, item.communal)
     // perNight is stored as a decimal to allow rates like 0.5 per night
     if (item.perNight !== undefined) itemBuilder = itemBuilder.addDecimal(PMU.perNight, item.perNight)
@@ -558,6 +571,7 @@ function thingToQuestionItem(dataset: SolidDataset, url: string): Item | null {
     const text = getStringNoLocale(thing, PMU.text) ?? ''
     const id = getStringNoLocale(thing, PMU.questionItemId) ?? undefined
     const communal = getBoolean(thing, PMU.communal)
+    const order = getInteger(thing, PMU.order)
     const perNight = getDecimal(thing, PMU.perNight)
     const perNights = getInteger(thing, PMU.perNights)
     const maxQuantity = getInteger(thing, PMU.maxQuantity)
@@ -594,6 +608,7 @@ function thingToQuestionItem(dataset: SolidDataset, url: string): Item | null {
         ...(perNights !== null ? { perNights } : {}),
         ...(maxQuantity !== null ? { maxQuantity } : {}),
         ...(ageRanges.length > 0 ? { ageRanges } : {}),
+        ...(order !== null ? { order } : {}),
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(deletedAt !== undefined ? { deletedAt } : {}),
     }

@@ -23,6 +23,7 @@ export interface PackingListItem {
     communal?: boolean // packed once for the whole group; absent = per-person
     quantity?: number  // how many to pack; absent = unspecified (1)
     category?: string
+    order?: number     // position in the question set at generation time; absent on legacy items (sorted alphabetically)
     reviewed?: boolean
     lastModified?: string // ISO timestamp; absent on legacy items
 }
