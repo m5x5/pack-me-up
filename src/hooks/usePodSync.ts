@@ -129,12 +129,25 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
   } = options;
 
   const { session, isLoggedIn } = useSolidPod();
-  const [lastSync, setLastSync] = useState<Date | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // lastSync/isSyncing are kept in refs, not state: background polling runs
+  // every few seconds and updating state here would re-render the whole
+  // consuming page on every poll even when nothing changed. The returned
+  // values are snapshots from the last render.
+  const lastSyncRef = useRef<Date | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
 
   // Use ref to prevent concurrent syncs
   const isSyncingRef = useRef(false);
+
+  // Only touch error state when the value actually changes, so a steady
+  // error (or steady success) doesn't re-render consumers on every poll.
+  const errorRef = useRef<string | null>(null);
+  const setError = useCallback((value: string | null) => {
+    if (errorRef.current !== value) {
+      errorRef.current = value;
+      setErrorState(value);
+    }
+  }, []);
 
   // Refs for callbacks so syncFromPod/saveToPod always call the latest version,
   // even when captured by a stale closure in the polling useEffect.
@@ -156,11 +169,20 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathConfig.container, pathConfig.filename, pathConfig.resourceId, pathConfig.podUrl]);
 
+  // Read pathConfig/rdf through refs inside the callbacks below so their
+  // identity only depends on the stable pathConfigKey — callers pass fresh
+  // object literals on every render, and letting those churn saveToPod/
+  // syncFromPod identity would cascade re-renders through consumers.
+  const pathConfigRef = useRef(pathConfig);
+  pathConfigRef.current = pathConfig;
+  const rdfRef = useRef(rdf);
+  rdfRef.current = rdf;
+
   /**
    * Resolve the full file URL from the path configuration
    */
   const getFileUrl = useCallback((podUrl: string): string | null => {
-    const { container, filename, resourceId } = pathConfig;
+    const { container, filename, resourceId } = pathConfigRef.current;
 
     // If filename is a function, we need a resourceId
     if (typeof filename === 'function') {
@@ -179,23 +201,23 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
       // Just filename, append to container
       return `${podUrl}${container}${filename}`;
     }
-  }, [pathConfig]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathConfigKey]);
 
   /**
    * Load data from the Pod
    */
   const syncFromPod = useCallback(async () => {
-    const isForeignPod = !!pathConfig.podUrl
+    const isForeignPod = !!pathConfigRef.current.podUrl
     if (!enabled || (!isLoggedIn && !isForeignPod) || isSyncingRef.current) {
       return;
     }
 
     isSyncingRef.current = true;
-    setIsSyncing(true);
     setError(null);
 
     try {
-      const podUrl = pathConfig.podUrl ?? await getPrimaryPodUrl(session);
+      const podUrl = pathConfigRef.current.podUrl ?? await getPrimaryPodUrl(session);
 
       if (!podUrl) {
         throw new Error('No pod URL found');
@@ -208,9 +230,9 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
         return;
       }
 
-      const data = await loadRdfFromPod<T>(session ?? null, fileUrl, rdf.deserialize);
+      const data = await loadRdfFromPod<T>(session ?? null, fileUrl, rdfRef.current.deserialize);
 
-      setLastSync(new Date());
+      lastSyncRef.current = new Date();
 
       if (onSyncSuccessRef.current) {
         onSyncSuccessRef.current(data);
@@ -219,7 +241,7 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
       const statusCode = typeof err === 'object' && err !== null ? (err as { statusCode?: number }).statusCode : undefined
       // 404 on own pod = file not yet created (expected) → silent
       // 404 on foreign pod (pathConfig.podUrl set) = file missing or access denied → report
-      const isSilentMiss = statusCode === 404 && !pathConfig.podUrl
+      const isSilentMiss = statusCode === 404 && !pathConfigRef.current.podUrl
       if (!isSilentMiss) {
         // Authentication errors use their own message
         const errorMessage = err instanceof AuthenticationError
@@ -232,16 +254,15 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
         }
       }
     } finally {
-      setIsSyncing(false);
       isSyncingRef.current = false;
     }
-  }, [enabled, isLoggedIn, session, getFileUrl, rdf]);
+  }, [enabled, isLoggedIn, session, getFileUrl, setError]);
 
   /**
    * Save data to the Pod
    */
   const saveToPod = useCallback(async (data: T): Promise<boolean> => {
-    const isForeignPod = !!pathConfig.podUrl
+    const isForeignPod = !!pathConfigRef.current.podUrl
     if (!enabled || (!isLoggedIn && !isForeignPod)) {
       return false;
     }
@@ -249,7 +270,7 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
     setError(null);
 
     try {
-      const podUrl = pathConfig.podUrl ?? await getPrimaryPodUrl(session!);
+      const podUrl = pathConfigRef.current.podUrl ?? await getPrimaryPodUrl(session!);
 
       if (!podUrl) {
         throw new Error('No pod URL found');
@@ -265,10 +286,10 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
         session: isLoggedIn ? session! : null,
         fileUrl,
         data,
-        serializer: rdf.serialize,
+        serializer: rdfRef.current.serialize,
       });
 
-      setLastSync(new Date());
+      lastSyncRef.current = new Date();
 
       if (onSaveSuccessRef.current) {
         onSaveSuccessRef.current();
@@ -288,7 +309,7 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
 
       return false;
     }
-  }, [enabled, isLoggedIn, session, getFileUrl, rdf]);
+  }, [enabled, isLoggedIn, session, getFileUrl, setError]);
 
   /**
    * Sync on mount (and/or) set up polling interval.
@@ -335,8 +356,8 @@ export function usePodSync<T>(options: PodSyncOptions<T>): PodSyncState<T> {
   }, [enabled, isLoggedIn, syncOnMount, pollInterval, pathConfigKey]);
 
   return {
-    lastSync,
-    isSyncing,
+    lastSync: lastSyncRef.current,
+    isSyncing: isSyncingRef.current,
     error,
     saveToPod,
     syncFromPod,
