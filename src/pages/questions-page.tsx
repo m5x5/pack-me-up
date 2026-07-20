@@ -149,11 +149,13 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-function OptionSection({ option, people, onEdit, onDelete }: {
+// Memoized with id-based handlers so collapsing/expanding the parent question
+// doesn't re-render every option's subtree.
+const OptionSection = memo(function OptionSection({ option, people, onEdit, onDelete }: {
     option: Option
     people: Person[]
-    onEdit: () => void
-    onDelete: () => void
+    onEdit: (option: Option) => void
+    onDelete: (optionId: string) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -161,6 +163,8 @@ function OptionSection({ option, people, onEdit, onDelete }: {
     // sets), but stay mounted afterwards so re-expanding is instant.
     const hasExpandedRef = useRef(isExpanded)
     if (isExpanded) hasExpandedRef.current = true
+    const handleEdit = () => onEdit(option)
+    const handleDelete = () => onDelete(option.id)
     return (
         <div className="bg-gray-50 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
@@ -184,7 +188,7 @@ function OptionSection({ option, people, onEdit, onDelete }: {
                     {/* Mobile: context menu */}
                     <div className="sm:hidden">
                         <OptionContextMenu
-                            onEdit={onEdit}
+                            onEdit={handleEdit}
                             onDelete={() => setShowDeleteModal(true)}
                         />
                     </div>
@@ -192,7 +196,7 @@ function OptionSection({ option, people, onEdit, onDelete }: {
                     <div className="hidden sm:flex items-center gap-0.5">
                         <button
                             type="button"
-                            onClick={onEdit}
+                            onClick={handleEdit}
                             className="p-1 text-gray-300 hover:text-gray-600 rounded"
                             title="Edit option"
                         >
@@ -222,13 +226,13 @@ function OptionSection({ option, people, onEdit, onDelete }: {
             )}
             {showDeleteModal && (
                 <DeleteConfirmModal
-                    onConfirm={() => { onDelete(); setShowDeleteModal(false) }}
+                    onConfirm={() => { handleDelete(); setShowDeleteModal(false) }}
                     onCancel={() => setShowDeleteModal(false)}
                 />
             )}
         </div>
     )
-}
+})
 
 function DeleteConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
     return (
@@ -356,6 +360,10 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     const handleDelete = () => onDelete(question.id)
     const moveUp = canMoveUp ? () => onMove(question.id, 'up') : undefined
     const moveDown = canMoveDown ? () => onMove(question.id, 'down') : undefined
+    // Stable per-question handlers so the memoized OptionSections don't
+    // re-render when this section toggles expansion.
+    const editOption = useCallback((option: Option) => onEditOption(question.id, option), [onEditOption, question.id])
+    const deleteOption = useCallback((optionId: string) => onDeleteOption(question.id, optionId), [onDeleteOption, question.id])
     return (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="flex items-stretch">
@@ -439,8 +447,8 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             key={option.id}
                             option={option}
                             people={people}
-                            onEdit={() => onEditOption(question.id, option)}
-                            onDelete={() => onDeleteOption(question.id, option.id)}
+                            onEdit={editOption}
+                            onDelete={deleteOption}
                         />
                     ))}
                     <button
@@ -464,7 +472,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
 
 const AlwaysSection = memo(function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Person[]; onEdit: () => void }) {
     const [isExpanded, setIsExpanded] = useState(false)
-    // Same lazy-mount-then-keep pattern as the sections above.
+    // Same lazy-mount-then-keep pattern as OptionSection.
     const hasExpandedRef = useRef(isExpanded)
     if (isExpanded) hasExpandedRef.current = true
     return (
