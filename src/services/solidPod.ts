@@ -416,7 +416,10 @@ async function ensureContainerExists(session: Session, containerUrl: string): Pr
     try {
         await getSolidDataset(containerUrl, { fetch: session.fetch })
     } catch (err) {
-        if (getStatusCode(err) !== 404) throw err
+        const status = getStatusCode(err)
+        // No read access — assume the container exists and let the write reveal any real problem
+        if (status === 401 || status === 403) return
+        if (status !== 404) throw err
         try {
             await createContainerAt(containerUrl, { fetch: session.fetch })
         } catch (createErr) {
@@ -566,6 +569,7 @@ export async function deleteFileFromPod(session: Session, fileUrl: string): Prom
         if (isAuthenticationError(error)) {
             handlePodError(error)
         }
+        if (getStatusCode(error) === 404) return
         throw error
     }
 }
@@ -626,6 +630,10 @@ export async function saveRdfToPod<T>(options: SaveRdfToPodOptions<T>): Promise<
     const { session, fileUrl, data, serializer } = options
     const fetchFn = session?.fetch ?? globalThis.fetch
     try {
+        if (session) {
+            const containerUrl = fileUrl.substring(0, fileUrl.lastIndexOf('/') + 1)
+            await ensureContainerExists(session, containerUrl)
+        }
         const newDataset = serializer(data, fileUrl)
         const turtleContent = await solidDatasetAsTurtle(newDataset)
         const blob = new Blob([turtleContent], { type: 'text/turtle' })
