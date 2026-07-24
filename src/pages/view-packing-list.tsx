@@ -689,9 +689,18 @@ export function ViewPackingList() {
     const guestNames = new Set((packingList.guests ?? []).map(g => g.name))
     const guestIdByName = new Map((packingList.guests ?? []).map(g => [g.name, g.id]))
 
+    // A section is worth celebrating once every item in it is packed
+    const isSectionComplete = (stats?: { packed: number; total: number }) =>
+        stats !== undefined && stats.total > 0 && stats.packed === stats.total
+
     // Build grouped item map, seeding guest names so their sections exist even when empty
     const groupedItems: Record<string, PackingListItem[]> = {}
     for (const guest of (packingList.guests ?? [])) groupedItems[guest.name] = []
+    // Seed fully packed people too, so finishing someone off leaves a celebration
+    // behind rather than silently removing their card along with their last item.
+    for (const [name, stats] of Object.entries(sectionStats)) {
+        if (name !== SHARED_SECTION_KEY && isSectionComplete(stats)) groupedItems[name] ??= []
+    }
     for (const item of filteredItems) {
         if (item.communal) continue
         if (!groupedItems[item.personName]) groupedItems[item.personName] = []
@@ -704,7 +713,7 @@ export function ViewPackingList() {
     // packed and packed items are hidden.
     const hasCommunalItems = packingList.items.some(i => i.communal)
     const visibleCommunalItems = filteredItems.filter(i => i.communal)
-    const sharedSections: ListSection[] = (visibleCommunalItems.length > 0 || showSharedSection)
+    const sharedSections: ListSection[] = (visibleCommunalItems.length > 0 || showSharedSection || isSectionComplete(sectionStats[SHARED_SECTION_KEY]))
         ? [{
             key: SHARED_SECTION_KEY,
             title: 'Shared Items',
@@ -731,8 +740,20 @@ export function ViewPackingList() {
             }))
         listSections = [...sharedSections, ...regularSections, ...guestSections]
     } else {
-        const categorySections: ListSection[] = groupByCategory(filteredItems.filter(i => !i.communal))
-            .map(({ label, items }) => ({ key: label, title: label, name: '', items, isCategory: true }))
+        const visibleByCategory = new Map(
+            groupByCategory(filteredItems.filter(i => !i.communal)).map(({ label, items }) => [label, items])
+        )
+        // Categories come from every item, not just the visible ones, so a fully
+        // packed category keeps its celebratory card instead of disappearing.
+        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal))
+            .filter(({ label }) => visibleByCategory.has(label) || isSectionComplete(categoryStats[label]))
+            .map(({ label }) => ({
+                key: label,
+                title: label,
+                name: '',
+                items: visibleByCategory.get(label) ?? [],
+                isCategory: true,
+            }))
         listSections = [...sharedSections, ...categorySections]
     }
 
@@ -925,12 +946,14 @@ export function ViewPackingList() {
                                 : (sectionStats[sectionKey] ?? { packed: 0, total: 0 })
                             const isGuest = guestId !== undefined
                             const isShared = section.communal === true
+                            const isComplete = isSectionComplete(stats)
+                            const completeLabel = isShared ? 'shared items' : isCategorySection ? title : section.name
                             const collapseLabelTarget = isShared ? 'the shared items' : isCategorySection ? title : `${section.name}'s`
                             const innerGroups = (isShared || !isCategorySection)
                                 ? groupByCategory(items)
                                 : groupByPerson(items)
                             return (
-                            <div key={sectionKey} className={`border rounded-lg p-4 bg-white shadow-sm mb-4 ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`} style={{ breakInside: 'avoid' }}>
+                            <div key={sectionKey} className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${isComplete ? 'border-emerald-300 bg-emerald-50' : `bg-white ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`}`} style={{ breakInside: 'avoid' }}>
                                 <div className="mb-4 pb-2 border-b border-gray-200">
                                     <div className="flex items-center gap-1 min-h-[2rem]">
                                         {isGuest && renamingGuestId === guestId ? (
@@ -960,6 +983,14 @@ export function ViewPackingList() {
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 <span className="ml-1 text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
                                             </button>
+                                        )}
+                                        {isComplete && (
+                                            <span
+                                                aria-label={`All packed for ${completeLabel}`}
+                                                className="animate-pop-in text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0"
+                                            >
+                                                🎉 All packed!
+                                            </span>
                                         )}
                                         {isShared && (
                                             <span className="text-xs font-medium text-blue-700 bg-blue-100 rounded-full px-2 py-0.5 shrink-0" title="Packed once for the whole group">
@@ -1020,6 +1051,11 @@ export function ViewPackingList() {
                                                 </button>
                                             </div>
                                         </div>
+                                    )}
+                                    {isComplete && items.length === 0 && (
+                                        <p className="text-sm font-medium text-emerald-700">
+                                            Nothing left to pack 🎒
+                                        </p>
                                     )}
                                     {innerGroups.map(({ label, items: catItems }) => {
                                         const categoryKey = `${sectionKey}::${label}`
