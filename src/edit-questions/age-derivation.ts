@@ -6,7 +6,7 @@ import { AgeRange, Person } from './types'
  * brackets flip exactly on birthdays; a Feb 29 birthday counts from Mar 1 in
  * non-leap years.
  */
-function ageInYears(dateOfBirth: string, today: Date): number | null {
+export function ageInYears(dateOfBirth: string, today: Date): number | null {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth.trim())
     if (!match) return null
     const [, y, m, d] = match.map(Number)

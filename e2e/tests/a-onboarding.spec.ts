@@ -22,6 +22,9 @@ test.describe('A – Onboarding & Wizard', () => {
     await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
     // Success modal (use role heading to distinguish from toast)
     await waitForWizardSuccess(page)
+    // The reveal names the actual person, and the summary states what was built
+    await expect(page.getByText(/Thinking about Me/i)).toBeVisible()
+    await expect(page.getByText(/\d+ questions and \d+ items across 1 person/i)).toBeVisible({ timeout: 5_000 })
     await page.getByRole('button', { name: /Create My First Packing List/i }).click()
     // Pod prompt appears for non-logged-in users
     await expect(page.getByText("Great! Your Questions Are Ready")).toBeVisible({ timeout: 5_000 })

@@ -18,6 +18,8 @@ export function useWizardGeneration() {
     const { db } = useDatabase()
     const [isLoading, setIsLoading] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
+    // The set we just built, so the success screen can show what was generated
+    const [generatedSet, setGeneratedSet] = useState<PackingListQuestionSet | null>(null)
 
     const { saveToPod } = usePodSync<PackingListQuestionSet>({
         pathConfig: {
@@ -54,6 +56,7 @@ export function useWizardGeneration() {
     const generateAndSave = async (data: WizardFormData) => {
         setIsLoading(true)
         setIsSuccess(false)
+        setGeneratedSet(null)
         try {
             const questionSet = generateQuestionSet(data)
 
@@ -63,6 +66,7 @@ export function useWizardGeneration() {
             )
 
             showToast('Packing list questions generated successfully!', 'success')
+            setGeneratedSet(questionSet)
             setIsSuccess(true)
         } catch (err) {
             const details = reportError(err, 'Error generating question set')
@@ -75,6 +79,7 @@ export function useWizardGeneration() {
     return {
         isLoading,
         isSuccess,
+        generatedSet,
         generateAndSave
     }
 }
