@@ -6,6 +6,7 @@ import { loadMultipleRdfFromPod, POD_CONTAINERS } from '../services/solidPod'
 import { datasetToPackingList } from '../services/rdfSerialization'
 import { LoadingState } from '../components/LoadingState'
 import type { PackingList } from '../create-packing-list/types'
+import { formatTripDates } from '../create-packing-list/tripDetails'
 
 export function ForeignPackingListsPage() {
     const foreignPodCtx = useForeignPod()
@@ -74,6 +75,7 @@ export function ForeignPackingListsPage() {
                         const percent = total > 0 ? Math.round((packed / total) * 100) : 0
                         const displayWidth = packed === 0 ? 0 : Math.max(percent, 4)
                         const gradient = gradients[index % gradients.length]
+                        const tripDates = formatTripDates(list.startDate, list.endDate)
                         return (
                             <div
                                 key={list.id}
@@ -81,9 +83,18 @@ export function ForeignPackingListsPage() {
                                 className={`bg-gradient-to-br ${gradient} rounded-2xl shadow-soft border-2 p-6 hover:shadow-glow-primary hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
                             >
                                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-3">
-                                    <h3 className="text-xl font-bold text-gray-900">✈️ {list.name}</h3>
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                                        ✈️ {list.name}
+                                        {list.destination && (
+                                            <span className="text-xs font-medium bg-white/60 text-gray-700 border border-gray-200 px-2 py-0.5 rounded-full">
+                                                📍 {list.destination}
+                                            </span>
+                                        )}
+                                    </h3>
                                     <span className="text-sm font-medium text-gray-600 bg-white/60 px-3 py-1 rounded-lg self-start sm:self-auto">
-                                        📅 {new Date(list.createdAt).toLocaleDateString()}
+                                        {tripDates
+                                            ? `📅 ${tripDates}`
+                                            : `📅 Created ${new Date(list.createdAt).toLocaleDateString()}`}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-4">

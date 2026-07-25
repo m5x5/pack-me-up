@@ -12,6 +12,7 @@ import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
 import { usePodErrorHandler } from '../hooks/usePodErrorHandler'
 import { generateUUID } from '../utils/uuid'
+import { formatTripDates } from '../create-packing-list/tripDetails'
 
 type SharingStatus = 'public' | 'shared' | 'private'
 
@@ -204,6 +205,10 @@ export function PackingLists() {
                         ]
                         const gradient = gradients[index % gradients.length]
 
+                        // Trip dates are what the traveller cares about; the
+                        // creation date is only worth showing when there are none.
+                        const tripDates = formatTripDates(list.startDate, list.endDate)
+
                         return (
                             <div
                                 key={list.id}
@@ -217,6 +222,7 @@ export function PackingLists() {
                                 className={`bg-gradient-to-br ${gradient} rounded-2xl shadow-soft border-2 p-6 hover:shadow-glow-primary hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
                             >
                                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-3">
+                                    <div className="min-w-0">
                                     <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                                         ✈️ {list.name}
                                         {list.sharedFromPodUrl ? (
@@ -234,9 +240,17 @@ export function PackingLists() {
                                             </>
                                         )}
                                     </h3>
+                                    {/* On its own line so a long destination never
+                                        pushes the actions onto a second row */}
+                                    {list.destination && (
+                                        <p className="mt-1 text-sm text-gray-600 truncate">📍 {list.destination}</p>
+                                    )}
+                                    </div>
                                     <div data-testid="list-actions" className="flex items-center gap-2 flex-wrap">
                                         <span className="text-sm font-medium text-gray-600 bg-white/60 px-3 py-1 rounded-lg">
-                                            📅 {new Date(list.createdAt).toLocaleDateString()}
+                                            {tripDates
+                                                ? `📅 ${tripDates}`
+                                                : `📅 Created ${new Date(list.createdAt).toLocaleDateString()}`}
                                         </span>
                                         <button
                                             onClick={(e) => requestRenamePackingList(list.id, list.name, e)}

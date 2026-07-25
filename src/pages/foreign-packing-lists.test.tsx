@@ -71,3 +71,58 @@ describe('ForeignPackingListsPage loading state', () => {
         expect(screen.queryByRole('status')).toBeNull()
     })
 })
+
+describe('ForeignPackingListsPage trip destination and dates', () => {
+    const localDate = (y: number, m: number, d: number) => new Date(y, m, d).toLocaleDateString()
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: {} as Session,
+            webId: 'https://me.example/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseForeignPod.mockReturnValue({ foreignPodUrl: 'https://friend.example/' } as ReturnType<typeof useForeignPod>)
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    it('shows the destination and trip dates on a shared list', async () => {
+        mockLoadMultipleRdfFromPod.mockResolvedValue({
+            data: [{
+                id: 'list-1',
+                name: 'Summer Holiday',
+                createdAt: '2026-01-01T00:00:00Z',
+                destination: 'Lisbon, Portugal',
+                startDate: '2026-07-12',
+                endDate: '2026-07-19',
+                items: [],
+            }],
+            errors: [],
+        })
+
+        renderPage()
+
+        await screen.findByText(/Summer Holiday/)
+        expect(screen.getByText(/Lisbon, Portugal/)).toBeTruthy()
+        expect(screen.getByText(new RegExp(localDate(2026, 6, 12).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy()
+        expect(screen.queryByText(/📅 Created/)).toBeNull()
+    })
+
+    it('falls back to a labelled creation date when a shared list has no trip dates', async () => {
+        mockLoadMultipleRdfFromPod.mockResolvedValue({
+            data: [{ id: 'list-1', name: 'Summer Holiday', createdAt: '2026-01-01T00:00:00Z', items: [] }],
+            errors: [],
+        })
+
+        renderPage()
+
+        await screen.findByText(/Summer Holiday/)
+        expect(screen.getByText(/📅 Created/)).toBeTruthy()
+    })
+})

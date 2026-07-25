@@ -1879,3 +1879,75 @@ describe('ViewPackingList completion', () => {
         await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
     })
 })
+
+describe('ViewPackingList trip destination and dates', () => {
+    const localDate = (y: number, m: number, d: number) => new Date(y, m, d).toLocaleDateString()
+
+    function makeTripDb(overrides: Record<string, unknown>) {
+        return {
+            getPackingList: vi.fn().mockResolvedValue({ ...testPackingList, ...overrides }),
+            savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+            getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            saveSharedListsWithMe: vi.fn().mockResolvedValue({ rev: '1' }),
+        }
+    }
+
+    beforeEach(() => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('shows the destination and trip dates under the list name', async () => {
+        mockUseDatabase.mockReturnValue({
+            db: makeTripDb({
+                destination: 'Lisbon, Portugal',
+                startDate: '2026-07-12',
+                endDate: '2026-07-19',
+            }) as unknown as PackingAppDatabase,
+        })
+
+        renderComponent()
+
+        const details = await screen.findByTestId('trip-details')
+        expect(details.textContent).toContain('Lisbon, Portugal')
+        expect(details.textContent).toContain(localDate(2026, 6, 12))
+        expect(details.textContent).toContain(localDate(2026, 6, 19))
+    })
+
+    it('shows the destination on its own when there are no trip dates', async () => {
+        mockUseDatabase.mockReturnValue({
+            db: makeTripDb({ destination: 'Lisbon, Portugal' }) as unknown as PackingAppDatabase,
+        })
+
+        renderComponent()
+
+        const details = await screen.findByTestId('trip-details')
+        expect(details.textContent).toContain('Lisbon, Portugal')
+    })
+
+    it('shows no trip details at all when the list has none', async () => {
+        mockUseDatabase.mockReturnValue({ db: makeTripDb({}) as unknown as PackingAppDatabase })
+
+        renderComponent()
+
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+        expect(screen.queryByTestId('trip-details')).toBeNull()
+    })
+})

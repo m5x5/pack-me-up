@@ -43,6 +43,18 @@ export function packingListToDataset(list: PackingList, datasetUrl: string): Sol
         rootBuilder = rootBuilder.addInteger(PMU.nights, list.nights)
     }
 
+    if (list.destination) {
+        rootBuilder = rootBuilder.addStringNoLocale(PMU.destination, list.destination)
+    }
+
+    if (list.startDate) {
+        rootBuilder = rootBuilder.addStringNoLocale(PMU.tripStartDate, list.startDate)
+    }
+
+    if (list.endDate) {
+        rootBuilder = rootBuilder.addStringNoLocale(PMU.tripEndDate, list.endDate)
+    }
+
     for (const item of list.items) {
         const itemUrl = `${datasetUrl}#item-${item.id}`
         rootBuilder = rootBuilder.addUrl(PMU.hasItem, itemUrl)
@@ -92,6 +104,9 @@ export function datasetToPackingList(dataset: SolidDataset, datasetUrl: string):
 
     const id = datasetUrl.split('/').pop()?.replace('.ttl', '') ?? datasetUrl
     const nights = getInteger(rootThing, PMU.nights)
+    const destination = getStringNoLocale(rootThing, PMU.destination) ?? undefined
+    const startDate = getStringNoLocale(rootThing, PMU.tripStartDate) ?? undefined
+    const endDate = getStringNoLocale(rootThing, PMU.tripEndDate) ?? undefined
 
     const items = getUrlAll(rootThing, PMU.hasItem)
         .map(url => thingToPackingListItem(getThing(dataset, url), url))
@@ -129,6 +144,9 @@ export function datasetToPackingList(dataset: SolidDataset, datasetUrl: string):
         createdAt,
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(nights !== null ? { nights } : {}),
+        ...(destination !== undefined ? { destination } : {}),
+        ...(startDate !== undefined ? { startDate } : {}),
+        ...(endDate !== undefined ? { endDate } : {}),
         items,
         deletedItems,
         ...(guests.length > 0 ? { guests } : {}),
