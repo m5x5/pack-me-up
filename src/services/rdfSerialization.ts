@@ -455,6 +455,9 @@ function questionItemToThings(
 
     if (item.id) itemBuilder = itemBuilder.addStringNoLocale(PMU.questionItemId, item.id)
     if (item.order !== undefined) itemBuilder = itemBuilder.addInteger(PMU.order, item.order)
+    // Same predicate as PackingListItem.category — it's the same relation, and
+    // the item's category flows straight through to the generated list item.
+    if (item.category !== undefined) itemBuilder = itemBuilder.addStringNoLocale(PMU.category, item.category)
     if (item.communal !== undefined) itemBuilder = itemBuilder.addBoolean(PMU.communal, item.communal)
     // perNight is stored as a decimal to allow rates like 0.5 per night
     if (item.perNight !== undefined) itemBuilder = itemBuilder.addDecimal(PMU.perNight, item.perNight)
@@ -627,6 +630,7 @@ function thingToQuestionItem(dataset: SolidDataset, url: string): Item | null {
     const id = getStringNoLocale(thing, PMU.questionItemId) ?? undefined
     const communal = getBoolean(thing, PMU.communal)
     const order = getInteger(thing, PMU.order)
+    const category = getStringNoLocale(thing, PMU.category) ?? undefined
     const perNight = getDecimal(thing, PMU.perNight)
     const perNights = getInteger(thing, PMU.perNights)
     const maxQuantity = getInteger(thing, PMU.maxQuantity)
@@ -664,6 +668,7 @@ function thingToQuestionItem(dataset: SolidDataset, url: string): Item | null {
         ...(maxQuantity !== null ? { maxQuantity } : {}),
         ...(ageRanges.length > 0 ? { ageRanges } : {}),
         ...(order !== null ? { order } : {}),
+        ...(category !== undefined ? { category } : {}),
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(deletedAt !== undefined ? { deletedAt } : {}),
     }

@@ -25,6 +25,7 @@ import { MILESTONE_MESSAGES, resolveMilestone } from './packing-milestones'
 import { formatTripDates } from '../create-packing-list/tripDetails'
 import { tapFeedback } from '../utils/haptics'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
+import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 
 type FormData = {
     items: Record<string, boolean>
@@ -74,34 +75,22 @@ interface ListSection {
 // Generated items carry an `order` stamped from the question set; sort by it so
 // the list mirrors how the user arranged their questions. Items without one
 // (legacy lists, custom additions) fall back to alphabetical at the end.
+const PACKING_ITEM_ACCESSORS: CategoryAccessors<PackingListItem> = {
+    category: item => item.category,
+    order: item => item.order,
+    text: item => item.itemText,
+}
+
 function sortByItemOrder(items: PackingListItem[]): PackingListItem[] {
-    return items.sort((a, b) =>
-        ((a.order ?? Infinity) - (b.order ?? Infinity)) || a.itemText.localeCompare(b.itemText)
-    )
+    return sortByOrder(items, PACKING_ITEM_ACCESSORS)
 }
 
 export function groupByCategory(items: PackingListItem[]) {
-    const map = new Map<string, PackingListItem[]>()
-    for (const item of items) {
-        const cat = item.category ?? 'Other'
-        if (!map.has(cat)) map.set(cat, [])
-        map.get(cat)!.push(item)
-    }
-    // Categories follow their earliest item; ties (all-legacy) stay alphabetical
-    const minOrder = (catItems: PackingListItem[]) =>
-        Math.min(...catItems.map(i => i.order ?? Infinity))
-    return [...map.entries()]
-        .sort(([a, aItems], [b, bItems]) => {
-            if (a === 'Essentials') return -1
-            if (b === 'Essentials') return 1
-            if (a === 'Other') return 1
-            if (b === 'Other') return -1
-            return (minOrder(aItems) - minOrder(bItems)) || a.localeCompare(b)
-        })
-        .map(([category, catItems]) => ({
-            label: category,
-            items: sortByItemOrder(catItems),
-        }))
+    return groupItemsByCategory(items, PACKING_ITEM_ACCESSORS, {
+        uncategorisedLabel: 'Other',
+        pinFirst: 'Essentials',
+        pinLast: 'Other',
+    })
 }
 
 export function groupByPerson(items: PackingListItem[]) {

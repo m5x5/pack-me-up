@@ -67,6 +67,12 @@ export const PersonSelectionSchema = z.object({
 // are never touched by those suggestions.
 // `order` is optional and additive: items without it sort after ordered ones
 // in their original position, so legacy data keeps its array order.
+// `category` is optional and additive: it names the section this item belongs
+// to on the generated packing list, letting one long item list (always-needed,
+// or a single option's items) split into several groups. Stamped on every item
+// in a section rather than marking a boundary, so it survives per-item LWW
+// merges and old clients intact — see the note in generatePackingListItems.
+// Absent means "fall back to the option/question text" exactly as before.
 // Quantity-suggestion fields, all optional and additive: the item's rate is
 // "pack `perNight` per `perNights` nights" (perNights defaults to 1, so
 // perNight alone means a per-night amount, e.g. socks 1/night; perNights: 4
@@ -80,6 +86,7 @@ export const ItemSchema = z.object({
   communal: z.boolean().optional(),
   ageRanges: z.array(AgeRangeSchema).optional(),
   order: z.number().optional(),
+  category: z.string().optional(),
   perNight: z.number().optional(),
   perNights: z.number().optional(),
   maxQuantity: z.number().optional(),

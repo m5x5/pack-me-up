@@ -1,11 +1,23 @@
 import { Question, Person, Item } from '../edit-questions/types'
+import { ALWAYS_NEEDED_CATEGORY, defaultCategoryFor } from '../edit-questions/item-sections'
 import { PackingListItem } from './types'
 
 interface ItemContext {
     questionId: string
     optionId: string
+    // Category to use when the item doesn't carry its own — the option text,
+    // the question text, or 'Essentials' for always-needed items.
     category?: string
     nights?: number
+}
+
+// An item's own category wins over the one derived from its question/option.
+// The category is stamped on each item rather than marking a section boundary,
+// so it is a purely local property: per-item LWW merges (mergeQuestionSets) and
+// old clients that drop the field can only ever misplace the single item they
+// touched, never scramble a whole section.
+function categoryFor(item: Item, context: ItemContext): string | undefined {
+    return item.category ?? context.category
 }
 
 // The rate is "perNight per perNights nights" (perNights defaults to 1):
@@ -43,7 +55,7 @@ function generateItemInstances(
             packed: false,
             communal: true,
             ...(quantity !== undefined ? { quantity } : {}),
-            category: context.category,
+            category: categoryFor(item, context),
         }]
     }
 
@@ -61,7 +73,7 @@ function generateItemInstances(
             optionId: context.optionId,
             packed: false,
             ...(quantity !== undefined ? { quantity } : {}),
-            category: context.category,
+            category: categoryFor(item, context),
         } satisfies PackingListItem
     })
 }
@@ -92,9 +104,7 @@ export function generateQuestionBasedItems(
                         generateItemInstances(item, people, selectedPeopleIds, {
                             questionId: question.id,
                             optionId: selectedOption.id,
-                            category: question.questionType === 'multiple-choice'
-                                ? selectedOption.text
-                                : question.text,
+                            category: defaultCategoryFor(question, selectedOption),
                             nights,
                         })
                     )
@@ -112,7 +122,7 @@ export function generateAlwaysNeededItems(
         generateItemInstances(item, people, selectedPeopleIds, {
             questionId: 'always-needed',
             optionId: 'always-needed',
-            category: 'Essentials',
+            category: ALWAYS_NEEDED_CATEGORY,
             nights,
         })
     )
