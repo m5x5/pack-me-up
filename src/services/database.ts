@@ -20,7 +20,7 @@ export interface QuestionSetDocument extends BaseDocument {
 
 export interface PackingListDocument extends BaseDocument {
     docType: 'packing-list'
-    data: Omit<PackingList, 'id'>
+    data: Omit<PackingList, 'id' | '_rev'>
 }
 
 export interface SharedWithMeDocument extends BaseDocument {
@@ -43,6 +43,30 @@ export const LOCAL_NAMESPACE = 'local'
 
 function hasName(err: unknown): err is { name: string } {
     return typeof err === 'object' && err !== null && 'name' in err
+}
+
+/**
+ * Builds a document's `data` payload from an entity by *omitting* the keys the
+ * document itself owns (`id` / `_id` / `_rev`), plus any explicitly-undefined
+ * values so absent fields stay absent in PouchDB.
+ *
+ * Deliberately an omit-list rather than an allowlist: an allowlist has to be
+ * remembered every time a field is added to the type, and forgetting it drops
+ * the field silently, with no type error. That is exactly what happened to
+ * `nights`, `questionAnswers` and `selectedPeopleIds` (#260). Derived this way,
+ * new fields are persisted by default.
+ */
+function toDocumentData<T extends object, K extends keyof T & string>(
+    entity: T,
+    omitKeys: readonly K[]
+): Omit<T, K> {
+    const data: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(entity)) {
+        if ((omitKeys as readonly string[]).includes(key)) continue
+        if (value === undefined) continue
+        data[key] = value
+    }
+    return data as Omit<T, K>
 }
 
 export class PackingAppDatabase {
@@ -91,9 +115,9 @@ export class PackingAppDatabase {
                 throw new Error('Invalid document type for question set')
             }
             return {
+                ...doc.data,
                 _id: '1',
                 _rev: doc._rev,
-                ...doc.data
             }
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
@@ -131,16 +155,7 @@ export class PackingAppDatabase {
                     docType: 'question-set',
                     createdAt: existingDoc?.createdAt || now,
                     updatedAt: now,
-                    data: {
-                        people: questionSet.people,
-                        alwaysNeededItems: questionSet.alwaysNeededItems,
-                        questions: questionSet.questions,
-                        // Persisted so the "new template suggestions" prompt can
-                        // tell whether this set predates the latest template.
-                        ...(questionSet.templateVersion !== undefined
-                            ? { templateVersion: questionSet.templateVersion }
-                            : {}),
-                    }
+                    data: toDocumentData(questionSet, ['_id', '_rev'])
                 }
 
                 const result = await this.db.put(docToSave)
@@ -163,9 +178,9 @@ export class PackingAppDatabase {
                 throw new Error('Invalid document type for packing list')
             }
             return {
+                ...doc.data,
                 id,
                 _rev: doc._rev,
-                ...doc.data
             }
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
@@ -203,19 +218,7 @@ export class PackingAppDatabase {
                     docType: 'packing-list',
                     createdAt: existingDoc?.createdAt || now,
                     updatedAt: now,
-                    data: {
-                        name: packingList.name,
-                        createdAt: packingList.createdAt,
-                        lastModified: packingList.lastModified,
-                        sharedFromPodUrl: packingList.sharedFromPodUrl,
-                        ownerWebId: packingList.ownerWebId,
-                        destination: packingList.destination,
-                        startDate: packingList.startDate,
-                        endDate: packingList.endDate,
-                        items: packingList.items,
-                        deletedItems: packingList.deletedItems,
-                        guests: packingList.guests,
-                    }
+                    data: toDocumentData(packingList, ['id', '_rev'])
                 }
 
                 const result = await this.db.put(docToSave)
@@ -244,20 +247,12 @@ export class PackingAppDatabase {
             for (const row of result.rows) {
                 if (row.doc && row.doc.docType === 'packing-list') {
                     const packingListId = row.id.replace('packing-list:', '')
+                    // Spread the whole stored payload — see toDocumentData — so
+                    // reading can't drop a field the write kept (#260).
                     const packingList: PackingList = {
+                        ...row.doc.data,
                         id: packingListId,
                         _rev: row.doc._rev,
-                        name: row.doc.data.name,
-                        createdAt: row.doc.data.createdAt,
-                        lastModified: row.doc.data.lastModified,
-                        sharedFromPodUrl: row.doc.data.sharedFromPodUrl,
-                        ownerWebId: row.doc.data.ownerWebId,
-                        destination: row.doc.data.destination,
-                        startDate: row.doc.data.startDate,
-                        endDate: row.doc.data.endDate,
-                        items: row.doc.data.items,
-                        deletedItems: row.doc.data.deletedItems,
-                        guests: row.doc.data.guests,
                     }
                     packingLists.push(packingList)
                 }

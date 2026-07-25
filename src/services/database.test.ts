@@ -4,6 +4,7 @@ import PouchDBMemoryAdapter from 'pouchdb-adapter-memory'
 import { PackingAppDatabase } from './database'
 import type { PackingListQuestionSet } from '../edit-questions/types'
 import type { PackingList } from '../create-packing-list/types'
+import { fullyPopulatedPackingList, fullyPopulatedQuestionSet } from '../test-utils/fullyPopulatedFixtures'
 
 // Setup PouchDB with memory adapter for testing
 PouchDB.plugin(PouchDBMemoryAdapter)
@@ -370,6 +371,90 @@ describe('PackingAppDatabase', () => {
 
     it('should throw error when deleting non-existent packing list', async () => {
       await expect(db.deletePackingList('nonexistent')).rejects.toThrow()
+    })
+  })
+
+  // Regression guard for #260: savePackingList built its PouchDB document from a
+  // hand-maintained field allowlist, so `nights`, `questionAnswers` and
+  // `selectedPeopleIds` never reached local storage — no type error, no test
+  // failure. These tests fail if any field of the type is dropped on the way in
+  // or out, and the `Required<...>` fixtures they use fail the type check if a
+  // newly added field is not covered. See src/test-utils/fullyPopulatedFixtures.ts.
+  describe('Field fidelity', () => {
+    it('savePackingList/getPackingList persist every field of PackingList', async () => {
+      await db.savePackingList(fullyPopulatedPackingList)
+
+      const retrieved = await db.getPackingList(fullyPopulatedPackingList.id)
+
+      expect(retrieved).toEqual({ ...fullyPopulatedPackingList, _rev: expect.any(String) })
+    })
+
+    it('getAllPackingLists returns every field of PackingList', async () => {
+      await db.savePackingList(fullyPopulatedPackingList)
+
+      const [retrieved] = await db.getAllPackingLists()
+
+      expect(retrieved).toEqual({ ...fullyPopulatedPackingList, _rev: expect.any(String) })
+    })
+
+    it('saveQuestionSet/getQuestionSet persist every field of PackingListQuestionSet', async () => {
+      await db.saveQuestionSet(fullyPopulatedQuestionSet)
+
+      const retrieved = await db.getQuestionSet()
+
+      expect(retrieved).toEqual({ ...fullyPopulatedQuestionSet, _id: '1', _rev: expect.any(String) })
+    })
+
+    it('persists nights, questionAnswers and selectedPeopleIds (#260)', async () => {
+      const list: PackingList = {
+        id: 'pl-260',
+        name: 'Trip',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        nights: 3,
+        questionAnswers: [{ questionId: 'q1', selectedOptionIds: ['opt1'] }],
+        selectedPeopleIds: ['person-1'],
+        items: [],
+      }
+
+      await db.savePackingList(list)
+
+      const retrieved = await db.getPackingList('pl-260')
+      expect(retrieved.nights).toBe(3)
+      expect(retrieved.questionAnswers).toEqual([{ questionId: 'q1', selectedOptionIds: ['opt1'] }])
+      expect(retrieved.selectedPeopleIds).toEqual(['person-1'])
+
+      const [fromAll] = await db.getAllPackingLists()
+      expect(fromAll.nights).toBe(3)
+      expect(fromAll.questionAnswers).toEqual([{ questionId: 'q1', selectedOptionIds: ['opt1'] }])
+      expect(fromAll.selectedPeopleIds).toEqual(['person-1'])
+    })
+
+    it('does not persist id or _rev inside the document data', async () => {
+      await db.savePackingList(fullyPopulatedPackingList)
+
+      // @ts-expect-error - Accessing private property for testing
+      const rawDoc = await db.db.get(`packing-list:${fullyPopulatedPackingList.id}`)
+      expect(rawDoc.data).not.toHaveProperty('id')
+      expect(rawDoc.data).not.toHaveProperty('_rev')
+
+      await db.saveQuestionSet({ ...fullyPopulatedQuestionSet, _id: '1' })
+      // @ts-expect-error - Accessing private property for testing
+      const rawQsDoc = await db.db.get('question-set:1')
+      expect(rawQsDoc.data).not.toHaveProperty('_id')
+      expect(rawQsDoc.data).not.toHaveProperty('_rev')
+    })
+
+    it('omits fields that are absent rather than storing undefined', async () => {
+      await db.savePackingList({
+        id: 'pl-sparse',
+        name: 'Sparse',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        items: [],
+      })
+
+      // @ts-expect-error - Accessing private property for testing
+      const rawDoc = await db.db.get('packing-list:pl-sparse')
+      expect(Object.keys(rawDoc.data).sort()).toEqual(['createdAt', 'items', 'name'])
     })
   })
 
