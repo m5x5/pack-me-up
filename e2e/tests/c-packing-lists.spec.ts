@@ -30,7 +30,7 @@ test.describe('C – Packing Lists', () => {
   test('C7: reordered question-set items flow through to the view list page', async ({ freshPage: page }) => {
     await runWizard(page)
 
-    // Reorder the always-needed items: move the first item down one position
+    // Reorder the always-needed items: send the second one to the top
     await page.goto('/#/manage-questions')
     await page.locator('button[title="Edit always needed items"]').click()
     await expect(page.getByRole('heading', { name: 'Always Needed Items' })).toBeVisible({ timeout: 3_000 })
@@ -39,7 +39,9 @@ test.describe('C – Packing Lists', () => {
     const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
     const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
     await page.getByRole('button', { name: 'Organise items' }).click()
-    await page.locator('button[title="Move item down"]').first().click()
+    // The move menu is portaled to document.body
+    await page.locator('[data-reorder-row]').nth(1).getByTitle('Move item').click()
+    await page.getByRole('menuitem', { name: 'Move to top of section' }).click()
     await page.getByRole('button', { name: 'Finish organising' }).click()
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })

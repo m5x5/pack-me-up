@@ -124,6 +124,103 @@ export function applySectionLayout(
     return result
 }
 
+/**
+ * The section an entry belongs to: the nearest header above it, or the default
+ * section for entries sitting above the first header (which is how
+ * `applySectionLayout` reads them).
+ */
+export function sectionLabelAt(
+    sequence: SectionSequenceEntry[],
+    index: number,
+    defaultLabel: string,
+): string {
+    for (let i = index; i >= 0; i--) {
+        const entry = sequence[i]
+        if (entry.kind === 'header') return entry.label
+    }
+    return defaultLabel
+}
+
+/**
+ * Every section the sequence can move an item into, in display order. The
+ * default section is always offered even when it currently has no header:
+ * emptying it must not strand items in the sections they were put in.
+ */
+export function sectionLabelsIn(sequence: SectionSequenceEntry[], defaultLabel: string): string[] {
+    const labels = sequence.flatMap(e => e.kind === 'header' ? [e.label] : [])
+    return labels.includes(defaultLabel) ? labels : [defaultLabel, ...labels]
+}
+
+/** Where the section containing `index` starts and ends (both inclusive, items only). */
+function sectionBounds(sequence: SectionSequenceEntry[], index: number): { first: number; last: number } {
+    let first = 0
+    for (let i = index; i >= 0; i--) {
+        if (sequence[i].kind === 'header') { first = i + 1; break }
+    }
+    let last = sequence.length - 1
+    for (let i = index + 1; i < sequence.length; i++) {
+        if (sequence[i].kind === 'header') { last = i - 1; break }
+    }
+    return { first, last }
+}
+
+/** Whether the item at `index` already sits at the top or bottom of its section. */
+export function isAtSectionEdge(
+    sequence: SectionSequenceEntry[],
+    index: number,
+    position: 'top' | 'bottom',
+): boolean {
+    const { first, last } = sectionBounds(sequence, index)
+    return index === (position === 'top' ? first : last)
+}
+
+/**
+ * Move an item to the top or bottom of the section it is already in, leaving
+ * every other section untouched.
+ */
+export function moveItemWithinSection(
+    sequence: SectionSequenceEntry[],
+    index: number,
+    position: 'top' | 'bottom',
+): SectionSequenceEntry[] {
+    if (isAtSectionEdge(sequence, index, position)) return sequence
+    const { first, last } = sectionBounds(sequence, index)
+    const next = [...sequence]
+    const [moved] = next.splice(index, 1)
+    // Removing the item shifts everything below it up one, so the bottom slot
+    // is `last` rather than `last + 1`.
+    next.splice(position === 'top' ? first : last, 0, moved)
+    return next
+}
+
+/**
+ * Move an item to the bottom of another section — the keyboard equivalent of
+ * dragging it under that section's heading. Moving into the default section
+ * when that section has no header puts the item above the first header, which
+ * `applySectionLayout` reads as "no category".
+ */
+export function moveItemToSection(
+    sequence: SectionSequenceEntry[],
+    index: number,
+    targetLabel: string,
+    defaultLabel: string,
+): SectionSequenceEntry[] {
+    const next = [...sequence]
+    const [moved] = next.splice(index, 1)
+    const header = next.findIndex(e => e.kind === 'header' && e.label === targetLabel)
+    if (header === -1) {
+        if (targetLabel !== defaultLabel) return sequence
+        next.unshift(moved)
+        return next
+    }
+    let insertAt = next.length
+    for (let i = header + 1; i < next.length; i++) {
+        if (next[i].kind === 'header') { insertAt = i; break }
+    }
+    next.splice(insertAt, 0, moved)
+    return next
+}
+
 /** Every distinct section name in use, for offering existing names as suggestions. */
 export function sectionNamesIn(qs: PackingListQuestionSet): string[] {
     const names = new Set<string>()

@@ -20,12 +20,18 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { Item } from '../edit-questions/types'
 import {
     applySectionLayout,
     buildSectionSequence,
+    isAtSectionEdge,
+    moveItemToSection,
+    moveItemWithinSection,
     removeSection,
     renameSection,
+    sectionLabelAt,
+    sectionLabelsIn,
     type SectionSequenceEntry,
 } from '../edit-questions/item-sections'
 
@@ -103,12 +109,86 @@ function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
     )
 }
 
-function SortableSectionItem({ id, item, canMoveUp, canMoveDown, onMove }: {
+/**
+ * Every move the drag handle can make, offered as menu commands. Dragging is
+ * the quick way; this is the way that works from the keyboard, with a screen
+ * reader, or when the destination is off-screen — so it names its destinations
+ * rather than relying on aim.
+ */
+function MoveMenu({ label, canMoveToTop, canMoveToBottom, otherSections, onMoveWithinSection, onMoveToSection }: {
+    label: string
+    canMoveToTop: boolean
+    canMoveToBottom: boolean
+    otherSections: string[]
+    onMoveWithinSection: (position: 'top' | 'bottom') => void
+    onMoveToSection: (label: string) => void
+}) {
+    const hasMoves = canMoveToTop || canMoveToBottom || otherSections.length > 0
+    return (
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+                <button
+                    type="button"
+                    disabled={!hasMoves}
+                    title="Move item"
+                    aria-label={`Move ${label}`}
+                    className="inline-flex items-center justify-center w-11 h-11 shrink-0 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100 disabled:text-gray-200 disabled:border-gray-100 disabled:hover:bg-transparent transition-colors"
+                >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="5" r="1.5" />
+                        <circle cx="12" cy="12" r="1.5" />
+                        <circle cx="12" cy="19" r="1.5" />
+                    </svg>
+                </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                    align="end"
+                    sideOffset={4}
+                    className="min-w-52 max-w-72 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                >
+                    {canMoveToTop && (
+                        <DropdownMenu.Item
+                            onSelect={() => onMoveWithinSection('top')}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 cursor-default outline-none"
+                        >
+                            Move to top of section
+                        </DropdownMenu.Item>
+                    )}
+                    {canMoveToBottom && (
+                        <DropdownMenu.Item
+                            onSelect={() => onMoveWithinSection('bottom')}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 cursor-default outline-none"
+                        >
+                            Move to bottom of section
+                        </DropdownMenu.Item>
+                    )}
+                    {otherSections.length > 0 && (canMoveToTop || canMoveToBottom) && (
+                        <DropdownMenu.Separator className="my-1 h-px bg-gray-100" />
+                    )}
+                    {otherSections.map(section => (
+                        <DropdownMenu.Item
+                            key={section}
+                            onSelect={() => onMoveToSection(section)}
+                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 focus:bg-gray-50 cursor-default outline-none truncate"
+                        >
+                            Move to {section}
+                        </DropdownMenu.Item>
+                    ))}
+                </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+    )
+}
+
+function SortableSectionItem({ id, item, canMoveToTop, canMoveToBottom, otherSections, onMoveWithinSection, onMoveToSection }: {
     id: string
     item: Item
-    canMoveUp: boolean
-    canMoveDown: boolean
-    onMove: (direction: 'up' | 'down') => void
+    canMoveToTop: boolean
+    canMoveToBottom: boolean
+    otherSections: string[]
+    onMoveWithinSection: (position: 'top' | 'bottom') => void
+    onMoveToSection: (label: string) => void
 }) {
     const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id })
     return (
@@ -134,32 +214,14 @@ function SortableSectionItem({ id, item, canMoveUp, canMoveDown, onMove }: {
             <span className="flex-1 min-w-0 truncate text-sm text-gray-800 px-1">
                 {item.text || <span className="text-gray-400 italic">Unnamed item</span>}
             </span>
-            <div className="flex gap-1 shrink-0">
-                <button
-                    type="button"
-                    onClick={() => onMove('up')}
-                    disabled={!canMoveUp}
-                    className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${!canMoveUp ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
-                    title="Move item up"
-                    aria-label={`Move ${item.text || 'item'} up`}
-                >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => onMove('down')}
-                    disabled={!canMoveDown}
-                    className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${!canMoveDown ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
-                    title="Move item down"
-                    aria-label={`Move ${item.text || 'item'} down`}
-                >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-            </div>
+            <MoveMenu
+                label={item.text || 'item'}
+                canMoveToTop={canMoveToTop}
+                canMoveToBottom={canMoveToBottom}
+                otherSections={otherSections}
+                onMoveWithinSection={onMoveWithinSection}
+                onMoveToSection={onMoveToSection}
+            />
         </div>
     )
 }
@@ -224,15 +286,27 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
         applySequence(next)
     }
 
-    // The arrows are the keyboard//no-pointer equivalent of dragging: stepping
-    // an item past a header moves it into the neighbouring section, exactly as
-    // dragging across that header would.
-    const moveEntry = (seqIndex: number, direction: 'up' | 'down') => {
-        const target = direction === 'up' ? seqIndex - 1 : seqIndex + 1
-        if (target < 0 || target >= sequence.length) return
+    const sectionLabels = sectionLabelsIn(sequence, defaultLabel)
+
+    // Screen-reader narration for a keyboard drag. dnd-kit's defaults would read
+    // out the internal drag ids, and they know nothing about sections — so both
+    // the item and where it has landed are named here instead.
+    const describe = (id: string | number) => {
+        const entry = sequence[entryIds.indexOf(String(id))]
+        return entry?.kind === 'item' ? (entry.item.text || 'unnamed item') : 'item'
+    }
+    const describeDrop = (activeId: string | number, overId: string | number) => {
+        const from = entryIds.indexOf(String(activeId))
+        const to = entryIds.indexOf(String(overId))
+        if (from === -1 || to === -1) return describe(activeId)
         const next = [...sequence]
-        ;[next[seqIndex], next[target]] = [next[target], next[seqIndex]]
-        applySequence(next)
+        const [moved] = next.splice(from, 1)
+        next.splice(to, 0, moved)
+        const landed = next.indexOf(moved)
+        const label = sectionLabelAt(next, landed, defaultLabel)
+        const position = next.slice(0, landed).filter((e, i) =>
+            e.kind === 'item' && sectionLabelAt(next, i, defaultLabel) === label).length + 1
+        return `${describe(activeId)}, position ${position} in ${label}`
     }
 
     const addSection = () => {
@@ -255,17 +329,12 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
         onChange(removeSection(items, label, new Date().toISOString()))
     }
 
-    // An item can step down onto any following entry — including a trailing
-    // section heading, which is how a newly added (still empty) section gets its
-    // first item without a drag. Stepping up above the very first heading is the
-    // only no-op, since that heading is already the default section.
-    const firstItemIndex = sequence.findIndex(e => e.kind === 'item')
-
     return (
         <>
             <div className="text-[11px] text-gray-400 mb-2 px-0.5">
-                Drag the handle (press and hold on touch), or use the arrows, to reorder.
-                Move an item under a section heading to put it in that section.
+                Drag the handle (press and hold on touch) to reorder, or focus it and press
+                space, then the arrow keys. Each item's move menu jumps it to the top or
+                bottom of its section, or into another section.
             </div>
             <DndContext
                 sensors={sensors}
@@ -274,6 +343,26 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
                 // Only ever auto-scroll the modal's own scroll area — see the
                 // note on the unsectioned editor for why.
                 autoScroll={{ canScroll: (el) => el === scrollRef.current }}
+                accessibility={{
+                    screenReaderInstructions: {
+                        draggable: 'Press space to pick up the item, the arrow keys to move it '
+                            + 'up or down the list and across section headings, space again to '
+                            + 'drop it, and escape to cancel. The move menu on each row can also '
+                            + 'send it straight to the top or bottom of a section.',
+                    },
+                    announcements: {
+                        onDragStart: ({ active }) => `Picked up ${describe(active.id)}.`,
+                        // dnd-kit reports the item as over itself the moment it
+                        // is picked up; announcing that would talk over the
+                        // "picked up" message before it has been read.
+                        onDragOver: ({ active, over }) =>
+                            over && over.id !== active.id ? `${describeDrop(active.id, over.id)}.` : undefined,
+                        onDragEnd: ({ active, over }) => over
+                            ? `Dropped ${describeDrop(active.id, over.id)}.`
+                            : `Dropped ${describe(active.id)} back where it started.`,
+                        onDragCancel: ({ active }) => `Cancelled moving ${describe(active.id)}.`,
+                    },
+                }}
                 onDragEnd={handleDragEnd}
             >
                 <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>
@@ -292,9 +381,11 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
                                 key={entryIds[i]}
                                 id={entryIds[i]}
                                 item={entry.item}
-                                canMoveUp={i > firstItemIndex}
-                                canMoveDown={i < sequence.length - 1}
-                                onMove={direction => moveEntry(i, direction)}
+                                canMoveToTop={!isAtSectionEdge(sequence, i, 'top')}
+                                canMoveToBottom={!isAtSectionEdge(sequence, i, 'bottom')}
+                                otherSections={sectionLabels.filter(l => l !== sectionLabelAt(sequence, i, defaultLabel))}
+                                onMoveWithinSection={position => applySequence(moveItemWithinSection(sequence, i, position))}
+                                onMoveToSection={label => applySequence(moveItemToSection(sequence, i, label, defaultLabel))}
                             />
                         ))}
                     </div>
