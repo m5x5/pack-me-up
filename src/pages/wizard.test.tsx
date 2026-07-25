@@ -24,6 +24,7 @@ vi.mock('../components/ToastContext', () => ({
 import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { useWizardGeneration } from './useWizardGeneration'
+import { createExampleData } from '../edit-questions/example-data'
 
 const mockUseDatabase = vi.mocked(useDatabase)
 const mockUseSolidPod = vi.mocked(useSolidPod)
@@ -33,6 +34,14 @@ function makeDb(overrides: { getQuestionSet?: ReturnType<typeof vi.fn> } = {}) {
     return {
         getQuestionSet: overrides.getQuestionSet ?? vi.fn().mockRejectedValue({ name: 'not_found' }),
     }
+}
+
+function makeGeneratedSet() {
+    return createExampleData([
+        { id: '1', name: 'Sam', ageRange: 'Adult' },
+        { id: '2', name: 'Ellie', ageRange: 'Baby' },
+        { id: '3', name: 'Rex', species: 'dog' },
+    ], [])
 }
 
 describe('Wizard', () => {
@@ -51,6 +60,7 @@ describe('Wizard', () => {
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: false,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
     })
@@ -94,6 +104,7 @@ describe('Wizard', () => {
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: true,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
 
@@ -115,6 +126,7 @@ describe('Wizard', () => {
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: true,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
 
@@ -142,6 +154,7 @@ describe('Wizard', () => {
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: true,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
         localStorage.removeItem('solid-pod-upsell-shown')
@@ -171,6 +184,7 @@ describe('Wizard', () => {
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: true,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
         localStorage.removeItem('solid-pod-upsell-shown')
@@ -368,12 +382,106 @@ describe('Wizard', () => {
         })
     })
 
+    describe('generation reveal', () => {
+        function renderAfterGeneration() {
+            const db = makeDb()
+            mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })
+            mockUseWizardGeneration.mockReturnValue({
+                isLoading: false,
+                isSuccess: true,
+                generatedSet: makeGeneratedSet(),
+                generateAndSave: vi.fn(),
+            })
+            localStorage.setItem('solid-pod-upsell-shown', 'true')
+            return render(
+                <MemoryRouter>
+                    <Wizard />
+                </MemoryRouter>
+            )
+        }
+
+        it('names real people from the generated set, one line at a time', async () => {
+            renderAfterGeneration()
+
+            await waitFor(() => expect(screen.getByText(/thinking about Sam/i)).toBeTruthy())
+            expect(screen.queryByText(/thinking about Ellie/i)).toBeNull()
+
+            await waitFor(() => expect(screen.getByText(/thinking about Ellie/i)).toBeTruthy(), { timeout: 3000 })
+            await waitFor(() => expect(screen.getByText(/thinking about Rex/i)).toBeTruthy(), { timeout: 3000 })
+        })
+
+        it('names what was added for each person', async () => {
+            renderAfterGeneration()
+
+            await waitFor(
+                () => expect(screen.getByText(/thinking about Ellie.*adding .*nappies/i)).toBeTruthy(),
+                { timeout: 3000 }
+            )
+        })
+
+        it('shows a summary of what was generated once the reveal finishes', async () => {
+            renderAfterGeneration()
+
+            await waitFor(
+                () => expect(screen.getByText(/\d+ questions and \d+ items across 2 people and 1 pet/i)).toBeTruthy(),
+                { timeout: 4000 }
+            )
+        })
+
+        it('only offers the CTAs once the reveal has finished', async () => {
+            renderAfterGeneration()
+
+            expect(screen.queryByRole('button', { name: /create my first packing list/i })).toBeNull()
+
+            await waitFor(
+                () => expect(screen.getByRole('button', { name: /create my first packing list/i })).toBeTruthy(),
+                { timeout: 4000 }
+            )
+        })
+
+        it('lets the user skip straight to the summary', async () => {
+            renderAfterGeneration()
+
+            const skip = await screen.findByRole('button', { name: /skip/i })
+            skip.click()
+
+            await waitFor(() =>
+                expect(screen.getByRole('button', { name: /create my first packing list/i })).toBeTruthy()
+            )
+            expect(screen.queryByRole('button', { name: /skip/i })).toBeNull()
+            // Skipping still shows every person that was generated for
+            expect(screen.getByText(/thinking about Rex/i)).toBeTruthy()
+        })
+
+        it('skips the staged reveal when the user prefers reduced motion', async () => {
+            vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+                matches: query.includes('prefers-reduced-motion'),
+                media: query,
+                onchange: null,
+                addListener: vi.fn(),
+                removeListener: vi.fn(),
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+                dispatchEvent: vi.fn(),
+            }) as unknown as MediaQueryList)
+
+            renderAfterGeneration()
+
+            await waitFor(() =>
+                expect(screen.getByRole('button', { name: /create my first packing list/i })).toBeTruthy()
+            )
+            expect(screen.queryByRole('button', { name: /skip/i })).toBeNull()
+            expect(screen.getByText(/\d+ questions and \d+ items across 2 people and 1 pet/i)).toBeTruthy()
+        })
+    })
+
     it('does not show pod prompt when solid-pod-upsell-shown is already set', async () => {
         const db = makeDb()
         mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })
         mockUseWizardGeneration.mockReturnValue({
             isLoading: false,
             isSuccess: true,
+            generatedSet: null,
             generateAndSave: vi.fn(),
         })
         localStorage.setItem('solid-pod-upsell-shown', 'true')

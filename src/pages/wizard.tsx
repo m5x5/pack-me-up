@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, Link } from 'react-router-dom'
@@ -12,6 +12,8 @@ import { wizardSchema, WizardFormData, WizardEntry } from './wizard-types'
 import { useWizardGeneration } from './useWizardGeneration'
 import { AGE_RANGE_OPTIONS, GENDER_OPTIONS, PET_SPECIES_OPTIONS } from '../edit-questions/types'
 import { deriveAgeRange } from '../edit-questions/age-derivation'
+import { buildRevealSteps, buildGenerationSummary, REVEAL_STEP_MS } from './wizard-reveal'
+import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 
 const SOLID_POD_UPSELL_SHOWN_KEY = 'solid-pod-upsell-shown'
 
@@ -22,9 +24,20 @@ export const Wizard = () => {
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [pendingNavRoute, setPendingNavRoute] = useState<string | null>(null)
     const [hasExistingData, setHasExistingData] = useState(false)
+    const [revealedCount, setRevealedCount] = useState(0)
+    const [isRevealComplete, setIsRevealComplete] = useState(false)
     const { isLoggedIn } = useSolidPod()
     const { db } = useDatabase()
-    const { isLoading, isSuccess, generateAndSave } = useWizardGeneration()
+    const { isLoading, isSuccess, generatedSet, generateAndSave } = useWizardGeneration()
+
+    const revealSteps = useMemo(
+        () => (generatedSet ? buildRevealSteps(generatedSet) : []),
+        [generatedSet]
+    )
+    const summary = useMemo(
+        () => (generatedSet ? buildGenerationSummary(generatedSet) : null),
+        [generatedSet]
+    )
 
     const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<WizardFormData>({
         resolver: zodResolver(wizardSchema),
@@ -55,10 +68,36 @@ export const Wizard = () => {
         checkExistingData()
     }, [db])
 
-    // Open success modal when generation completes
+    // Open success modal when generation completes, starting the reveal at the
+    // first person. Users who prefer reduced motion get the whole thing at once.
     useEffect(() => {
-        if (isSuccess) setShowSuccessModal(true)
-    }, [isSuccess])
+        if (!isSuccess) return
+        setShowSuccessModal(true)
+        if (revealSteps.length === 0 || prefersReducedMotion()) {
+            setRevealedCount(revealSteps.length)
+            setIsRevealComplete(true)
+        } else {
+            setRevealedCount(1)
+            setIsRevealComplete(false)
+        }
+    }, [isSuccess, revealSteps])
+
+    // Reveal one person per tick, then hand over to the summary. Bounded by
+    // MAX_REVEAL_STEPS, and the Skip button jumps to the end at any point.
+    useEffect(() => {
+        if (!showSuccessModal || isRevealComplete) return
+        if (revealedCount >= revealSteps.length) {
+            setIsRevealComplete(true)
+            return
+        }
+        const timer = setTimeout(() => setRevealedCount(count => count + 1), REVEAL_STEP_MS)
+        return () => clearTimeout(timer)
+    }, [showSuccessModal, isRevealComplete, revealedCount, revealSteps.length])
+
+    const handleSkipReveal = () => {
+        setRevealedCount(revealSteps.length)
+        setIsRevealComplete(true)
+    }
 
     const handleSuccessAction = (route: string) => {
         setShowSuccessModal(false)
@@ -333,29 +372,64 @@ Are you sure you want to continue?"
                 title="🎉 Questions Generated Successfully!"
             >
                 <div className="space-y-6">
-                    <p className="text-gray-700 text-center">
-                        Your starter questions are ready! Head to 'My Questions &amp; Items' to add, remove, or tweak them to match how you travel — then create your first list.
-                    </p>
+                    {revealSteps.length > 0 && (
+                        <ul aria-live="polite" className="space-y-2 text-left">
+                            {revealSteps.slice(0, revealedCount).map(step => (
+                                <li
+                                    key={step.personId}
+                                    className="reveal-line flex gap-2 text-gray-700 break-words"
+                                >
+                                    <span aria-hidden="true">✨</span>
+                                    <span className="flex-1 min-w-0">{step.text}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
 
-                    <div className="space-y-4">
-                        <button
-                            onClick={() => handleSuccessAction('/create-packing-list')}
-                            className="w-full bg-gradient-primary text-white px-6 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-200 shadow-soft hover:shadow-glow-primary"
-                        >
-                            🚀 Create My First Packing List
-                        </button>
+                    {!isRevealComplete && (
+                        <div className="flex justify-center">
+                            <button
+                                onClick={handleSkipReveal}
+                                className="text-sm font-semibold text-primary-700 underline hover:text-primary-900"
+                            >
+                                Skip ›
+                            </button>
+                        </div>
+                    )}
 
-                        <button
-                            onClick={() => handleSuccessAction('/manage-questions')}
-                            className="w-full bg-gradient-secondary text-white px-6 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-200 shadow-soft hover:shadow-glow-secondary"
-                        >
-                            ✏️ Refine My Packing List Questions
-                        </button>
-                    </div>
+                    {isRevealComplete && (
+                        <>
+                            {summary && (
+                                <p className="text-center font-bold text-primary-900 break-words">
+                                    {summary.text}
+                                </p>
+                            )}
 
-                    <p className="text-sm text-gray-500 text-center mt-4">
-                        You can always access these options from the navigation menu above
-                    </p>
+                            <p className="text-gray-700 text-center">
+                                Your starter questions are ready! Head to 'My Questions &amp; Items' to add, remove, or tweak them to match how you travel — then create your first list.
+                            </p>
+
+                            <div className="space-y-4">
+                                <button
+                                    onClick={() => handleSuccessAction('/create-packing-list')}
+                                    className="w-full bg-gradient-primary text-white px-6 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-200 shadow-soft hover:shadow-glow-primary"
+                                >
+                                    🚀 Create My First Packing List
+                                </button>
+
+                                <button
+                                    onClick={() => handleSuccessAction('/manage-questions')}
+                                    className="w-full bg-gradient-secondary text-white px-6 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-200 shadow-soft hover:shadow-glow-secondary"
+                                >
+                                    ✏️ Refine My Packing List Questions
+                                </button>
+                            </div>
+
+                            <p className="text-sm text-gray-500 text-center mt-4">
+                                You can always access these options from the navigation menu above
+                            </p>
+                        </>
+                    )}
                 </div>
             </Modal>
 
