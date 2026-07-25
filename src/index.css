@@ -177,6 +177,32 @@ body {
   user-select: none;
 }
 
+/* The banner's arrival at the moment of completion: it rises out of the space
+   the folded-away cards just left, against the falling confetti, overshooting
+   slightly so it reads as a celebration rather than as merely appearing. */
+@keyframes celebration-rise-in {
+  0% { transform: translateY(48px) scale(0.96); opacity: 0; }
+  60% { transform: translateY(-6px) scale(1.02); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.celebration-banner-rising {
+  animation: celebration-rise-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* A beat after the banner lands — one element moving on its own is what stops
+   the whole thing reading as a single assembled block. */
+@keyframes celebration-suitcase-pop {
+  0% { transform: scale(1) rotate(0deg); }
+  40% { transform: scale(1.25) rotate(-8deg); }
+  70% { transform: scale(0.95) rotate(4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.celebration-suitcase-pop {
+  animation: celebration-suitcase-pop 0.45s ease-out 0.4s both;
+}
+
 /* The finished cards lift and fade away, leaving the celebration banner as the
    last thing on the page. Kept in step with SECTIONS_EXIT_MS. */
 @keyframes sections-pack-away {
@@ -191,6 +217,8 @@ body {
 /* Celebrations are decorative — hold still for anyone who asked us to. */
 @media (prefers-reduced-motion: reduce) {
   .celebration-banner,
+  .celebration-banner-rising,
+  .celebration-suitcase-pop,
   .celebration-bg,
   .celebration-emoji,
   .animate-pop-in {

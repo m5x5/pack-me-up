@@ -156,6 +156,9 @@ export function ViewPackingList() {
     const [showConfetti, setShowConfetti] = useState(false)
     // 'exiting' plays the fold-away animation, 'packed-away' has removed the cards
     const [completionStage, setCompletionStage] = useState<'none' | 'exiting' | 'packed-away'>('none')
+    // True only when the list was finished in front of the user, which is the
+    // one time the banner gets its big entrance rather than the gentle one
+    const [justCelebrated, setJustCelebrated] = useState(false)
     // null means "haven't looked yet", so the first read is only a baseline
     const wasAllPackedRef = useRef<boolean | null>(null)
 
@@ -266,6 +269,7 @@ export function ViewPackingList() {
         if (!complete) {
             setCompletionStage('none')
             setShowConfetti(false)
+            setJustCelebrated(false)
             return
         }
         if (previously === null) {
@@ -277,6 +281,7 @@ export function ViewPackingList() {
         if (!previously) {
             setShowConfetti(true)
             setCompletionStage('exiting')
+            setJustCelebrated(true)
         }
     }, [packingList, watchedItems])
 
@@ -742,6 +747,15 @@ export function ViewPackingList() {
     // offer no way back to its own contents.
     const sectionsExiting = completionStage === 'exiting' && !showPacked
     const sectionsPackedAway = completionStage === 'packed-away' && !showPacked
+    // Only the moment itself earns the big entrance — and only when the fold
+    // actually cleared a space for the banner to rise into.
+    const bannerRises = justCelebrated && !showPacked
+    // The effect that starts the fold only runs *after* this render, so on the
+    // render where the last item lands the stage is still 'none'. Consult the ref
+    // directly, otherwise the banner appears for a frame with its gentle entrance,
+    // gets pulled for the fold, and the rise never plays.
+    const foldPending = allPacked && wasAllPackedRef.current === false && !showPacked
+    const bannerHidden = sectionsExiting || foldPending
 
     const sectionStats = packingList.items.reduce((acc, item) => {
         const key = item.communal ? SHARED_SECTION_KEY : item.personName
@@ -950,9 +964,17 @@ export function ViewPackingList() {
                 </div>
             </div>
 
-            {/* All packed celebration banner */}
-            {allPacked && (
-                <div className="w-full max-w-screen-2xl mb-4 celebration-banner">
+            {/* All packed celebration banner. When the list is finished in front of
+                the user it waits for the cards to fold away and then rises into the
+                cleared space — arriving mid-fold meant competing with the confetti
+                and the collapsing layout. Revisits keep the original gentle
+                entrance, and with packed items shown nothing folds, so there's no
+                stage to clear and it just appears. */}
+            {allPacked && !bannerHidden && (
+                <div
+                    data-testid="completion-banner"
+                    className={`w-full max-w-screen-2xl mb-4 ${bannerRises ? 'celebration-banner-rising' : 'celebration-banner'}`}
+                >
                     <div className="relative overflow-hidden rounded-xl px-6 py-6 text-center shadow-lg celebration-bg">
                         {/* Decorative only, and there isn't room for them beside the
                             headline on a phone — they land right on top of the text */}
@@ -961,7 +983,7 @@ export function ViewPackingList() {
                         <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ right: '12%', animationDelay: '0.8s' }}>🌍</span>
                         <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ right: '4%', animationDelay: '0.3s' }}>🎉</span>
                         <div className="relative z-10">
-                            <div className="text-4xl mb-2">🧳</div>
+                            <div className={`text-4xl mb-2 ${bannerRises ? 'celebration-suitcase-pop' : ''}`}>🧳</div>
                             <p className="text-2xl font-bold text-white drop-shadow-sm">You're all packed!</p>
                             <p className="text-emerald-100 mt-1 text-sm font-medium">Everything's ready — time for adventure!</p>
                         </div>

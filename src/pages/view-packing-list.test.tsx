@@ -1637,6 +1637,49 @@ describe('ViewPackingList completion', () => {
         expect(screen.queryByText(/packed items? hidden/i)).toBeNull()
     })
 
+    it('holds the banner back while the cards are still folding away', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        // Confetti and the fold-away start in the same render, so at this point
+        // the stage is still being cleared and the banner shouldn't have arrived
+        await waitFor(() => expect(screen.getByTestId('completion-confetti')).toBeTruthy())
+        expect(screen.queryByTestId('completion-banner')).toBeNull()
+    })
+
+    it('rises the banner in once the cards have gone', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+        expect(screen.getByTestId('completion-banner').className).toContain('celebration-banner-rising')
+    })
+
+    it('keeps the gentle entrance when reopening a finished list', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+
+        const banner = screen.getByTestId('completion-banner')
+        expect(banner.className).toContain('celebration-banner')
+        expect(banner.className).not.toContain('celebration-banner-rising')
+    })
+
+    it('shows the banner straight away when packed items are being shown', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        // Nothing folds away in this mode, so there is no stage to clear
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        fireEvent.click(screen.getByText('Toothbrush').closest('label')!.querySelector('input')!)
+
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+        expect(screen.getByTestId('completion-banner').className).not.toContain('celebration-banner-rising')
+    })
+
     it('restores the cards if an item is unpacked again', async () => {
         setup(fullyPackedList)
         await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
