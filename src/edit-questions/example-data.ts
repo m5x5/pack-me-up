@@ -3,13 +3,43 @@ import { generateUUID } from '../utils/uuid';
 
 export const ACTIVITY_OPTION_IDS = {
     swimming: 'activity-option-swimming',
+    beach: 'activity-option-beach',
     watersports: 'activity-option-watersports',
     cycling: 'activity-option-cycling',
     running: 'activity-option-running',
     climbing: 'activity-option-climbing',
     hiking: 'activity-option-hiking',
+    sightseeing: 'activity-option-sightseeing',
+    skiing: 'activity-option-skiing',
+    themePark: 'activity-option-theme-park',
     formalOccasions: 'activity-option-formal-occasions',
-    religiousSites: 'activity-option-religious-sites',
+} as const
+
+// Stable IDs for the options of the other multiple-choice questions. Like the
+// activity IDs, these let template-update matching find an option by id even
+// after the user has renamed it — text matching is only the fallback.
+export const WEATHER_OPTION_IDS = {
+    hot: 'weather-option-hot',
+    strongSun: 'weather-option-strong-sun',
+    mild: 'weather-option-mild',
+    rain: 'weather-option-rain',
+    cold: 'weather-option-cold',
+    snow: 'weather-option-snow',
+} as const
+
+export const TRANSPORT_OPTION_IDS = {
+    flying: 'transport-option-flying',
+    driving: 'transport-option-driving',
+    train: 'transport-option-train',
+    ferry: 'transport-option-ferry',
+} as const
+
+export const ACCOMMODATION_OPTION_IDS = {
+    hotel: 'accommodation-option-hotel',
+    selfCatering: 'accommodation-option-self-catering',
+    someoneElsesHome: 'accommodation-option-someone-elses-home',
+    camping: 'accommodation-option-camping',
+    cruise: 'accommodation-option-cruise',
 } as const
 
 // Stable IDs for the built-in wizard questions. Using fixed IDs (rather than
@@ -18,9 +48,10 @@ export const ACTIVITY_OPTION_IDS = {
 export const TEMPLATE_QUESTION_IDS = {
     overnight: 'template-question-overnight',
     abroad: 'template-question-abroad',
-    selfCatering: 'template-question-self-catering',
-    activities: 'template-question-activities',
     weather: 'template-question-weather',
+    transport: 'template-question-transport',
+    accommodation: 'template-question-accommodation',
+    activities: 'template-question-activities',
 } as const
 
 // Version of the wizard template content. Bump this whenever `createExampleData`
@@ -29,7 +60,12 @@ export const TEMPLATE_QUESTION_IDS = {
 // "new suggestions" review card on My Questions & Items; the stamp is updated
 // once the user reviews (applies or dismisses) the suggestions. Purely
 // additive detection — bumping never removes or rewrites a user's own edits.
-export const WIZARD_TEMPLATE_VERSION = 1
+//
+// Note: only *additions* are deliverable this way. Changes that rewrite an
+// existing item (a corrected age filter, a new quantity rate, flipping an item
+// to communal) reach new users only; `buildTemplateUpdateSuggestions` matches
+// on item text and never rewrites what the user already has.
+export const WIZARD_TEMPLATE_VERSION = 2
 import {
     getBabies,
     getToddlers,
@@ -39,8 +75,9 @@ import {
     getTeenagersAndAdults,
     getChildrenAndOlder,
     getToddlersAndOlder,
+    getBabiesAndToddlers,
+    getUnderTeenagers,
     getFemaleTeenagersAndAdults,
-    getMaleTeenagersAndAdults,
     AgeRangeFilter,
 } from './age-specific-items';
 import { getDogs, getCats, getPets, getHumans } from './pet-specific-items';
@@ -84,6 +121,12 @@ function item(
  * Like `item`, but packed once for the whole group. The person selections
  * become a trigger: the item is included when at least one selected person
  * is on the trip (e.g. a litter tray only when the cat is coming).
+ *
+ * Take care combining this with a narrow age filter: `items()` below drops any
+ * item nobody is selected for, so a communal item filtered to `getAdults`
+ * disappears from the question set entirely for an adult-free group. Only
+ * narrow a communal item when the filter is a genuine trigger (pets, babies),
+ * not when it is a guess at who packs it.
  */
 function communalItem(text: string, people: Person[], ageFilter?: (p: Person[]) => Person[]): Item {
     return { ...item(text, people, ageFilter), communal: true };
@@ -104,106 +147,145 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             text: "Swimming",
             order: 0,
             items: items(
-                item("Swimsuit", people, getToddlersAndOlder),
+                item("Swimsuit", people, getToddlersAndOlder, { perNight: 1, perNights: 4, maxQuantity: 2 }),
                 item("Swim towel", people),
                 item("Goggles", people, getChildrenAndOlder),
-                item("Swim cap", people, getChildrenAndOlder),
+                communalItem("Wet bag", people),
                 item("Baby swim nappy", people, getBabies),
                 item("Baby float/Swim seat", people, getBabies),
                 item("Baby sun hat with neck protection", people, getBabies),
                 item("Baby rash guard/Sun suit", people, getBabies),
                 item("Swim nappy (if not potty trained)", people, getToddlers),
-                item("Armbands/Floaties", people, getToddlers),
+                item("Armbands", people, getToddlers),
                 item("Toddler sun hat", people, getToddlers),
-                item("Swim aids (noodles, kickboard)", people, getChildren),
+            )
+        },
+        {
+            id: ACTIVITY_OPTION_IDS.beach,
+            text: "Beach",
+            order: 1,
+            items: items(
+                item("Beach towel", people),
+                item("Flip-flops", people, getToddlersAndOlder),
+                communalItem("Bucket and spade", people, getUnderTeenagers),
+                communalItem("Beach shade or windbreak", people),
+                communalItem("Cool bag", people),
+                communalItem("Beach bag", people),
+                communalItem("After-sun", people),
+                item("Snorkel and mask", people, getChildrenAndOlder),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.watersports,
             text: "Watersports",
-            order: 1,
+            order: 2,
             items: items(
-                item("Wetsuit", people, getTeenagersAndAdults),
-                item("Water shoes", people, getTeenagersAndAdults),
-                item("Waterproof bag", people, getTeenagersAndAdults),
-                item("Rash guard", people, getTeenagersAndAdults),
+                item("Wetsuit", people, getChildrenAndOlder),
+                item("Water shoes", people, getChildrenAndOlder),
+                item("Waterproof bag", people, getChildrenAndOlder),
+                item("Rash guard", people, getChildrenAndOlder),
+                item("Buoyancy aid", people, getUnderTeenagers),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.cycling,
             text: "Cycling",
-            order: 2,
+            order: 3,
             items: items(
-                item("Cycling shorts", people, getTeenagersAndAdults),
+                item("Cycling shorts", people, getChildrenAndOlder),
                 item("Sports bra", people, getFemaleTeenagersAndAdults),
-                item("Helmet", people, getTeenagersAndAdults),
-                item("Water bottle", people, getTeenagersAndAdults),
-                item("Bike repair kit", people, getTeenagersAndAdults),
-                item("Cycling gloves", people, getTeenagersAndAdults),
+                item("Helmet", people, getChildrenAndOlder),
+                communalItem("Bike repair kit", people, getTeenagersAndAdults),
+                item("Cycling gloves", people, getChildrenAndOlder),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.running,
             text: "Running",
-            order: 3,
+            order: 4,
             items: items(
-                item("Running shoes", people, getTeenagersAndAdults),
-                item("Running clothes", people, getTeenagersAndAdults),
+                item("Running shoes", people, getChildrenAndOlder),
+                item("Running clothes", people, getChildrenAndOlder),
                 item("Sports bra", people, getFemaleTeenagersAndAdults),
                 item("Sports watch", people, getTeenagersAndAdults),
-                item("Running socks", people, getTeenagersAndAdults),
+                item("Running socks", people, getChildrenAndOlder),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.climbing,
             text: "Climbing",
-            order: 4,
+            order: 5,
             items: items(
-                item("Climbing shoes", people, getTeenagersAndAdults),
+                item("Climbing shoes", people, getChildrenAndOlder),
                 item("Sports bra", people, getFemaleTeenagersAndAdults),
-                item("Chalk bag", people, getTeenagersAndAdults),
-                item("Harness", people, getTeenagersAndAdults),
-                item("Climbing gloves", people, getTeenagersAndAdults),
+                item("Chalk bag", people, getChildrenAndOlder),
+                item("Harness", people, getChildrenAndOlder),
                 item("Belay device", people, getTeenagersAndAdults),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.hiking,
             text: "Hiking",
-            order: 5,
+            order: 6,
             items: items(
                 item("Hiking boots", people, getChildrenAndOlder),
                 item("Sports bra", people, getFemaleTeenagersAndAdults),
-                item("Daypack/Backpack", people, getTeenagersAndAdults),
                 item("Walking poles", people, getAdults),
-                item("Trail map", people, getAdults),
-                communalItem("First aid kit", people, getAdults),
-                item("Baby carrier/Sling", people, getBabies),
+                communalItem("Trail map", people, getAdults),
+                communalItem("Blister plasters", people),
                 item("Toddler reins/Backpack harness", people, getToddlers),
-                item("Lightweight buggy/Stroller", people, getToddlers),
+            )
+        },
+        {
+            id: ACTIVITY_OPTION_IDS.sightseeing,
+            text: "Sightseeing and city walking",
+            order: 7,
+            items: items(
+                item("Comfortable walking shoes", people, getToddlersAndOlder),
+                item("Power bank", people, getTeenagersAndAdults),
+                communalItem("Offline maps downloaded", people, getTeenagersAndAdults),
+                item("Modest clothing for religious sites (covers shoulders and knees)", people, getChildrenAndOlder),
+                item("Easy-to-remove shoes", people, getToddlersAndOlder),
+            )
+        },
+        {
+            id: ACTIVITY_OPTION_IDS.skiing,
+            text: "Skiing or snowboarding",
+            order: 8,
+            items: items(
+                item("Ski jacket and salopettes", people, getToddlersAndOlder),
+                item("Thermal base layers", people, getToddlersAndOlder),
+                item("Ski socks", people, getToddlersAndOlder),
+                item("Ski goggles", people, getToddlersAndOlder),
+                item("Ski helmet", people, getToddlersAndOlder),
+                item("Snow boots", people, getToddlersAndOlder),
+                communalItem("Sunscreen", people),
+                item("Lip balm with SPF", people, getChildrenAndOlder),
+                communalItem("Hand warmers", people, getChildrenAndOlder),
+            )
+        },
+        {
+            id: ACTIVITY_OPTION_IDS.themePark,
+            text: "Theme park or days out",
+            order: 9,
+            items: items(
+                item("Comfortable walking shoes", people, getToddlersAndOlder),
+                item("Poncho", people),
+                item("Power bank", people, getTeenagersAndAdults),
+                communalItem("Cool bag", people),
+                item("Ear defenders", people, getUnderTeenagers),
             )
         },
         {
             id: ACTIVITY_OPTION_IDS.formalOccasions,
             text: "Formal occasions",
-            order: 6,
+            order: 10,
             items: items(
                 item("Formal outfit", people),
                 item("Dress shoes", people, getToddlersAndOlder),
-                item("Accessories (watch, jewelry, etc.)", people, getTeenagersAndAdults),
+                item("Watch", people, getTeenagersAndAdults),
+                item("Jewellery", people, getTeenagersAndAdults),
                 item("Evening bag/Clutch", people, getTeenagersAndAdults),
-            )
-        },
-        {
-            id: ACTIVITY_OPTION_IDS.religiousSites,
-            text: "Visiting religious/sacred sites",
-            order: 7,
-            items: items(
-                item("Scarf/shawl (for covering shoulders/head)", people, getChildrenAndOlder),
-                item("Top with sleeves (covers shoulders)", people, getChildrenAndOlder),
-                item("Long trousers/skirt (knee-length or longer)", people, getChildrenAndOlder),
-                item("Easy-to-remove shoes", people, getToddlersAndOlder),
-                item("Socks (for bare-shoe areas)", people, getToddlersAndOlder),
             )
         }
     ]
@@ -217,45 +299,72 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
         people,
         alwaysNeededItems: items(
             item("Day bag / Backpack", people, getChildrenAndOlder),
-            item("Snacks", people),
+            item("Snacks", people, getToddlersAndOlder),
             item("Water bottle", people, getToddlersAndOlder),
-            item("Nappies (pack/supply)", people, getBabies),
-            item("Baby wipes", people, getBabies),
-            item("Nappy bags", people, getBabies),
-            item("Change mat", people, getBabies),
+            item("Phone", people, getTeenagersAndAdults),
+            item("Phone charger", people, getTeenagersAndAdults),
+            item("Power bank", people, getTeenagersAndAdults),
+            item("Headphones", people, getChildrenAndOlder),
+            item("Wallet and bank cards", people, getTeenagersAndAdults),
+            communalItem("House keys", people),
+            // Health — nothing here is reliably replaceable away from home
+            item("Prescription medication", people),
+            item("Glasses / contact lenses", people, getChildrenAndOlder),
+            item("Contact lens solution", people, getTeenagersAndAdults),
+            communalItem("First aid kit", people),
+            communalItem("Plasters", people),
+            communalItem("Pain relief (paracetamol / ibuprofen)", people),
+            communalItem("Children's paracetamol / ibuprofen", people, getUnderTeenagers),
+            communalItem("Thermometer", people),
+            communalItem("Hand sanitiser", people),
+            communalItem("Tissues", people),
+            communalItem("Reusable bags", people),
+            // Baby
+            item("Nappies (pack/supply)", people, getBabies, { perNight: 6 }),
+            communalItem("Wipes", people, getBabiesAndToddlers),
+            communalItem("Nappy bags", people, getBabies),
+            communalItem("Change mat", people, getBabies),
+            item("Nappy cream", people, getBabies),
             item("Bibs", people, getBabies),
             item("Muslins/Burp cloths", people, getBabies),
             item("Bottles (if bottle feeding)", people, getBabies),
-            item("Formula/Baby food", people, getBabies),
-            item("Dummy/Pacifier (if used)", people, getBabies),
-            item("Spare clothes (×3-4 sets)", people, getBabies),
-            item("Pull-ups/Toddler nappies", people, getToddlers),
-            item("Potty (travel potty)", people, getToddlers),
-            item("Wipes", people, getToddlers),
-            item("Spare clothes (×2-3 sets)", people, getToddlers),
+            communalItem("Bottle brush and steriliser bags", people, getBabies),
+            item("Formula/Baby food", people, getBabies, { perNight: 4 }),
+            item("Dummy (if used)", people, getBabies),
+            item("Teething gel", people, getBabies),
+            item("Spare clothes", people, getBabies, { perNight: 1, perNights: 2, maxQuantity: 6 }),
+            communalItem("Pram/Buggy", people, getBabiesAndToddlers),
+            communalItem("Pram rain cover", people, getBabiesAndToddlers),
+            communalItem("Baby carrier/Sling", people, getBabies),
+            // Toddler
+            item("Pull-ups/Toddler nappies", people, getToddlers, { perNight: 4 }),
+            communalItem("Potty (travel potty)", people, getToddlers),
+            item("Spare clothes", people, getToddlers, { perNight: 1, perNights: 3, maxQuantity: 4 }),
             item("Sippy cup/Toddler cup", people, getToddlers),
-            item("Toddler snacks", people, getToddlers),
             item("Comfort item (teddy/blanket)", people, getToddlers),
-            item("Entertainment (books/small toys)", people, getChildren),
-            communalItem("Playing cards/Travel games", people, getChildren),
-            item("Headphones", people, getTeenagersAndAdults),
-            item("Phone charger", people, getTeenagersAndAdults),
-            communalItem("First aid kit", people),
-            communalItem("Plasters / Band-aids", people),
-            communalItem("Pain relief (paracetamol / ibuprofen)", people, getAdults),
+            // Child
+            item("Colouring book and pens", people, getChildren),
+            communalItem("Playing cards/Travel games", people, getChildrenAndOlder),
+            item("Tablet and charger", people, getChildrenAndOlder),
+            item("Ear defenders", people, getUnderTeenagers),
             // Pet items — only appear when a matching pet is in the group
             communalItem("Pet food", people, getPets),
             communalItem("Food & water bowls", people, getPets),
+            communalItem("Travel water bottle and folding bowl", people, getPets),
             item("Pet bed/blanket", people, getPets),
             item("Pet medication", people, getPets),
             item("Vaccination/health records", people, getPets),
+            communalItem("Pet first aid kit", people, getPets),
+            communalItem("Tick remover", people, getPets),
+            communalItem("Vet contact details", people, getPets),
             item("Lead/Leash", people, getDogs),
             item("Collar & ID tag", people, getDogs),
-            item("Poop bags", people, getDogs),
+            communalItem("Poo bags", people, getDogs),
             item("Dog toy", people, getDogs),
+            item("Pet towel", people, getDogs),
+            item("Dog travel harness or crate", people, getDogs),
             communalItem("Litter tray & litter", people, getCats),
             item("Cat carrier", people, getCats),
-            item("Scratching pad", people, getCats),
         ),
         questions: [
             {
@@ -271,30 +380,37 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         order: 0,
                         items: items(
                             item("Toothbrush", people, getToddlersAndOlder),
-                            communalItem("Toothpaste", people, getAdults),
-                            item("Deodorant", people, getTeenagersAndAdults),
-                            item("Phone Charger", people, getTeenagersAndAdults),
-                            item("Passport/ID", people, getAdults),
-                            item("Pyjamas", people, undefined, { perNight: 1, maxQuantity: 2 }),
-                            item("Toiletries bag", people, getTeenagersAndAdults),
-                            item("Menstrual products", people, getFemaleTeenagersAndAdults),
+                            communalItem("Toothpaste", people),
+                            communalItem("Shampoo", people),
+                            communalItem("Shower gel", people),
+                            item("Hairbrush/Comb", people, getChildrenAndOlder),
+                            item("Deodorant", people, getChildrenAndOlder),
+                            item("Toiletries bag", people, getChildrenAndOlder),
+                            item("Face wash", people, getChildrenAndOlder),
+                            item("Skincare products", people, getTeenagers),
+                            item("Razor / shaving kit", people, getTeenagersAndAdults),
+                            item("Menstrual products", people, getFemaleTeenagersAndAdults, { perNight: 1, perNights: 7, maxQuantity: 2 }),
                             item("Bra", people, getFemaleTeenagersAndAdults),
-                            item("Shaving kit", people, getMaleTeenagersAndAdults),
-                            item("Underwear", people, getToddlersAndOlder, { perNight: 1 }),
-                            item("Socks", people, undefined, { perNight: 1 }),
-                            item("T-shirt/Top", people, undefined, { perNight: 1, perNights: 2 }),
-                            item("Trousers/Shorts", people),
-                            item("Jumper", people, undefined, { perNight: 1, perNights: 4 }),
-                            item("Baby monitor", people, getBabies),
-                            item("Nightlight", people, getBabies),
+                            item("Pyjamas", people, undefined, { perNight: 1, perNights: 3, maxQuantity: 3 }),
+                            item("Underwear", people, getToddlersAndOlder, { perNight: 1, maxQuantity: 10 }),
+                            item("Socks", people, undefined, { perNight: 1, maxQuantity: 10 }),
+                            item("T-shirt/Top", people, undefined, { perNight: 1, maxQuantity: 10 }),
+                            item("Trousers/Shorts", people, undefined, { perNight: 1, perNights: 3, maxQuantity: 5 }),
+                            item("Jumper", people, undefined, { perNight: 1, perNights: 4, maxQuantity: 2 }),
+                            communalItem("Laundry bag", people),
+                            communalItem("Travel detergent", people),
+                            item("Travel pillow", people, getTeenagersAndAdults),
+                            item("Earplugs and eye mask", people, getTeenagersAndAdults),
+                            communalItem("Baby monitor", people, getBabies),
+                            item("Nightlight", people, getUnderTeenagers),
+                            communalItem("Blackout blind", people, getBabiesAndToddlers),
                             item("Baby sleeping bag/Swaddle", people, getBabies),
-                            item("Extra bedding/sheets", people, getBabies),
+                            communalItem("Extra bedding/sheets", people, getBabies),
                             item("Bedtime bottle", people, getBabies),
                             item("Bedtime books", people, getToddlers),
                             item("Night nappy/Pull-up", people, getToddlers),
-                            item("Favorite toy/Stuffed animal", people, getChildren),
-                            item("Flashlight", people, getChildren),
-                            item("Personal care items (face wash, etc.)", people, getTeenagers),
+                            item("Favourite toy/Stuffed animal", people, getChildren),
+                            item("Torch", people, getChildrenAndOlder),
                         )
                     },
                     {
@@ -318,12 +434,13 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         order: 0,
                         items: items(
                             item("Passport", people),
-                            communalItem("Travel insurance documents", people, getAdults),
-                            item("Visa", people, getAdults),
-                            item("Local currency", people, getAdults),
-                            communalItem("Travel adapter", people, getAdults),
-                            item("Copies of important documents", people, getAdults),
-                            item("EHIC/GHIC card", people, getAdults),
+                            item("Visa", people),
+                            item("EHIC/GHIC card", people),
+                            communalItem("Travel insurance documents", people),
+                            communalItem("Booking confirmations", people),
+                            communalItem("Local currency", people, getAdults),
+                            communalItem("Copies of important documents", people, getAdults),
+                            item("Travel adapter", people, getTeenagersAndAdults),
                             item("Pet passport/Animal health certificate", people, getPets),
                         )
                     },
@@ -336,28 +453,230 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                 ]
             },
             {
-                id: TEMPLATE_QUESTION_IDS.selfCatering,
+                id: TEMPLATE_QUESTION_IDS.weather,
                 type: "saved",
-                text: "Are you self-catering?",
+                text: "What weather do you expect?",
                 order: 2,
-                questionType: "single-choice",
+                questionType: "multiple-choice",
                 options: [
                     {
-                        id: generateUUID(),
-                        text: "Yes",
+                        id: WEATHER_OPTION_IDS.hot,
+                        text: "Hot",
                         order: 0,
                         items: items(
-                            item("Dish soap and sponge", people, getAdults),
-                            item("Dishwasher tablets", people, getAdults),
-                            item("Tea towels", people, getAdults),
-                            item("Shopping bags", people, getAdults),
+                            communalItem("Sunscreen", people),
+                            item("Sun hat", people, getChildrenAndOlder),
+                            item("Sunglasses", people, getChildrenAndOlder),
+                            item("Sandals", people, getToddlersAndOlder),
+                            communalItem("Insect repellent", people),
+                            communalItem("After-sun", people),
+                            communalItem("Antihistamines", people),
+                            communalItem("Baby sunscreen (SPF 50+)", people, getBabies),
+                            item("Sun protective baby clothing", people, getBabies),
+                            communalItem("Shade cover/Parasol for pram", people, getBabies),
+                            communalItem("Toddler sunscreen", people, getToddlers),
+                            item("Sun protective clothing", people, getToddlers),
+                            communalItem("Kids sunscreen", people, getChildren),
                         )
                     },
                     {
-                        id: generateUUID(),
-                        text: "No",
+                        id: WEATHER_OPTION_IDS.strongSun,
+                        text: "Strong sun",
                         order: 1,
-                        items: []
+                        items: items(
+                            communalItem("Sunscreen", people),
+                            item("Sun hat", people, getChildrenAndOlder),
+                            item("Sunglasses", people, getChildrenAndOlder),
+                            item("Lip balm with SPF", people, getChildrenAndOlder),
+                        )
+                    },
+                    {
+                        id: WEATHER_OPTION_IDS.mild,
+                        text: "Mild",
+                        order: 2,
+                        items: items(
+                            item("Light jacket", people),
+                            item("Long-sleeved shirts", people),
+                            item("Comfortable walking shoes", people, getToddlersAndOlder),
+                        )
+                    },
+                    {
+                        id: WEATHER_OPTION_IDS.rain,
+                        text: "Rain",
+                        order: 3,
+                        items: items(
+                            item("Raincoat", people),
+                            communalItem("Umbrella", people),
+                            item("Waterproof shoes/boots", people),
+                            communalItem("Waterproof rucksack cover", people, getChildrenAndOlder),
+                        )
+                    },
+                    {
+                        id: WEATHER_OPTION_IDS.cold,
+                        text: "Cold",
+                        order: 4,
+                        items: items(
+                            item("Winter coat", people, getChildrenAndOlder),
+                            item("Gloves", people, getChildrenAndOlder),
+                            item("Scarf", people, getChildrenAndOlder),
+                            item("Warm hat/Beanie", people, getChildrenAndOlder),
+                            item("Thermal underwear", people, getChildrenAndOlder),
+                            item("Warm boots", people, getToddlersAndOlder),
+                            item("Baby snowsuit/Pramsuit", people, getBabies),
+                            item("Baby mittens", people, getBabies),
+                            item("Baby warm hat with ear coverage", people, getBabies),
+                            communalItem("Blanket for carrier/pram", people, getBabies),
+                            item("Toddler snowsuit/Winter coat", people, getToddlers),
+                            item("Toddler mittens (not gloves - easier)", people, getToddlers),
+                            item("Toddler warm hat", people, getToddlers),
+                        )
+                    },
+                    {
+                        id: WEATHER_OPTION_IDS.snow,
+                        text: "Snow or ice",
+                        order: 5,
+                        items: items(
+                            item("Snow boots", people, getToddlersAndOlder),
+                            item("Thermal socks", people, getToddlersAndOlder),
+                            item("Ice grips for shoes", people, getAdults),
+                        )
+                    }
+                ]
+            },
+            {
+                id: TEMPLATE_QUESTION_IDS.transport,
+                type: "saved",
+                text: "How are you getting there?",
+                order: 3,
+                questionType: "multiple-choice",
+                options: [
+                    {
+                        id: TRANSPORT_OPTION_IDS.flying,
+                        text: "Flying",
+                        order: 0,
+                        items: items(
+                            communalItem("Boarding passes", people),
+                            item("Hand luggage liquids bag", people, getTeenagersAndAdults),
+                            item("Medication in hand luggage", people),
+                            item("Travel pillow", people, getTeenagersAndAdults),
+                            communalItem("Downloaded films and music", people),
+                            item("Milk or dummy for take-off and landing", people, getBabies),
+                            item("Spare clothes in cabin bag", people, getBabiesAndToddlers),
+                        )
+                    },
+                    {
+                        id: TRANSPORT_OPTION_IDS.driving,
+                        text: "Driving",
+                        order: 1,
+                        items: items(
+                            item("Driving licence", people, getAdults),
+                            communalItem("Car keys", people),
+                            communalItem("Breakdown cover documents", people, getAdults),
+                            communalItem("Car charger", people),
+                            item("Car seat", people, getUnderTeenagers),
+                            communalItem("Travel sickness tablets", people),
+                            communalItem("Sick bags", people),
+                            communalItem("Snacks for the journey", people),
+                            communalItem("Window sun shades", people, getUnderTeenagers),
+                        )
+                    },
+                    {
+                        id: TRANSPORT_OPTION_IDS.train,
+                        text: "Train or coach",
+                        order: 2,
+                        items: items(
+                            communalItem("Tickets", people),
+                            communalItem("Downloaded films and music", people),
+                            communalItem("Snacks for the journey", people),
+                        )
+                    },
+                    {
+                        id: TRANSPORT_OPTION_IDS.ferry,
+                        text: "Ferry",
+                        order: 3,
+                        items: items(
+                            communalItem("Tickets", people),
+                            communalItem("Seasickness remedies", people),
+                            communalItem("Cabin overnight bag", people),
+                        )
+                    }
+                ]
+            },
+            {
+                id: TEMPLATE_QUESTION_IDS.accommodation,
+                type: "saved",
+                text: "Where will you be staying?",
+                order: 4,
+                questionType: "multiple-choice",
+                options: [
+                    {
+                        id: ACCOMMODATION_OPTION_IDS.hotel,
+                        text: "Hotel or B&B",
+                        order: 0,
+                        items: items(
+                            communalItem("Booking confirmations", people),
+                        )
+                    },
+                    {
+                        id: ACCOMMODATION_OPTION_IDS.selfCatering,
+                        text: "Self-catering (cottage, apartment, villa)",
+                        order: 1,
+                        items: items(
+                            communalItem("Booking confirmations", people),
+                            communalItem("Towels", people),
+                            communalItem("Dish soap and sponge", people),
+                            communalItem("Dishwasher tablets", people),
+                            communalItem("Tea towels", people),
+                            communalItem("Bin bags", people),
+                            communalItem("Tea and coffee", people),
+                            communalItem("Sharp knife", people),
+                            communalItem("Foil and cling film", people),
+                            communalItem("Corkscrew", people, getAdults),
+                            communalItem("Highchair or booster seat", people, getBabiesAndToddlers),
+                        )
+                    },
+                    {
+                        id: ACCOMMODATION_OPTION_IDS.someoneElsesHome,
+                        text: "Someone else's home",
+                        order: 2,
+                        items: items(
+                            communalItem("Host gift", people),
+                            communalItem("Towels", people),
+                            communalItem("Travel cot", people, getBabiesAndToddlers),
+                            communalItem("Travel cot sheet", people, getBabiesAndToddlers),
+                            communalItem("Stair gate", people, getBabiesAndToddlers),
+                            communalItem("Blackout blind", people, getBabiesAndToddlers),
+                        )
+                    },
+                    {
+                        id: ACCOMMODATION_OPTION_IDS.camping,
+                        text: "Camping or caravan",
+                        order: 3,
+                        items: items(
+                            communalItem("Tent", people),
+                            item("Sleeping bag", people),
+                            item("Sleeping mat", people),
+                            item("Head torch", people, getChildrenAndOlder),
+                            communalItem("Camping stove and gas", people, getAdults),
+                            communalItem("Matches or lighter", people, getAdults),
+                            communalItem("Camp chairs", people),
+                            communalItem("Washing-up bowl and liquid", people),
+                            communalItem("Towels", people),
+                            communalItem("Bin bags", people),
+                            item("Wellies", people, getToddlersAndOlder),
+                        )
+                    },
+                    {
+                        id: ACCOMMODATION_OPTION_IDS.cruise,
+                        text: "Cruise ship",
+                        order: 4,
+                        items: items(
+                            communalItem("Booking confirmations", people),
+                            communalItem("Seasickness remedies", people),
+                            item("Lanyard for key card", people, getChildrenAndOlder),
+                            item("Formal outfit", people),
+                            communalItem("Port daypack", people),
+                        )
                     }
                 ]
             },
@@ -365,78 +684,9 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                 id: activitiesQuestionId,
                 type: "saved",
                 text: "What activities will you be doing?",
-                order: 3,
+                order: 5,
                 questionType: "multiple-choice",
                 options: activityOptions
-            },
-            {
-                id: TEMPLATE_QUESTION_IDS.weather,
-                type: "saved",
-                text: "What weather do you expect?",
-                order: 4,
-                questionType: "multiple-choice",
-                options: [
-                    {
-                        id: generateUUID(),
-                        text: "Hot",
-                        order: 0,
-                        items: items(
-                            item("Sunscreen", people),
-                            item("Sun hat", people),
-                            item("Sunglasses", people, getChildrenAndOlder),
-                            item("Light, breathable clothing", people),
-                            item("Sandals", people, getToddlersAndOlder),
-                            item("Baby sunscreen (SPF 50+)", people, getBabies),
-                            item("Sun protective baby clothing", people, getBabies),
-                            item("Shade cover/Parasol for pram", people, getBabies),
-                            item("Toddler sunscreen", people, getToddlers),
-                            item("Sun protective clothing", people, getToddlers),
-                            item("Kids sunscreen", people, getChildren),
-                        )
-                    },
-                    {
-                        id: generateUUID(),
-                        text: "Rain",
-                        order: 1,
-                        items: items(
-                            item("Raincoat", people),
-                            item("Umbrella", people),
-                            item("Waterproof shoes/boots", people),
-                            item("Waterproof bag cover", people),
-                        )
-                    },
-                    {
-                        id: generateUUID(),
-                        text: "Warm",
-                        order: 2,
-                        items: items(
-                            item("Light jacket", people),
-                            item("Comfortable layers", people),
-                            item("Long-sleeved shirts", people),
-                            item("Comfortable walking shoes", people),
-                        )
-                    },
-                    {
-                        id: generateUUID(),
-                        text: "Cold",
-                        order: 3,
-                        items: items(
-                            item("Winter coat", people),
-                            item("Gloves", people),
-                            item("Scarf", people),
-                            item("Warm hat/Beanie", people),
-                            item("Thermal underwear", people),
-                            item("Warm boots", people),
-                            item("Baby snowsuit/Pramsuit", people, getBabies),
-                            item("Baby mittens", people, getBabies),
-                            item("Baby warm hat with ear coverage", people, getBabies),
-                            item("Blanket for carrier/pram", people, getBabies),
-                            item("Toddler snowsuit/Winter coat", people, getToddlers),
-                            item("Toddler mittens (not gloves - easier)", people, getToddlers),
-                            item("Toddler warm hat", people, getToddlers),
-                        )
-                    }
-                ]
             }
         ]
     };

@@ -88,11 +88,11 @@ describe('buildPromotionSuggestions - additions from the default catalog', () =>
         // Family generated with a toddler: Child-only defaults were dropped at
         // generation time, so aging up must offer to add them back.
         const qs = createExampleData([mum, kid])
-        expect(qs.alwaysNeededItems.find(i => i.text === 'Entertainment (books/small toys)')).toBeUndefined()
+        expect(qs.alwaysNeededItems.find(i => i.text === 'Colouring book and pens')).toBeUndefined()
 
         const suggestions = buildPromotionSuggestions(qs, [transition(kid, 'Child')])
         const adds = suggestions.filter(s => s.direction === 'addItem')
-        const entertainment = adds.find(s => s.itemText === 'Entertainment (books/small toys)')
+        const entertainment = adds.find(s => s.itemText === 'Colouring book and pens')
         expect(entertainment).toBeDefined()
         expect(entertainment!.location).toEqual({ kind: 'always' })
         expect(entertainment!.newItem!.ageRanges).toEqual(['Child'])
@@ -107,22 +107,22 @@ describe('buildPromotionSuggestions - additions from the default catalog', () =>
         const qs = createExampleData([mum, kid])
         const suggestions = buildPromotionSuggestions(qs, [transition(kid, 'Child')])
         const adds = suggestions.filter(s => s.direction === 'addItem')
-        const swimAids = adds.find(s => s.itemText === 'Swim aids (noodles, kickboard)')
-        expect(swimAids).toBeDefined()
-        expect(swimAids!.location.kind).toBe('option')
-        expect(swimAids!.contextLabel).toContain('Swimming')
+        const favouriteToy = adds.find(s => s.itemText === 'Favourite toy/Stuffed animal')
+        expect(favouriteToy).toBeDefined()
+        expect(favouriteToy!.location.kind).toBe('option')
+        expect(favouriteToy!.contextLabel).toContain('Will you be staying overnight?')
     })
 
     it('does not re-add items the user has, or previously deleted, or that were already relevant', () => {
         const qs = createExampleData([mum, kid])
         // 'Water bottle' (Toddler+) exists already, and was already relevant before the transition.
         // Simulate the user having deleted a default child item they don't want.
-        qs.alwaysNeededItems.push({ ...makeItem('Entertainment (books/small toys)'), deletedAt: NOW })
+        qs.alwaysNeededItems.push({ ...makeItem('Colouring book and pens'), deletedAt: NOW })
 
         const suggestions = buildPromotionSuggestions(qs, [transition(kid, 'Child')])
         const adds = suggestions.filter(s => s.direction === 'addItem')
         expect(adds.find(s => s.itemText === 'Water bottle')).toBeUndefined()
-        expect(adds.find(s => s.itemText === 'Entertainment (books/small toys)')).toBeUndefined()
+        expect(adds.find(s => s.itemText === 'Colouring book and pens')).toBeUndefined()
     })
 
     it('produces no suggestions when there are no transitions', () => {
@@ -167,10 +167,10 @@ describe('applyAgePromotions', () => {
     it('inserts accepted catalog items with an id and timestamp', () => {
         const qs = createExampleData([mum, kid])
         const adds = buildPromotionSuggestions(qs, [transition(kid, 'Child')])
-            .filter(s => s.direction === 'addItem' && s.itemText === 'Entertainment (books/small toys)')
+            .filter(s => s.direction === 'addItem' && s.itemText === 'Colouring book and pens')
         const result = applyAgePromotions(qs, [transition(kid, 'Child')], adds, NOW)
 
-        const added = result.alwaysNeededItems.find(i => i.text === 'Entertainment (books/small toys)')!
+        const added = result.alwaysNeededItems.find(i => i.text === 'Colouring book and pens')!
         expect(added).toBeDefined()
         expect(added.id).toBeTruthy()
         expect(added.lastModified).toBe(NOW)

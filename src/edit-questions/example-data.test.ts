@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createExampleData, ACTIVITY_OPTION_IDS, TEMPLATE_QUESTION_IDS, WIZARD_TEMPLATE_VERSION } from './example-data'
+import { createExampleData, ACTIVITY_OPTION_IDS, TEMPLATE_QUESTION_IDS, TRANSPORT_OPTION_IDS, ACCOMMODATION_OPTION_IDS, WIZARD_TEMPLATE_VERSION } from './example-data'
 import { Person } from './types'
 
 const people: Person[] = [{ id: 'person-1', name: 'Alice', ageRange: 'Adult' }]
@@ -11,13 +11,16 @@ const ALL_ACTIVITY_OPTION_IDS = Object.values(ACTIVITY_OPTION_IDS)
 describe('ACTIVITY_OPTION_IDS', () => {
     it('exports stable non-UUID string IDs for each activity', () => {
         expect(ACTIVITY_OPTION_IDS.swimming).toBe('activity-option-swimming')
+        expect(ACTIVITY_OPTION_IDS.beach).toBe('activity-option-beach')
         expect(ACTIVITY_OPTION_IDS.watersports).toBe('activity-option-watersports')
         expect(ACTIVITY_OPTION_IDS.cycling).toBe('activity-option-cycling')
         expect(ACTIVITY_OPTION_IDS.running).toBe('activity-option-running')
         expect(ACTIVITY_OPTION_IDS.climbing).toBe('activity-option-climbing')
         expect(ACTIVITY_OPTION_IDS.hiking).toBe('activity-option-hiking')
+        expect(ACTIVITY_OPTION_IDS.sightseeing).toBe('activity-option-sightseeing')
+        expect(ACTIVITY_OPTION_IDS.skiing).toBe('activity-option-skiing')
+        expect(ACTIVITY_OPTION_IDS.themePark).toBe('activity-option-theme-park')
         expect(ACTIVITY_OPTION_IDS.formalOccasions).toBe('activity-option-formal-occasions')
-        expect(ACTIVITY_OPTION_IDS.religiousSites).toBe('activity-option-religious-sites')
     })
 })
 
@@ -25,9 +28,10 @@ describe('TEMPLATE_QUESTION_IDS', () => {
     it('exports stable non-UUID string IDs for each built-in question', () => {
         expect(TEMPLATE_QUESTION_IDS.overnight).toBe('template-question-overnight')
         expect(TEMPLATE_QUESTION_IDS.abroad).toBe('template-question-abroad')
-        expect(TEMPLATE_QUESTION_IDS.selfCatering).toBe('template-question-self-catering')
-        expect(TEMPLATE_QUESTION_IDS.activities).toBe('template-question-activities')
         expect(TEMPLATE_QUESTION_IDS.weather).toBe('template-question-weather')
+        expect(TEMPLATE_QUESTION_IDS.transport).toBe('template-question-transport')
+        expect(TEMPLATE_QUESTION_IDS.accommodation).toBe('template-question-accommodation')
+        expect(TEMPLATE_QUESTION_IDS.activities).toBe('template-question-activities')
     })
 })
 
@@ -44,9 +48,10 @@ describe('createExampleData', () => {
         const ids = result.questions.map(q => q.id)
         expect(ids).toContain(TEMPLATE_QUESTION_IDS.overnight)
         expect(ids).toContain(TEMPLATE_QUESTION_IDS.abroad)
-        expect(ids).toContain(TEMPLATE_QUESTION_IDS.selfCatering)
-        expect(ids).toContain(TEMPLATE_QUESTION_IDS.activities)
         expect(ids).toContain(TEMPLATE_QUESTION_IDS.weather)
+        expect(ids).toContain(TEMPLATE_QUESTION_IDS.transport)
+        expect(ids).toContain(TEMPLATE_QUESTION_IDS.accommodation)
+        expect(ids).toContain(TEMPLATE_QUESTION_IDS.activities)
     })
 
     it('uses stable IDs for activity question options', () => {
@@ -267,20 +272,40 @@ describe('createExampleData - travelling abroad', () => {
         expect(passport!.personSelections.find(ps => ps.personId === dog.id)?.selected).toBe(false)
     })
 
-    it('includes travel document items selected for adults only', () => {
+    it('keeps group paperwork communal with adults as the trigger', () => {
         const result = createExampleData([adult, baby])
-        for (const text of ['Travel insurance documents', 'Visa', 'Local currency', 'Copies of important documents']) {
+        for (const text of ['Local currency', 'Copies of important documents']) {
             const found = getAbroadYesItems(result).find(i => i.text === text)
             expect(found, `"${text}" should appear`).toBeTruthy()
+            expect(found!.communal, `"${text}" should be communal`).toBe(true)
             expect(found!.personSelections.find(ps => ps.personId === adult.id)?.selected).toBe(true)
             expect(found!.personSelections.find(ps => ps.personId === baby.id)?.selected).toBe(false)
         }
     })
 
-    it('includes Travel adapter for adults', () => {
+    it('gives every traveller their own visa and health card, babies included', () => {
+        const result = createExampleData([adult, baby])
+        for (const text of ['Visa', 'EHIC/GHIC card']) {
+            const found = getAbroadYesItems(result).find(i => i.text === text)
+            expect(found, `"${text}" should appear`).toBeTruthy()
+            expect(found!.personSelections.find(ps => ps.personId === adult.id)?.selected).toBe(true)
+            expect(found!.personSelections.find(ps => ps.personId === baby.id)?.selected).toBe(true)
+        }
+    })
+
+    it('keeps travel insurance available to a group with no adults', () => {
+        const teenager: Person = { id: 't1', name: 'Tam', ageRange: 'Teenager' }
+        const result = createExampleData([teenager])
+        const insurance = getAbroadYesItems(result).find(i => i.text === 'Travel insurance documents')
+        expect(insurance).toBeTruthy()
+        expect(insurance!.personSelections.find(ps => ps.personId === teenager.id)?.selected).toBe(true)
+    })
+
+    it('includes Travel adapter per person rather than one for the group', () => {
         const result = createExampleData([adult])
         const adapter = getAbroadYesItems(result).find(i => i.text === 'Travel adapter')
         expect(adapter).toBeTruthy()
+        expect(adapter!.communal).toBeUndefined()
         expect(adapter!.personSelections.find(ps => ps.personId === adult.id)?.selected).toBe(true)
     })
 
@@ -359,19 +384,15 @@ describe('createExampleData - gender-specific items', () => {
         expect(item!.personSelections.find(ps => ps.personId === maleAdult.id)?.selected).toBe(false)
     })
 
-    it('does not include Shaving kit for female-only group', () => {
-        const result = createExampleData([femaleAdult])
-        const items = getOvernightYesItems(result)
-        expect(items.find(i => i.text === 'Shaving kit')).toBeUndefined()
-    })
-
-    it('includes Shaving kit selected for male adult', () => {
+    // Razors are near-universal, so the item is offered to every teenager and
+    // adult rather than filtered to men — anyone who doesn't want one unticks it.
+    it('offers a razor to every teenager and adult regardless of gender', () => {
         const result = createExampleData([femaleAdult, maleAdult])
         const items = getOvernightYesItems(result)
-        const item = items.find(i => i.text === 'Shaving kit')
+        const item = items.find(i => i.text === 'Razor / shaving kit')
         expect(item).toBeTruthy()
         expect(item!.personSelections.find(ps => ps.personId === maleAdult.id)?.selected).toBe(true)
-        expect(item!.personSelections.find(ps => ps.personId === femaleAdult.id)?.selected).toBe(false)
+        expect(item!.personSelections.find(ps => ps.personId === femaleAdult.id)?.selected).toBe(true)
     })
 })
 
@@ -402,8 +423,8 @@ describe('createExampleData communal items', () => {
         expect(litterTray.personSelections.find(ps => ps.personId === 'cat1')?.selected).toBe(true)
         expect(litterTray.personSelections.find(ps => ps.personId === 'a1')?.selected).toBe(false)
 
-        const travelAdapter = items.find(i => i.text === 'Travel adapter')!
-        expect(travelAdapter.communal).toBe(true)
+        const toothpaste = items.find(i => i.text === 'Toothpaste')!
+        expect(toothpaste.communal).toBe(true)
     })
 
     it('keeps personal items per-person', () => {
@@ -412,6 +433,174 @@ describe('createExampleData communal items', () => {
         expect(result.alwaysNeededItems.find(i => i.text === 'Snacks')?.communal).toBeUndefined()
         expect(items.find(i => i.text === 'Toothbrush')?.communal).toBeUndefined()
         expect(items.find(i => i.text === 'Passport')?.communal).toBeUndefined()
+    })
+})
+
+describe('createExampleData - transport and accommodation', () => {
+    const family: Person[] = [
+        { id: 'a1', name: 'Alice', ageRange: 'Adult', gender: 'female' },
+        { id: 'b1', name: 'Bea', ageRange: 'Baby' },
+    ]
+
+    const question = (result: ReturnType<typeof createExampleData>, id: string) =>
+        result.questions.find(q => q.id === id)!
+
+    // Families mix: fly out and hire a car, two nights at grandparents then a
+    // week in a cottage. Both questions have to accept more than one answer.
+    it('makes both questions multiple-choice so a mixed trip can be described', () => {
+        const result = createExampleData(family)
+        expect(question(result, TEMPLATE_QUESTION_IDS.transport).questionType).toBe('multiple-choice')
+        expect(question(result, TEMPLATE_QUESTION_IDS.accommodation).questionType).toBe('multiple-choice')
+    })
+
+    it('carries self-catering as an accommodation option rather than its own question', () => {
+        const result = createExampleData(family)
+        const accommodation = question(result, TEMPLATE_QUESTION_IDS.accommodation)
+        const selfCatering = accommodation.options.find(o => o.id === ACCOMMODATION_OPTION_IDS.selfCatering)!
+        expect(selfCatering).toBeTruthy()
+        expect(selfCatering.items.map(i => i.text)).toEqual(
+            expect.arrayContaining(['Dish soap and sponge', 'Dishwasher tablets', 'Tea towels'])
+        )
+        expect(result.questions.find(q => q.text === 'Are you self-catering?')).toBeUndefined()
+    })
+
+    it('packs the self-catering kitchen items once for the group, not per adult', () => {
+        const result = createExampleData(family)
+        const selfCatering = question(result, TEMPLATE_QUESTION_IDS.accommodation)
+            .options.find(o => o.id === ACCOMMODATION_OPTION_IDS.selfCatering)!
+        for (const text of ['Dish soap and sponge', 'Dishwasher tablets', 'Tea towels']) {
+            expect(selfCatering.items.find(i => i.text === text)!.communal, text).toBe(true)
+        }
+    })
+
+    it('offers a car seat for under-teens when driving', () => {
+        const result = createExampleData(family)
+        const driving = question(result, TEMPLATE_QUESTION_IDS.transport)
+            .options.find(o => o.id === TRANSPORT_OPTION_IDS.driving)!
+        const carSeat = driving.items.find(i => i.text === 'Car seat')!
+        expect(carSeat).toBeTruthy()
+        expect(carSeat.personSelections.find(ps => ps.personId === 'b1')?.selected).toBe(true)
+        expect(carSeat.personSelections.find(ps => ps.personId === 'a1')?.selected).toBe(false)
+    })
+})
+
+describe('createExampleData - items shared across options', () => {
+    const family: Person[] = [
+        { id: 'a1', name: 'Alice', ageRange: 'Adult', gender: 'female' },
+        { id: 'c1', name: 'Cal', ageRange: 'Child' },
+        { id: 't1', name: 'Tod', ageRange: 'Toddler' },
+        { id: 'b1', name: 'Bea', ageRange: 'Baby' },
+    ]
+
+    function everyItem(result: ReturnType<typeof createExampleData>) {
+        return [
+            ...result.alwaysNeededItems,
+            ...result.questions.flatMap(q => q.options.flatMap(o => o.items)),
+        ]
+    }
+
+    const selectedIds = (i: { personSelections: { personId: string; selected: boolean }[] }) =>
+        i.personSelections.filter(ps => ps.selected).map(ps => ps.personId)
+
+    /**
+     * The generated list is deduplicated on `personId` + lowercased text, and
+     * the first copy wins — taking its quantity rate and its section heading
+     * with it. So wherever the same text can reach the same person from two
+     * options, the copies have to agree, or the survivor is arbitrary.
+     */
+    it('gives identically-named items the same rate and communal flag wherever they can collide', () => {
+        const all = everyItem(createExampleData(family))
+        const byText = new Map<string, typeof all>()
+        for (const i of all) {
+            const key = i.text.trim().toLowerCase()
+            byText.set(key, [...(byText.get(key) ?? []), i])
+        }
+
+        for (const [text, copies] of byText) {
+            if (copies.length < 2) continue
+            for (let a = 0; a < copies.length; a++) {
+                for (let b = a + 1; b < copies.length; b++) {
+                    const [x, y] = [copies[a], copies[b]]
+                    // Communal items all dedupe against each other (personId '');
+                    // per-person copies only collide if they share a person.
+                    const collides = (x.communal && y.communal)
+                        || selectedIds(x).some(id => selectedIds(y).includes(id))
+                    if (!collides) continue
+                    expect(x.communal ?? false, `"${text}" communal flag differs between copies`)
+                        .toBe(y.communal ?? false)
+                    expect(
+                        { perNight: x.perNight, perNights: x.perNights, maxQuantity: x.maxQuantity },
+                        `"${text}" quantity rate differs between copies`,
+                    ).toEqual({ perNight: y.perNight, perNights: y.perNights, maxQuantity: y.maxQuantity })
+                }
+            }
+        }
+    })
+
+    it('keeps the two Spare clothes rates apart because they reach different people', () => {
+        const all = everyItem(createExampleData(family))
+        const spares = all.filter(i => i.text === 'Spare clothes')
+        expect(spares).toHaveLength(2)
+        expect(selectedIds(spares[0])).not.toEqual(selectedIds(spares[1]))
+    })
+})
+
+describe('createExampleData - quantity rates', () => {
+    const adult: Person = { id: 'a1', name: 'Alice', ageRange: 'Adult' }
+    const baby: Person = { id: 'b1', name: 'Bea', ageRange: 'Baby' }
+
+    function getOvernightYesItems(result: ReturnType<typeof createExampleData>) {
+        const overnight = result.questions.find(q => q.id === TEMPLATE_QUESTION_IDS.overnight)!
+        return overnight.options.find(o => o.text === 'Yes')!.items
+    }
+
+    it('scales every clothing item with trip length', () => {
+        const items = getOvernightYesItems(createExampleData([adult]))
+        for (const text of ['Underwear', 'Socks', 'T-shirt/Top', 'Trousers/Shorts', 'Jumper', 'Pyjamas']) {
+            expect(items.find(i => i.text === text)!.perNight, `"${text}" needs a rate`).toBeGreaterThan(0)
+        }
+    })
+
+    it('caps the items that would otherwise suggest one per night indefinitely', () => {
+        const items = getOvernightYesItems(createExampleData([adult]))
+        for (const text of ['Underwear', 'Socks', 'T-shirt/Top']) {
+            expect(items.find(i => i.text === text)!.maxQuantity, `"${text}" needs a cap`).toBeGreaterThan(0)
+        }
+    })
+
+    it('scales baby consumables with trip length', () => {
+        const result = createExampleData([adult, baby])
+        const nappies = result.alwaysNeededItems.find(i => i.text === 'Nappies (pack/supply)')!
+        expect(nappies.perNight).toBeGreaterThan(0)
+        expect(nappies.maxQuantity).toBeUndefined()
+        expect(result.alwaysNeededItems.find(i => i.text === 'Formula/Baby food')!.perNight).toBeGreaterThan(0)
+    })
+})
+
+describe('createExampleData - groups with no adults', () => {
+    // `items()` drops any item nobody is selected for, so a communal item
+    // filtered to adults vanishes from the set entirely rather than falling to
+    // whoever is actually travelling.
+    const teenager: Person = { id: 't1', name: 'Tam', ageRange: 'Teenager' }
+    const child: Person = { id: 'c1', name: 'Cal', ageRange: 'Child' }
+
+    it('still packs shared toiletries and pain relief', () => {
+        const result = createExampleData([teenager, child])
+        const overnightYes = result.questions
+            .find(q => q.id === TEMPLATE_QUESTION_IDS.overnight)!
+            .options.find(o => o.text === 'Yes')!
+        expect(overnightYes.items.find(i => i.text === 'Toothpaste')).toBeTruthy()
+        expect(result.alwaysNeededItems.find(i => i.text === 'Pain relief (paracetamol / ibuprofen)')).toBeTruthy()
+    })
+
+    it('leaves no answerable option completely empty', () => {
+        const result = createExampleData([teenager, child])
+        for (const question of result.questions) {
+            for (const option of question.options) {
+                if (option.text === 'No') continue
+                expect(option.items.length, `"${question.text} — ${option.text}" is empty`).toBeGreaterThan(0)
+            }
+        }
     })
 })
 
@@ -435,8 +624,8 @@ describe('createExampleData - ageRanges tagging', () => {
 
     it('leaves everyone-items and gender-filtered items untagged', () => {
         const result = createExampleData(family)
-        const snacks = result.alwaysNeededItems.find(i => i.text === 'Snacks')!
-        expect(snacks.ageRanges).toBeUndefined()
+        const medication = result.alwaysNeededItems.find(i => i.text === 'Prescription medication')!
+        expect(medication.ageRanges).toBeUndefined()
 
         const overnightYes = result.questions
             .find(q => q.text === 'Will you be staying overnight?')!

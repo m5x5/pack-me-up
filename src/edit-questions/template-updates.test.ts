@@ -61,7 +61,9 @@ describe('buildTemplateUpdateSuggestions', () => {
 
     it('does not resurrect items from a question the user deleted', () => {
         const set = baseSet()
-        findQuestion(set, TEMPLATE_QUESTION_IDS.selfCatering).deletedAt = '2026-01-01T00:00:00.000Z'
+        const accommodation = findQuestion(set, TEMPLATE_QUESTION_IDS.accommodation)
+        accommodation.deletedAt = '2026-01-01T00:00:00.000Z'
+        accommodation.options = []
         expect(buildTemplateUpdateSuggestions(set)).toEqual([])
     })
 
