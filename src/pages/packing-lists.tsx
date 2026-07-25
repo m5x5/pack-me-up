@@ -248,7 +248,7 @@ export function PackingLists() {
                                     <div className="flex-1 bg-white/40 rounded-full h-3 overflow-hidden">
                                         <div
                                             data-testid="progress-fill"
-                                            className="bg-gradient-primary h-full transition-all duration-500 rounded-full"
+                                            className="progress-bar-fill bg-gradient-primary h-full rounded-full"
                                             style={{ width: `${displayWidth}%` }}
                                         ></div>
                                     </div>
