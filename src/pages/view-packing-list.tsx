@@ -20,6 +20,7 @@ import { useForeignPod } from '../components/ForeignPodContext'
 import { useSharedListsSync } from '../hooks/useSharedListsSync'
 import { mergePackingLists } from '../utils/mergePackingLists'
 import { computeQuestionSetAdditions } from '../create-packing-list/updateFromQuestions'
+import { MILESTONE_MESSAGES, resolveMilestone } from './packing-milestones'
 
 type FormData = {
     items: Record<string, boolean>
@@ -161,6 +162,9 @@ export function ViewPackingList() {
     const [justCelebrated, setJustCelebrated] = useState(false)
     // null means "haven't looked yet", so the first read is only a baseline
     const wasAllPackedRef = useRef<boolean | null>(null)
+    // Encouragement in the progress strip. Held as state rather than derived so
+    // it can lag behind a boundary — see resolveMilestone.
+    const [milestone, setMilestone] = useState<number | null>(null)
 
 
     const toggleCategory = (key: string) =>
@@ -283,6 +287,16 @@ export function ViewPackingList() {
             setCompletionStage('exiting')
             setJustCelebrated(true)
         }
+    }, [packingList, watchedItems])
+
+    useEffect(() => {
+        if (!packingList) return
+        const total = packingList.items.length
+        // Same hydration guard as above: until the form fills in, every item looks
+        // unpacked and a list opened mid-way would start with no milestone.
+        if (total > 0 && Object.keys(watchedItems).length === 0) return
+        const packed = packingList.items.filter(item => watchedItems[item.id]).length
+        setMilestone(prev => resolveMilestone(prev, packed, total))
     }, [packingList, watchedItems])
 
     useEffect(() => {
@@ -743,6 +757,11 @@ export function ViewPackingList() {
     const packedCount = packingList.items.filter(item => watchedItems[item.id]).length
     const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
     const allPacked = totalCount > 0 && packedCount === totalCount
+    // A sliver of fill so the first item packed is visibly worth something, but
+    // nothing at all while the list is untouched
+    const progressWidth = packedCount === 0 ? 0 : Math.max(percentComplete, 4)
+    // The finished state has its own celebration; milestones step aside for it
+    const milestoneMessage = !allPacked && milestone !== null ? MILESTONE_MESSAGES[milestone] : null
     // Asking to see packed items always wins — otherwise a finished list would
     // offer no way back to its own contents.
     const sectionsExiting = completionStage === 'exiting' && !showPacked
@@ -929,36 +948,62 @@ export function ViewPackingList() {
             {/* Slim sticky progress strip */}
             <div className="sticky top-0 z-50 w-full mb-4 flex justify-center">
                 <div className="w-full max-w-screen-2xl">
-                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-4 py-2 flex items-center justify-between gap-3">
-                        <span className={`text-sm font-medium ${allPacked ? 'text-emerald-600' : 'text-gray-600'}`}>
-                            {allPacked ? '🎉 All packed!' : `${packedCount} / ${totalCount} packed (${percentComplete}%)`}
-                        </span>
-                        <div className="flex items-center gap-2">
-                            <div className="flex items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
-                                <button
-                                    type="button"
-                                    aria-pressed={viewMode === 'person'}
-                                    onClick={() => setViewMode('person')}
-                                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-4 py-2">
+                        {/* Counts and bar share a line with the controls where there is
+                            room; at 390px the controls drop to a line of their own
+                            rather than squeezing everything into wrapped fragments. */}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                            <span className={`text-sm font-medium whitespace-nowrap ${allPacked ? 'text-emerald-600' : 'text-gray-600'}`}>
+                                {allPacked ? '🎉 All packed!' : `${packedCount} / ${totalCount} packed (${percentComplete}%)`}
+                            </span>
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                                <div
+                                    role="progressbar"
+                                    aria-label="Packing progress"
+                                    aria-valuenow={percentComplete}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    className="flex-1 min-w-8 bg-gray-200 rounded-full h-1.5 overflow-hidden"
                                 >
-                                    Person View
-                                </button>
-                                <button
-                                    type="button"
-                                    aria-pressed={viewMode === 'question'}
-                                    onClick={() => setViewMode('question')}
-                                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-300 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                                >
-                                    Question View
-                                </button>
+                                    <div
+                                        data-testid="packing-progress-fill"
+                                        className={`progress-bar-fill h-full rounded-full ${allPacked ? 'bg-emerald-500' : 'bg-gradient-primary'}`}
+                                        style={{ width: `${progressWidth}%` }}
+                                    ></div>
+                                </div>
+                                {milestoneMessage && (
+                                    <span data-testid="progress-milestone" className="text-xs font-semibold text-primary-700 whitespace-nowrap">
+                                        {milestoneMessage}
+                                    </span>
+                                )}
                             </div>
-                            <Button
-                                type="button"
-                                variant={hiddenPackedCount > 0 ? 'primary' : 'secondary'}
-                                onClick={() => setShowPacked(!showPacked)}
-                            >
-                                {showPacked ? 'Hide Packed' : 'Show Packed'}
-                            </Button>
+                            <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+                                <div className="flex items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
+                                    <button
+                                        type="button"
+                                        aria-pressed={viewMode === 'person'}
+                                        onClick={() => setViewMode('person')}
+                                        className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Person View
+                                    </button>
+                                    <button
+                                        type="button"
+                                        aria-pressed={viewMode === 'question'}
+                                        onClick={() => setViewMode('question')}
+                                        className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-300 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Question View
+                                    </button>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant={hiddenPackedCount > 0 ? 'primary' : 'secondary'}
+                                    onClick={() => setShowPacked(!showPacked)}
+                                >
+                                    {showPacked ? 'Hide Packed' : 'Show Packed'}
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -214,6 +214,12 @@ body {
   animation: sections-pack-away 0.55s ease-in forwards;
 }
 
+/* Progress bars glide to their new width, so ticking an item reads as progress
+   being made rather than as the bar having always been that long. */
+.progress-bar-fill {
+  transition: width 0.5s ease;
+}
+
 /* Celebrations are decorative — hold still for anyone who asked us to. */
 @media (prefers-reduced-motion: reduce) {
   .celebration-banner,
@@ -234,6 +240,11 @@ body {
   .sections-packing-away {
     animation: none;
     opacity: 0;
+  }
+
+  /* The bar still has to reach the right width — it just gets there at once */
+  .progress-bar-fill {
+    transition: none;
   }
 }
 

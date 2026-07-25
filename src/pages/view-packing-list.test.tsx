@@ -540,6 +540,180 @@ describe('progress indicators', () => {
     })
 })
 
+describe('packing progress bar and milestones', () => {
+    // Eight items so a single tick moves progress by 12.5% — enough to step over
+    // a milestone boundary without landing exactly on the next one.
+    const eightItemList = {
+        id: 'test-list-milestones',
+        name: 'Milestone Trip',
+        createdAt: '2026-01-01T00:00:00Z',
+        items: Array.from({ length: 8 }, (_, i) => ({
+            id: `m${i}`,
+            itemText: `Item ${i}`,
+            personName: 'Alice',
+            personId: 'p1',
+            questionId: 'q1',
+            optionId: `o${i}`,
+            packed: false,
+        })),
+    }
+
+    function setup(list: { id: string; items: unknown[] }) {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...list, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(list),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+        return render(
+            <MemoryRouter initialEntries={[`/view-list/${list.id}`]}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    /** Packed items are hidden by default, which reshuffles checkbox order as you tick. */
+    function keepPackedItemsVisible() {
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+    }
+
+    /** Toggles the items in [fromIndex, toIndex) — ticking or unticking, as they stand. */
+    function toggleItems(fromIndex: number, toIndex: number) {
+        const checkboxes = screen.getAllByRole('checkbox')
+        for (let i = fromIndex; i < toIndex; i++) fireEvent.click(checkboxes[i])
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('shows a progress bar filled to the packed proportion', async () => {
+        setup(testPackingListWithProgress)
+        await waitFor(() => expect(screen.getByText('Sunscreen')).toBeTruthy())
+
+        const fill = await screen.findByTestId('packing-progress-fill')
+        expect(fill.style.width).toBe('50%')
+    })
+
+    it('leaves the bar empty when nothing is packed', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+
+        expect(screen.getByTestId('packing-progress-fill').style.width).toBe('0%')
+    })
+
+    it('exposes progress to assistive tech', async () => {
+        setup(testPackingListWithProgress)
+        await waitFor(() => expect(screen.getByText('Sunscreen')).toBeTruthy())
+
+        const bar = screen.getByRole('progressbar')
+        expect(bar.getAttribute('aria-valuenow')).toBe('50')
+        expect(bar.getAttribute('aria-valuemin')).toBe('0')
+        expect(bar.getAttribute('aria-valuemax')).toBe('100')
+    })
+
+    it('grows the bar as items are packed', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 4)
+
+        await waitFor(() => expect(screen.getByTestId('packing-progress-fill').style.width).toBe('50%'))
+    })
+
+    it('says nothing encouraging before the first milestone', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 1)
+
+        await waitFor(() => expect(screen.getByTestId('packing-progress-fill').style.width).toBe('13%'))
+        expect(screen.queryByTestId('progress-milestone')).toBeNull()
+    })
+
+    it('cheers the user on at each milestone', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 2)
+        await waitFor(() => expect(screen.getByTestId('progress-milestone').textContent).toMatch(/good start/i))
+
+        toggleItems(2, 4)
+        await waitFor(() => expect(screen.getByTestId('progress-milestone').textContent).toMatch(/halfway/i))
+
+        toggleItems(4, 6)
+        await waitFor(() => expect(screen.getByTestId('progress-milestone').textContent).toMatch(/nearly done/i))
+    })
+
+    it('does not flicker the milestone when a single item is toggled around the boundary', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 2)
+        await waitFor(() => expect(screen.getByTestId('progress-milestone')).toBeTruthy())
+
+        const secondItem = screen.getAllByRole('checkbox')[1]
+        for (let i = 0; i < 3; i++) {
+            fireEvent.click(secondItem)
+            await waitFor(() => expect(screen.getByTestId('packing-progress-fill').style.width).toBe('13%'))
+            expect(screen.getByTestId('progress-milestone').textContent).toMatch(/good start/i)
+
+            fireEvent.click(secondItem)
+            await waitFor(() => expect(screen.getByTestId('packing-progress-fill').style.width).toBe('25%'))
+            expect(screen.getByTestId('progress-milestone').textContent).toMatch(/good start/i)
+        }
+    })
+
+    it('drops the milestone once progress falls well below it', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 2)
+        await waitFor(() => expect(screen.getByTestId('progress-milestone')).toBeTruthy())
+
+        toggleItems(0, 2)
+
+        await waitFor(() => expect(screen.getByTestId('packing-progress-fill').style.width).toBe('0%'))
+        expect(screen.queryByTestId('progress-milestone')).toBeNull()
+    })
+
+    it('hands over to the all-packed treatment at 100%', async () => {
+        setup(eightItemList)
+        await waitFor(() => expect(screen.getByText('Item 0')).toBeTruthy())
+        keepPackedItemsVisible()
+
+        toggleItems(0, 8)
+
+        // The section header celebrates too, so the strip is one of several
+        await waitFor(() => expect(screen.getAllByText('🎉 All packed!').length).toBeGreaterThan(0))
+        expect(screen.queryByTestId('progress-milestone')).toBeNull()
+        expect(screen.getByTestId('packing-progress-fill').style.width).toBe('100%')
+    })
+})
+
 describe('ViewPackingList checked item styling', () => {
     beforeEach(() => {
         mockUseSolidPod.mockReturnValue({
