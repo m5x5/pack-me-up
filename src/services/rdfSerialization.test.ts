@@ -11,6 +11,11 @@ import {
 import type { PackingList, PackingListItem } from '../create-packing-list/types'
 import type { PackingListQuestionSet, Person, Question, Option } from '../edit-questions/types'
 import type { SharedListsWithMe } from './rdfSerialization'
+import {
+    fullyPopulatedPackingList,
+    fullyPopulatedQuestionSet,
+    withoutLocalOnlyFields,
+} from '../test-utils/fullyPopulatedFixtures'
 
 const DATASET_URL = 'https://pod.example.com/pack-me-up/packing-lists/list-abc.ttl'
 const QS_DATASET_URL = 'https://pod.example.com/pack-me-up/packing-list-questions.ttl'
@@ -72,6 +77,29 @@ function roundTripList(list: PackingList): PackingList {
 function roundTripQs(qs: PackingListQuestionSet): PackingListQuestionSet {
     return datasetToQuestionSet(questionSetToDataset(qs, QS_DATASET_URL) as SolidDataset, QS_DATASET_URL)
 }
+
+// ── Field fidelity ────────────────────────────────────────────────────────────
+
+// Same guard as the PouchDB round-trip in database.test.ts, applied to the pod
+// copy: the serialisers are written field-by-field, so a new field on the type
+// is silently not written unless someone remembers to add it. The
+// `Required<...>` fixtures make that a type error first, and this a test
+// failure second. See src/test-utils/fullyPopulatedFixtures.ts.
+describe('Field fidelity', () => {
+    it('round-trips every pod-serialisable field of PackingList', () => {
+        const list: PackingList = { ...fullyPopulatedPackingList, id: 'list-abc' }
+
+        const result = roundTripList(list)
+
+        expect(result).toEqual(withoutLocalOnlyFields(list))
+    })
+
+    it('round-trips every field of PackingListQuestionSet', () => {
+        const result = roundTripQs({ ...fullyPopulatedQuestionSet, _id: '1' })
+
+        expect(result).toEqual({ ...fullyPopulatedQuestionSet, _id: '1' })
+    })
+})
 
 // ── PackingList round-trip ────────────────────────────────────────────────────
 

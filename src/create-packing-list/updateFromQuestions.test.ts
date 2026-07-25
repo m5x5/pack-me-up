@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import PouchDB from 'pouchdb'
+import PouchDBMemoryAdapter from 'pouchdb-adapter-memory'
+import { PackingAppDatabase } from '../services/database'
 import { computeQuestionSetAdditions, reconstructGenerationInputs } from './updateFromQuestions'
 import { PackingList, PackingListItem } from './types'
 import { PackingListQuestionSet, Question, Person, Item } from '../edit-questions/types'
+
+PouchDB.plugin(PouchDBMemoryAdapter)
 
 const alice: Person = { id: 'p1', name: 'Alice' }
 const bob: Person = { id: 'p2', name: 'Bob' }
@@ -307,5 +312,72 @@ describe('reconstructGenerationInputs', () => {
         expect(questionAnswers).toEqual([])
         // always-needed item still contributes its personId as a traveller
         expect(selectedPeopleIds).toEqual(['p1'])
+    })
+})
+
+// End-to-end guard for #260: the generation inputs were persisted by the
+// creation flow but stripped by savePackingList, so "Update from questions"
+// always fell back to reconstructing them from the list's items — missing
+// additions for options that had generated nothing, and losing the per-night
+// quantities that `nights` drives.
+describe('after a save/load round-trip through the local database', () => {
+    let db: PackingAppDatabase
+
+    beforeEach(async () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        // @ts-expect-error - Accessing private static property for testing
+        const instances = PackingAppDatabase.instances as Map<string, PackingAppDatabase>
+        for (const instance of instances.values()) {
+            // @ts-expect-error - Accessing private property for testing
+            await instance.db.destroy()
+        }
+        instances.clear()
+        db = PackingAppDatabase.getInstance('update-from-questions')
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // 'opt-rainy' was answered at creation time but had no items then, so it
+    // leaves no trace in the list's items: only the stored questionAnswers can
+    // reveal it.
+    const questionSet = makeQuestionSet({
+        questions: [makeQuestion({
+            options: [
+                { id: 'opt-swimming', text: 'Swimming', order: 0, items: [makeItem('Goggles', ['p1'])] },
+                { id: 'opt-rainy', text: 'Rainy', order: 1, items: [makeItem('Socks', ['p1'], { perNight: 1 })] },
+            ],
+        })],
+    })
+
+    const savedList: PackingList = makeList({
+        nights: 3,
+        selectedPeopleIds: ['p1'],
+        questionAnswers: [{ questionId: 'q-activities', selectedOptionIds: ['opt-swimming', 'opt-rainy'] }],
+        items: [listItem({ itemText: 'Goggles', personId: 'p1', optionId: 'opt-swimming' })],
+    })
+
+    it('uses the stored generation inputs and nights, not the reconstruction fallback', async () => {
+        await db.savePackingList(savedList)
+        const reloaded = await db.getPackingList(savedList.id)
+
+        const additions = computeQuestionSetAdditions(reloaded, questionSet)
+
+        // Reconstruction cannot see 'opt-rainy' — no item on the list points at it.
+        expect(additions.map(a => a.itemText)).toEqual(['Socks'])
+        // 1 per night × 3 nights, from the stored `nights`.
+        expect(additions[0].quantity).toBe(3)
+    })
+
+    it('finds nothing when the generation inputs are missing (the pre-fix behaviour)', () => {
+        const withoutStoredInputs: PackingList = {
+            ...savedList,
+            nights: undefined,
+            questionAnswers: undefined,
+            selectedPeopleIds: undefined,
+        }
+
+        expect(computeQuestionSetAdditions(withoutStoredInputs, questionSet)).toEqual([])
     })
 })
