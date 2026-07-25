@@ -29,6 +29,25 @@ type FormData = {
 // name used as a key for the other sections.
 const SHARED_SECTION_KEY = '__shared__'
 
+// Long enough for the last (delayed) confetti piece to finish falling
+const CONFETTI_DURATION_MS = 4000
+
+// Kept in step with the `sections-packing-away` animation in index.css
+const SECTIONS_EXIT_MS = 550
+
+// Spread across the viewport with staggered starts so the confetti doesn't fall
+// as one rank. Fixed rather than random so the effect is identical every run.
+const CONFETTI_PIECES = [
+    { emoji: '🎉', left: '6%', delay: '0s' },
+    { emoji: '🎊', left: '18%', delay: '0.5s' },
+    { emoji: '✨', left: '30%', delay: '0.15s' },
+    { emoji: '🧳', left: '43%', delay: '0.8s' },
+    { emoji: '🎈', left: '56%', delay: '0.35s' },
+    { emoji: '✈️', left: '69%', delay: '0.65s' },
+    { emoji: '🌍', left: '82%', delay: '0.2s' },
+    { emoji: '🎉', left: '93%', delay: '0.95s' },
+]
+
 interface ListSection {
     key: string
     title: string
@@ -133,6 +152,15 @@ export function ViewPackingList() {
     const [guestToRemove, setGuestToRemove] = useState<string | null>(null)
     const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null)
     const itemRowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+    // One-off confetti when the final item is ticked
+    const [showConfetti, setShowConfetti] = useState(false)
+    // 'exiting' plays the fold-away animation, 'packed-away' has removed the cards
+    const [completionStage, setCompletionStage] = useState<'none' | 'exiting' | 'packed-away'>('none')
+    // True only when the list was finished in front of the user, which is the
+    // one time the banner gets its big entrance rather than the gentle one
+    const [justCelebrated, setJustCelebrated] = useState(false)
+    // null means "haven't looked yet", so the first read is only a baseline
+    const wasAllPackedRef = useRef<boolean | null>(null)
 
 
     const toggleCategory = (key: string) =>
@@ -212,6 +240,7 @@ export function ViewPackingList() {
         itemRowRefs.current.get(recentlyAddedItemId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, [recentlyAddedItemId])
 
+
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
         defaultValues: {
             items: {}
@@ -220,6 +249,53 @@ export function ViewPackingList() {
 
     // Use useWatch instead of watch() for proper re-renders on form changes
     const watchedItems = useWatch({ control, name: 'items', defaultValue: {} })
+
+    // The finale belongs to the *moment* the list is finished, so it fires on the
+    // transition into "everything packed" and is anchored to the viewport rather
+    // than the top of the document — you tick the last item wherever you happen
+    // to be scrolled to. The banner further down stays as the persistent "this
+    // list is done" state for when the list is reopened later.
+    useEffect(() => {
+        if (!packingList) return
+        const total = packingList.items.length
+        // The form hydrates a beat after the list loads; until it does, every
+        // item looks unpacked and an already-finished list would falsely
+        // "transition" into completion on open.
+        if (total > 0 && Object.keys(watchedItems).length === 0) return
+        const packed = packingList.items.filter(item => watchedItems[item.id]).length
+        const complete = total > 0 && packed === total
+        const previously = wasAllPackedRef.current
+        wasAllPackedRef.current = complete
+        if (!complete) {
+            setCompletionStage('none')
+            setShowConfetti(false)
+            setJustCelebrated(false)
+            return
+        }
+        if (previously === null) {
+            // Opening a list that was already finished: no celebration to replay,
+            // but the cards have no work left in them either.
+            setCompletionStage('packed-away')
+            return
+        }
+        if (!previously) {
+            setShowConfetti(true)
+            setCompletionStage('exiting')
+            setJustCelebrated(true)
+        }
+    }, [packingList, watchedItems])
+
+    useEffect(() => {
+        if (!showConfetti) return
+        const timer = setTimeout(() => setShowConfetti(false), CONFETTI_DURATION_MS)
+        return () => clearTimeout(timer)
+    }, [showConfetti])
+
+    useEffect(() => {
+        if (completionStage !== 'exiting') return
+        const timer = setTimeout(() => setCompletionStage('packed-away'), SECTIONS_EXIT_MS)
+        return () => clearTimeout(timer)
+    }, [completionStage])
 
     // Ref to the pod save function so useSyncCoordinator can push merged results back.
     // Populated after usePodSync is called below.
@@ -667,6 +743,19 @@ export function ViewPackingList() {
     const packedCount = packingList.items.filter(item => watchedItems[item.id]).length
     const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
     const allPacked = totalCount > 0 && packedCount === totalCount
+    // Asking to see packed items always wins — otherwise a finished list would
+    // offer no way back to its own contents.
+    const sectionsExiting = completionStage === 'exiting' && !showPacked
+    const sectionsPackedAway = completionStage === 'packed-away' && !showPacked
+    // Only the moment itself earns the big entrance — and only when the fold
+    // actually cleared a space for the banner to rise into.
+    const bannerRises = justCelebrated && !showPacked
+    // The effect that starts the fold only runs *after* this render, so on the
+    // render where the last item lands the stage is still 'none'. Consult the ref
+    // directly, otherwise the banner appears for a frame with its gentle entrance,
+    // gets pulled for the fold, and the rise never plays.
+    const foldPending = allPacked && wasAllPackedRef.current === false && !showPacked
+    const bannerHidden = sectionsExiting || foldPending
 
     const sectionStats = packingList.items.reduce((acc, item) => {
         const key = item.communal ? SHARED_SECTION_KEY : item.personName
@@ -689,9 +778,18 @@ export function ViewPackingList() {
     const guestNames = new Set((packingList.guests ?? []).map(g => g.name))
     const guestIdByName = new Map((packingList.guests ?? []).map(g => [g.name, g.id]))
 
+    // A section is worth celebrating once every item in it is packed
+    const isSectionComplete = (stats?: { packed: number; total: number }) =>
+        stats !== undefined && stats.total > 0 && stats.packed === stats.total
+
     // Build grouped item map, seeding guest names so their sections exist even when empty
     const groupedItems: Record<string, PackingListItem[]> = {}
     for (const guest of (packingList.guests ?? [])) groupedItems[guest.name] = []
+    // Seed fully packed people too, so finishing someone off leaves a celebration
+    // behind rather than silently removing their card along with their last item.
+    for (const [name, stats] of Object.entries(sectionStats)) {
+        if (name !== SHARED_SECTION_KEY && isSectionComplete(stats)) groupedItems[name] ??= []
+    }
     for (const item of filteredItems) {
         if (item.communal) continue
         if (!groupedItems[item.personName]) groupedItems[item.personName] = []
@@ -704,7 +802,7 @@ export function ViewPackingList() {
     // packed and packed items are hidden.
     const hasCommunalItems = packingList.items.some(i => i.communal)
     const visibleCommunalItems = filteredItems.filter(i => i.communal)
-    const sharedSections: ListSection[] = (visibleCommunalItems.length > 0 || showSharedSection)
+    const sharedSections: ListSection[] = (visibleCommunalItems.length > 0 || showSharedSection || isSectionComplete(sectionStats[SHARED_SECTION_KEY]))
         ? [{
             key: SHARED_SECTION_KEY,
             title: 'Shared Items',
@@ -731,8 +829,20 @@ export function ViewPackingList() {
             }))
         listSections = [...sharedSections, ...regularSections, ...guestSections]
     } else {
-        const categorySections: ListSection[] = groupByCategory(filteredItems.filter(i => !i.communal))
-            .map(({ label, items }) => ({ key: label, title: label, name: '', items, isCategory: true }))
+        const visibleByCategory = new Map(
+            groupByCategory(filteredItems.filter(i => !i.communal)).map(({ label, items }) => [label, items])
+        )
+        // Categories come from every item, not just the visible ones, so a fully
+        // packed category keeps its celebratory card instead of disappearing.
+        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal))
+            .filter(({ label }) => visibleByCategory.has(label) || isSectionComplete(categoryStats[label]))
+            .map(({ label }) => ({
+                key: label,
+                title: label,
+                name: '',
+                items: visibleByCategory.get(label) ?? [],
+                isCategory: true,
+            }))
         listSections = [...sharedSections, ...categorySections]
     }
 
@@ -854,16 +964,26 @@ export function ViewPackingList() {
                 </div>
             </div>
 
-            {/* All packed celebration banner */}
-            {allPacked && (
-                <div className="w-full max-w-screen-2xl mb-4 celebration-banner">
+            {/* All packed celebration banner. When the list is finished in front of
+                the user it waits for the cards to fold away and then rises into the
+                cleared space — arriving mid-fold meant competing with the confetti
+                and the collapsing layout. Revisits keep the original gentle
+                entrance, and with packed items shown nothing folds, so there's no
+                stage to clear and it just appears. */}
+            {allPacked && !bannerHidden && (
+                <div
+                    data-testid="completion-banner"
+                    className={`w-full max-w-screen-2xl mb-4 ${bannerRises ? 'celebration-banner-rising' : 'celebration-banner'}`}
+                >
                     <div className="relative overflow-hidden rounded-xl px-6 py-6 text-center shadow-lg celebration-bg">
-                        <span className="celebration-emoji" style={{ left: '4%', animationDelay: '0s' }}>🎊</span>
-                        <span className="celebration-emoji" style={{ left: '12%', animationDelay: '0.5s' }}>✈️</span>
-                        <span className="celebration-emoji" style={{ right: '12%', animationDelay: '0.8s' }}>🌍</span>
-                        <span className="celebration-emoji" style={{ right: '4%', animationDelay: '0.3s' }}>🎉</span>
+                        {/* Decorative only, and there isn't room for them beside the
+                            headline on a phone — they land right on top of the text */}
+                        <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ left: '4%', animationDelay: '0s' }}>🎊</span>
+                        <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ left: '12%', animationDelay: '0.5s' }}>✈️</span>
+                        <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ right: '12%', animationDelay: '0.8s' }}>🌍</span>
+                        <span aria-hidden="true" className="celebration-emoji hidden sm:block" style={{ right: '4%', animationDelay: '0.3s' }}>🎉</span>
                         <div className="relative z-10">
-                            <div className="text-4xl mb-2">🧳</div>
+                            <div className={`text-4xl mb-2 ${bannerRises ? 'celebration-suitcase-pop' : ''}`}>🧳</div>
                             <p className="text-2xl font-bold text-white drop-shadow-sm">You're all packed!</p>
                             <p className="text-emerald-100 mt-1 text-sm font-medium">Everything's ready — time for adventure!</p>
                         </div>
@@ -871,8 +991,9 @@ export function ViewPackingList() {
                 </div>
             )}
 
-            {/* Hidden packed items banner */}
-            {hiddenPackedCount > 0 && (
+            {/* Hidden packed items banner — at 100% it's just noise next to the
+                celebration, and the Show Packed button is right there anyway */}
+            {hiddenPackedCount > 0 && !allPacked && (
                 <div className="w-full max-w-screen-2xl mb-4">
                     <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                         <p className="text-sm text-amber-800">
@@ -916,7 +1037,14 @@ export function ViewPackingList() {
                     </div>
                 )}
                 <div>
-                    <div style={{ columnWidth: '300px', columnGap: '1rem' }}>
+                    {/* Once everything is packed the cards hold nothing but empty
+                        celebrations, so they fold away and leave the banner as the
+                        last thing standing — the fold itself is the celebration.
+                        Showing packed items brings them straight back. */}
+                    {!sectionsPackedAway && <div
+                        className={sectionsExiting ? 'sections-packing-away' : undefined}
+                        style={{ columnWidth: '300px', columnGap: '1rem' }}
+                    >
                         {listSections.map((section) => {
                             const { key: sectionKey, title, items, guestId } = section
                             const isCategorySection = section.isCategory === true
@@ -925,14 +1053,16 @@ export function ViewPackingList() {
                                 : (sectionStats[sectionKey] ?? { packed: 0, total: 0 })
                             const isGuest = guestId !== undefined
                             const isShared = section.communal === true
+                            const isComplete = isSectionComplete(stats)
+                            const completeLabel = isShared ? 'shared items' : isCategorySection ? title : section.name
                             const collapseLabelTarget = isShared ? 'the shared items' : isCategorySection ? title : `${section.name}'s`
                             const innerGroups = (isShared || !isCategorySection)
                                 ? groupByCategory(items)
                                 : groupByPerson(items)
                             return (
-                            <div key={sectionKey} className={`border rounded-lg p-4 bg-white shadow-sm mb-4 ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`} style={{ breakInside: 'avoid' }}>
+                            <div key={sectionKey} className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${isComplete ? 'border-emerald-300 bg-emerald-50' : `bg-white ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`}`} style={{ breakInside: 'avoid' }}>
                                 <div className="mb-4 pb-2 border-b border-gray-200">
-                                    <div className="flex items-center gap-1 min-h-[2rem]">
+                                    <div className="flex flex-wrap items-center gap-1 min-h-[2rem]">
                                         {isGuest && renamingGuestId === guestId ? (
                                             <>
                                                 <span className="text-sm text-gray-400 px-1" aria-hidden>▼</span>
@@ -960,6 +1090,14 @@ export function ViewPackingList() {
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 <span className="ml-1 text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
                                             </button>
+                                        )}
+                                        {isComplete && (
+                                            <span
+                                                aria-label={`All packed for ${completeLabel}`}
+                                                className="animate-pop-in text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-2 py-0.5 shrink-0"
+                                            >
+                                                🎉 All packed!
+                                            </span>
                                         )}
                                         {isShared && (
                                             <span className="text-xs font-medium text-blue-700 bg-blue-100 rounded-full px-2 py-0.5 shrink-0" title="Packed once for the whole group">
@@ -1020,6 +1158,11 @@ export function ViewPackingList() {
                                                 </button>
                                             </div>
                                         </div>
+                                    )}
+                                    {isComplete && items.length === 0 && (
+                                        <p className="text-sm font-medium text-emerald-700">
+                                            Nothing left to pack 🎒
+                                        </p>
                                     )}
                                     {innerGroups.map(({ label, items: catItems }) => {
                                         const categoryKey = `${sectionKey}::${label}`
@@ -1175,10 +1318,27 @@ export function ViewPackingList() {
                                 </div>}
                             </div>
                         )})}
-                    </div>
+                    </div>}
                 </div>
             </div>
         </div>
+        {showConfetti && (
+            <div
+                data-testid="completion-confetti"
+                aria-hidden="true"
+                className="fixed inset-0 z-[60] pointer-events-none overflow-hidden"
+            >
+                {CONFETTI_PIECES.map((piece, i) => (
+                    <span
+                        key={i}
+                        className="confetti-piece"
+                        style={{ left: piece.left, animationDelay: piece.delay }}
+                    >
+                        {piece.emoji}
+                    </span>
+                ))}
+            </div>
+        )}
         <ConfirmationDialog
             isOpen={itemToDelete !== null}
             onClose={() => setItemToDelete(null)}

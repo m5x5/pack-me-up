@@ -348,6 +348,18 @@ describe('ViewPackingList person/question view toggle', () => {
 })
 
 describe('ViewPackingList hidden items banner', () => {
+    // Two items, so checking one hides an item without finishing the list —
+    // a finished list shows the celebration instead of the hidden-items nag.
+    const bannerList = {
+        ...testPackingList,
+        items: [
+            ...testPackingList.items,
+            { id: 'item-2', itemText: 'Sunhat', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: false },
+        ],
+    }
+    const checkPassport = () =>
+        fireEvent.click(screen.getByText('Passport').closest('label')!.querySelector('input')!)
+
     beforeEach(() => {
         mockUseSolidPod.mockReturnValue({
             isLoggedIn: false,
@@ -364,9 +376,11 @@ describe('ViewPackingList hidden items banner', () => {
             syncingFromPod: false,
             handleSyncSuccess: vi.fn(),
             handleSyncError: vi.fn(),
-            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...bannerList, _rev: '2' }),
         })
-        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList: vi.fn().mockResolvedValue(bannerList) } as unknown as PackingAppDatabase,
+        })
     })
 
     afterEach(() => {
@@ -386,7 +400,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => {
             expect(screen.getByText(/item.* hidden/i)).toBeTruthy()
@@ -398,7 +412,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => expect(screen.getByText(/item.* hidden/i)).toBeTruthy())
 
@@ -412,7 +426,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => {
             const showPackedBtn = screen.getByRole('button', { name: /show packed/i })
@@ -1101,19 +1115,19 @@ describe('ViewPackingList shared (communal) section', () => {
         expect(screen.getByText('Sleeping bag')).toBeTruthy()
     })
 
-    it('hides the Shared Items section when all communal items are packed and packed items are hidden', async () => {
+    it('celebrates the Shared Items section when all communal items are packed', async () => {
         renderCommunal({
             ...communalPackingList,
             items: communalPackingList.items.map(i => i.communal ? { ...i, packed: true } : i),
         })
         await waitFor(() => expect(screen.getByText('Sleeping bag')).toBeTruthy())
-        // Packed items are hidden by default, so the fully-packed shared section
-        // should disappear just like a fully-packed person's section does
-        expect(screen.queryByText('Shared Items')).toBeNull()
-
-        // Showing packed items brings the section back
-        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        // Packed items are hidden by default, but the fully-packed shared section
+        // stays put with its celebration, just like a fully-packed person's section
         expect(screen.getByText('Shared Items')).toBeTruthy()
+        expect(screen.getByLabelText(/all packed for shared items/i)).toBeTruthy()
+
+        // Showing packed items reveals the items themselves again
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
         expect(screen.getByText('Tent')).toBeTruthy()
     })
 
@@ -1402,5 +1416,279 @@ describe('ViewPackingList update from questions', () => {
         )
         await waitFor(() => expect(screen.getByText('Swimsuit')).toBeTruthy())
         expect(screen.queryByRole('button', { name: /update from questions/i })).toBeNull()
+    })
+})
+
+describe('ViewPackingList section completion celebration', () => {
+    // Alice is fully packed; Bob still has an item outstanding.
+    const partiallyPackedList = {
+        id: 'test-list-complete',
+        name: 'Half Packed Trip',
+        createdAt: '2026-01-01T00:00:00Z',
+        items: [
+            { id: 'a1', itemText: 'Passport', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', category: 'Documents', packed: true },
+            { id: 'a2', itemText: 'Sunhat', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', category: 'Clothes', packed: true },
+            { id: 'b1', itemText: 'Wellies', personName: 'Bob', personId: 'p2', questionId: 'q1', optionId: 'o1', category: 'Clothes', packed: true },
+            { id: 'b2', itemText: 'Toothbrush', personName: 'Bob', personId: 'p2', questionId: 'q1', optionId: 'o1', category: 'Toiletries', packed: false },
+        ],
+    }
+
+    beforeEach(() => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...partiallyPackedList, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(partiallyPackedList),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function renderList() {
+        return render(
+            <MemoryRouter initialEntries={['/view-list/test-list-complete']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    it("keeps a fully packed person's section visible while packed items are hidden", async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        expect(screen.getByText("Alice's Items")).toBeTruthy()
+    })
+
+    it("celebrates a person whose items are all packed", async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        expect(screen.getByLabelText(/all packed for alice/i)).toBeTruthy()
+    })
+
+    it('does not celebrate a person with items still to pack', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        expect(screen.queryByLabelText(/all packed for bob/i)).toBeNull()
+    })
+
+    it('celebrates a person as soon as their last item is checked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+        expect(screen.queryByLabelText(/all packed for bob/i)).toBeNull()
+
+        // Toothbrush is the only unpacked item, so the only visible checkbox
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByLabelText(/all packed for bob/i)).toBeTruthy())
+    })
+
+    it('celebrates a fully packed category in question view', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /question view/i }))
+
+        // Documents (Passport) is fully packed; Toiletries (Toothbrush) is not
+        expect(screen.getByText('Documents')).toBeTruthy()
+        expect(screen.getByLabelText(/all packed for documents/i)).toBeTruthy()
+        expect(screen.queryByLabelText(/all packed for toiletries/i)).toBeNull()
+    })
+})
+
+describe('ViewPackingList completion', () => {
+    // Everything packed except Bob's toothbrush — one tick from done
+    const oneItemLeftList = {
+        id: 'test-list-finale',
+        name: 'Nearly Done Trip',
+        createdAt: '2026-01-01T00:00:00Z',
+        items: [
+            { id: 'a1', itemText: 'Passport', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: true },
+            { id: 'b2', itemText: 'Toothbrush', personName: 'Bob', personId: 'p2', questionId: 'q1', optionId: 'o1', packed: false },
+        ],
+    }
+
+    const fullyPackedList = {
+        ...oneItemLeftList,
+        id: 'test-list-finale-done',
+        items: oneItemLeftList.items.map(i => ({ ...i, packed: true })),
+    }
+
+    function setup(list: typeof oneItemLeftList) {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...list, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(list),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+        return render(
+            <MemoryRouter initialEntries={[`/view-list/${list.id}`]}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('does not fire confetti while items remain', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        expect(screen.queryByTestId('completion-confetti')).toBeNull()
+    })
+
+    it('fires confetti when the last item is checked', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByTestId('completion-confetti')).toBeTruthy())
+    })
+
+    it('does not fire confetti when opening a list that was already packed', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText('Nearly Done Trip')).toBeTruthy())
+
+        expect(screen.queryByTestId('completion-confetti')).toBeNull()
+    })
+
+    it('folds the person cards away once everything is packed', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText("Bob's Items")).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.queryByText("Bob's Items")).toBeNull())
+        expect(screen.queryByText("Alice's Items")).toBeNull()
+    })
+
+    it('leaves the celebration banner standing when the cards fold away', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.queryByText("Bob's Items")).toBeNull())
+        expect(screen.getByText("You're all packed!")).toBeTruthy()
+    })
+
+    it('opens an already-packed list with the cards already folded away', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.queryByText("Alice's Items")).toBeNull())
+        expect(screen.getByText("You're all packed!")).toBeTruthy()
+    })
+
+    it('brings the cards back when packed items are shown', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+
+        expect(screen.getByText("Alice's Items")).toBeTruthy()
+        expect(screen.getByText('Passport')).toBeTruthy()
+    })
+
+    it('hides the "packed items hidden" nag once everything is packed', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
+
+        expect(screen.queryByText(/packed items? hidden/i)).toBeNull()
+    })
+
+    it('holds the banner back while the cards are still folding away', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        // Confetti and the fold-away start in the same render, so at this point
+        // the stage is still being cleared and the banner shouldn't have arrived
+        await waitFor(() => expect(screen.getByTestId('completion-confetti')).toBeTruthy())
+        expect(screen.queryByTestId('completion-banner')).toBeNull()
+    })
+
+    it('rises the banner in once the cards have gone', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+        expect(screen.getByTestId('completion-banner').className).toContain('celebration-banner-rising')
+    })
+
+    it('keeps the gentle entrance when reopening a finished list', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+
+        const banner = screen.getByTestId('completion-banner')
+        expect(banner.className).toContain('celebration-banner')
+        expect(banner.className).not.toContain('celebration-banner-rising')
+    })
+
+    it('shows the banner straight away when packed items are being shown', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        // Nothing folds away in this mode, so there is no stage to clear
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        fireEvent.click(screen.getByText('Toothbrush').closest('label')!.querySelector('input')!)
+
+        await waitFor(() => expect(screen.getByTestId('completion-banner')).toBeTruthy())
+        expect(screen.getByTestId('completion-banner').className).not.toContain('celebration-banner-rising')
+    })
+
+    it('restores the cards if an item is unpacked again', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        const passport = screen.getByText('Passport').closest('label')!.querySelector('input')!
+        fireEvent.click(passport)
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Packed' }))
+
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
     })
 })
