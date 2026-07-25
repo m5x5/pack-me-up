@@ -22,6 +22,7 @@ import { useSharedListsSync } from '../hooks/useSharedListsSync'
 import { mergePackingLists } from '../utils/mergePackingLists'
 import { computeQuestionSetAdditions } from '../create-packing-list/updateFromQuestions'
 import { MILESTONE_MESSAGES, resolveMilestone } from './packing-milestones'
+import { formatTripDates } from '../create-packing-list/tripDetails'
 
 type FormData = {
     items: Record<string, boolean>
@@ -870,6 +871,8 @@ export function ViewPackingList() {
         listSections = [...sharedSections, ...categorySections]
     }
 
+    const tripDates = formatTripDates(packingList.startDate, packingList.endDate)
+
     return (
         <>
         <div className="w-full flex flex-col items-center py-8 px-4">
@@ -939,6 +942,15 @@ export function ViewPackingList() {
                         </Button>
                     </div>
                 </div>
+                {(packingList.destination || tripDates) && (
+                    <div
+                        data-testid="trip-details"
+                        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600"
+                    >
+                        {packingList.destination && <span>📍 {packingList.destination}</span>}
+                        {tripDates && <span>📅 {tripDates}</span>}
+                    </div>
+                )}
             </div>
 
             {/* Persistent "viewing someone else's list" indicator */}

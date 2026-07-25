@@ -7,6 +7,11 @@ export interface PackingList {
     sharedFromPodUrl?: string // set when this list was cached from a foreign pod; local-only, not serialized to RDF
     ownerWebId?: string       // WebID of the foreign pod owner; local-only, not serialized to RDF
     nights?: number    // how many nights away; drives suggested quantities
+    // Trip context, all optional so the quick-create flow still works without
+    // them. Dates are plain YYYY-MM-DD calendar days, not timestamps.
+    destination?: string
+    startDate?: string
+    endDate?: string
     items: PackingListItem[]
     deletedItems?: PackingListItem[]
     guests?: Array<{ id: string; name: string }>
@@ -38,6 +43,9 @@ export interface PackingListFormData {
     name: string
     // react-hook-form's valueAsNumber yields NaN for an empty input
     nights?: number
+    destination?: string
+    startDate?: string
+    endDate?: string
     questionAnswers: {
         questionId: string
         selectedOptionIds: string[]

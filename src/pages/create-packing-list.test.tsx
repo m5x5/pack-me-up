@@ -1432,6 +1432,121 @@ describe('CreatePackingList – nights away and suggested quantities', () => {
     })
 })
 
+// ─── CreatePackingList – trip destination and dates ───────────────────────────
+
+describe('CreatePackingList – trip destination and dates', () => {
+    const tripQuestionSet: PackingListQuestionSet = {
+        people: [{ id: 'p1', name: 'Alice' }],
+        alwaysNeededItems: [
+            { text: 'Toothbrush', personSelections: [{ personId: 'p1', selected: true }] },
+        ],
+        questions: [],
+    }
+
+    let showToast: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        showToast = vi.fn()
+        mockUseSolidPod.mockReturnValue({ isLoggedIn: false } as ReturnType<typeof useSolidPod>)
+        mockUseToast.mockReturnValue({ showToast } as unknown as ReturnType<typeof useToast>)
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    function makeTripDb() {
+        return makeDb({
+            getQuestionSet: vi.fn().mockResolvedValue(tripQuestionSet),
+            getAllPackingLists: vi.fn().mockResolvedValue([]),
+        })
+    }
+
+    async function renderForm() {
+        const db = makeTripDb()
+        mockUseDatabase.mockReturnValue({ db } as ReturnType<typeof useDatabase>)
+        renderCreatePackingList()
+        await waitFor(() => screen.getByText(/Answer the questions below/i))
+        return db
+    }
+
+    it('shows optional destination, start date and end date inputs', async () => {
+        await renderForm()
+
+        expect(screen.getByLabelText(/destination/i)).toBeTruthy()
+        const start = screen.getByLabelText(/start date/i) as HTMLInputElement
+        const end = screen.getByLabelText(/end date/i) as HTMLInputElement
+        expect(start.type).toBe('date')
+        expect(end.type).toBe('date')
+    })
+
+    it('stores the destination and trip dates on the created list', async () => {
+        const db = await renderForm()
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Summer Holiday' } })
+        fireEvent.change(screen.getByLabelText(/destination/i), { target: { value: 'Lisbon, Portugal' } })
+        fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-07-12' } })
+        fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-07-19' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        const savedList = db.savePackingList.mock.calls[0][0] as PackingList
+        expect(savedList.destination).toBe('Lisbon, Portugal')
+        expect(savedList.startDate).toBe('2026-07-12')
+        expect(savedList.endDate).toBe('2026-07-19')
+    })
+
+    it('creates the list without trip details when the fields are left blank', async () => {
+        const db = await renderForm()
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Quick trip' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        const savedList = db.savePackingList.mock.calls[0][0] as PackingList
+        expect(savedList.destination).toBeUndefined()
+        expect(savedList.startDate).toBeUndefined()
+        expect(savedList.endDate).toBeUndefined()
+    })
+
+    it('trims whitespace around the destination and drops a blank one', async () => {
+        const db = await renderForm()
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Trip' } })
+        fireEvent.change(screen.getByLabelText(/destination/i), { target: { value: '   ' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        expect((db.savePackingList.mock.calls[0][0] as PackingList).destination).toBeUndefined()
+    })
+
+    it('keeps a start date with no end date', async () => {
+        const db = await renderForm()
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Trip' } })
+        fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-07-12' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        const savedList = db.savePackingList.mock.calls[0][0] as PackingList
+        expect(savedList.startDate).toBe('2026-07-12')
+        expect(savedList.endDate).toBeUndefined()
+    })
+
+    it('refuses to create a list whose end date is before its start date', async () => {
+        const db = await renderForm()
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Trip' } })
+        fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-07-19' } })
+        fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-07-12' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+
+        await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/end date/i), 'error'))
+        expect(db.savePackingList).not.toHaveBeenCalled()
+    })
+})
+
 describe('CreatePackingList – loading state', () => {
     beforeEach(() => {
         vi.clearAllMocks()

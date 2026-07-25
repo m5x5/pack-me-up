@@ -580,3 +580,73 @@ describe('PackingLists pod sync on mutation', () => {
     })
 })
 
+
+describe('PackingLists trip destination and dates', () => {
+    const tripList = {
+        id: 'list-1',
+        name: 'Summer Holiday',
+        createdAt: '2026-01-01T00:00:00Z',
+        destination: 'Lisbon, Portugal',
+        startDate: '2026-07-12',
+        endDate: '2026-07-19',
+        items: [],
+    }
+
+    const localDate = (y: number, m: number, d: number) => new Date(y, m, d).toLocaleDateString()
+
+    beforeEach(() => {
+        mockUseSolidPod.mockReturnValue({
+            session: null,
+            isLoggedIn: false,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        localStorage.clear()
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function renderWithList(list: Record<string, unknown>) {
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn().mockResolvedValue([list]),
+                deletePackingList: vi.fn(),
+                savePackingList: vi.fn(),
+                getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            } as unknown as PackingAppDatabase,
+        })
+        return renderComponent()
+    }
+
+    it('shows the destination on the list card', async () => {
+        renderWithList(tripList)
+        expect(await screen.findByText(/Lisbon, Portugal/)).toBeTruthy()
+    })
+
+    it('shows the trip dates rather than the creation date', async () => {
+        renderWithList(tripList)
+        await screen.findByText(/Summer Holiday/)
+
+        const expected = `${localDate(2026, 6, 12)} – ${localDate(2026, 6, 19)}`
+        expect(screen.getByText(new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy()
+        expect(screen.queryByText(/📅 Created/)).toBeNull()
+    })
+
+    it('labels the date as the creation date when the list has no trip dates', async () => {
+        renderWithList({ ...tripList, startDate: undefined, endDate: undefined })
+        await screen.findByText(/Summer Holiday/)
+
+        expect(screen.getByText(/📅 Created/).textContent).toContain(new Date('2026-01-01T00:00:00Z').toLocaleDateString())
+    })
+
+    it('shows no destination badge when the list has none', async () => {
+        renderWithList({ ...tripList, destination: undefined })
+        await screen.findByText(/Summer Holiday/)
+
+        expect(screen.queryByText(/📍/)).toBeNull()
+    })
+})

@@ -33,6 +33,11 @@ export const PMU = {
     packed: `${PMU_NS}packed`,
     quantity: `${PMU_NS}quantity`,
     nights: `${PMU_NS}nights`,
+    // Trip context. Dates are stored as plain YYYY-MM-DD strings (not datetimes)
+    // to avoid timezone drift, matching how a person's date of birth is stored.
+    destination: `${PMU_NS}destination`,
+    tripStartDate: `${PMU_NS}tripStartDate`,
+    tripEndDate: `${PMU_NS}tripEndDate`,
     category: `${PMU_NS}category`,
     reviewed: `${PMU_NS}reviewed`,
     itemLastModified: `${PMU_NS}itemLastModified`,

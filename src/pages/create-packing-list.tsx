@@ -17,6 +17,7 @@ import { useForeignPod } from '../components/ForeignPodContext'
 import { generateQuestionBasedItems, generateAlwaysNeededItems, withItemOrder } from '../create-packing-list/generatePackingListItems'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { LoadingState } from '../components/LoadingState'
+import { tripDatesOutOfOrder } from '../create-packing-list/tripDetails'
 
 export function deduplicateItems(items: PackingListItem[]): PackingListItem[] {
     const seen = new Set<string>()
@@ -328,6 +329,9 @@ export function CreatePackingList() {
     const { register, handleSubmit, setValue, watch } = useForm<PackingListFormData>({
         defaultValues: {
             name: '',
+            destination: '',
+            startDate: '',
+            endDate: '',
             questionAnswers: []
         }
     })
@@ -576,7 +580,15 @@ export function CreatePackingList() {
             return
         }
 
+        if (tripDatesOutOfOrder(data.startDate, data.endDate)) {
+            showToast('The end date is before the start date. Please check your trip dates.', 'error')
+            return
+        }
+
         const nights = data.nights && data.nights > 0 ? data.nights : undefined
+        const destination = data.destination?.trim() || undefined
+        const startDate = data.startDate || undefined
+        const endDate = data.endDate || undefined
 
         // Get items from question answers
         const questionBasedItems = generateQuestionBasedItems(
@@ -612,6 +624,9 @@ export function CreatePackingList() {
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString(),
             ...(nights !== undefined ? { nights } : {}),
+            ...(destination !== undefined ? { destination } : {}),
+            ...(startDate !== undefined ? { startDate } : {}),
+            ...(endDate !== undefined ? { endDate } : {}),
             items: withItemOrder(deduplicateItems([...questionBasedItems, ...alwaysNeededItems])),
             selectedPeopleIds: [...selectedPeopleIds],
             questionAnswers,
@@ -783,6 +798,34 @@ export function CreatePackingList() {
                     />
                     <p className="mt-1 text-xs text-gray-500">
                         We'll suggest quantities for items with a per-night amount, like socks — e.g. 3 nights → Socks ×3.
+                    </p>
+                </div>
+
+                <div>
+                    <Input
+                        label="Destination (optional)"
+                        aria-label="Destination (optional)"
+                        placeholder="e.g. Lisbon, Portugal"
+                        {...register('destination')}
+                    />
+                    {/* Stacked at 390px so each date picker gets the full width */}
+                    <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+                        <Input
+                            label="Start date (optional)"
+                            aria-label="Start date (optional)"
+                            type="date"
+                            {...register('startDate')}
+                        />
+                        <Input
+                            label="End date (optional)"
+                            aria-label="End date (optional)"
+                            type="date"
+                            min={watch('startDate') || undefined}
+                            {...register('endDate')}
+                        />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                        Where you're going and when — shown on your lists so you can tell trips apart.
                     </p>
                 </div>
 

@@ -185,6 +185,29 @@ describe('packingListToDataset / datasetToPackingList', () => {
         expect(roundTripList(makePackingList()).nights).toBeUndefined()
     })
 
+    it('round-trips destination and omits it when not set', () => {
+        expect(roundTripList(makePackingList({ destination: 'Lisbon, Portugal' })).destination).toBe('Lisbon, Portugal')
+        expect(roundTripList(makePackingList()).destination).toBeUndefined()
+    })
+
+    it('round-trips trip start and end dates as plain calendar days', () => {
+        const result = roundTripList(makePackingList({ startDate: '2026-07-12', endDate: '2026-07-19' }))
+        expect(result.startDate).toBe('2026-07-12')
+        expect(result.endDate).toBe('2026-07-19')
+    })
+
+    it('omits trip dates when not set', () => {
+        const result = roundTripList(makePackingList())
+        expect(result.startDate).toBeUndefined()
+        expect(result.endDate).toBeUndefined()
+    })
+
+    it('round-trips a start date with no end date', () => {
+        const result = roundTripList(makePackingList({ startDate: '2026-07-12' }))
+        expect(result.startDate).toBe('2026-07-12')
+        expect(result.endDate).toBeUndefined()
+    })
+
     it('round-trips item quantity and omits it when not set', () => {
         const result = roundTripList(makePackingList({ items: [makeItem({ quantity: 4 })] }))
         expect(result.items[0].quantity).toBe(4)

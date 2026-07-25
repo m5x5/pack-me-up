@@ -281,6 +281,34 @@ describe('PackingAppDatabase', () => {
       expect(retrieved.items[0].packed).toBe(true)
     })
 
+    it('should persist trip destination and dates', async () => {
+      await db.savePackingList({
+        ...mockPackingList,
+        destination: 'Lisbon, Portugal',
+        startDate: '2026-07-12',
+        endDate: '2026-07-19',
+      })
+
+      const retrieved = await db.getPackingList('pl-1')
+      expect(retrieved.destination).toBe('Lisbon, Portugal')
+      expect(retrieved.startDate).toBe('2026-07-12')
+      expect(retrieved.endDate).toBe('2026-07-19')
+
+      const [fromAll] = await db.getAllPackingLists()
+      expect(fromAll.destination).toBe('Lisbon, Portugal')
+      expect(fromAll.startDate).toBe('2026-07-12')
+      expect(fromAll.endDate).toBe('2026-07-19')
+    })
+
+    it('should leave trip destination and dates undefined when not provided', async () => {
+      await db.savePackingList(mockPackingList)
+
+      const retrieved = await db.getPackingList('pl-1')
+      expect(retrieved.destination).toBeUndefined()
+      expect(retrieved.startDate).toBeUndefined()
+      expect(retrieved.endDate).toBeUndefined()
+    })
+
     it('should throw not_found error when packing list does not exist', async () => {
       await expect(db.getPackingList('nonexistent')).rejects.toEqual({
         name: 'not_found',
