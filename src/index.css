@@ -177,6 +177,17 @@ body {
   user-select: none;
 }
 
+/* The finished cards lift and fade away, leaving the celebration banner as the
+   last thing on the page. Kept in step with SECTIONS_EXIT_MS. */
+@keyframes sections-pack-away {
+  0% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.94) translateY(16px); }
+}
+
+.sections-packing-away {
+  animation: sections-pack-away 0.55s ease-in forwards;
+}
+
 /* Celebrations are decorative — hold still for anyone who asked us to. */
 @media (prefers-reduced-motion: reduce) {
   .celebration-banner,
@@ -189,6 +200,12 @@ body {
   /* Falling confetti is the one piece with nothing to say when it can't move */
   .confetti-piece {
     display: none;
+  }
+
+  /* Cards still need to end up hidden — they just don't make a show of it */
+  .sections-packing-away {
+    animation: none;
+    opacity: 0;
   }
 }
 

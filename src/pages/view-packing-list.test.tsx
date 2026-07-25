@@ -348,6 +348,18 @@ describe('ViewPackingList person/question view toggle', () => {
 })
 
 describe('ViewPackingList hidden items banner', () => {
+    // Two items, so checking one hides an item without finishing the list —
+    // a finished list shows the celebration instead of the hidden-items nag.
+    const bannerList = {
+        ...testPackingList,
+        items: [
+            ...testPackingList.items,
+            { id: 'item-2', itemText: 'Sunhat', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: false },
+        ],
+    }
+    const checkPassport = () =>
+        fireEvent.click(screen.getByText('Passport').closest('label')!.querySelector('input')!)
+
     beforeEach(() => {
         mockUseSolidPod.mockReturnValue({
             isLoggedIn: false,
@@ -364,9 +376,11 @@ describe('ViewPackingList hidden items banner', () => {
             syncingFromPod: false,
             handleSyncSuccess: vi.fn(),
             handleSyncError: vi.fn(),
-            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...bannerList, _rev: '2' }),
         })
-        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList: vi.fn().mockResolvedValue(bannerList) } as unknown as PackingAppDatabase,
+        })
     })
 
     afterEach(() => {
@@ -386,7 +400,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => {
             expect(screen.getByText(/item.* hidden/i)).toBeTruthy()
@@ -398,7 +412,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => expect(screen.getByText(/item.* hidden/i)).toBeTruthy())
 
@@ -412,7 +426,7 @@ describe('ViewPackingList hidden items banner', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
 
-        fireEvent.click(screen.getByRole('checkbox'))
+        checkPassport()
 
         await waitFor(() => {
             const showPackedBtn = screen.getByRole('button', { name: /show packed/i })
@@ -1503,7 +1517,7 @@ describe('ViewPackingList section completion celebration', () => {
     })
 })
 
-describe('ViewPackingList completion finale', () => {
+describe('ViewPackingList completion', () => {
     // Everything packed except Bob's toothbrush — one tick from done
     const oneItemLeftList = {
         id: 'test-list-finale',
@@ -1557,61 +1571,81 @@ describe('ViewPackingList completion finale', () => {
         vi.restoreAllMocks()
     })
 
-    it('does not show the finale while items remain', async () => {
+    it('does not fire confetti while items remain', async () => {
         setup(oneItemLeftList)
         await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
 
-        expect(screen.queryByTestId('completion-finale')).toBeNull()
+        expect(screen.queryByTestId('completion-confetti')).toBeNull()
     })
 
-    it('does not show the finale when opening a list that was already packed', async () => {
+    it('fires confetti when the last item is checked', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByTestId('completion-confetti')).toBeTruthy())
+    })
+
+    it('does not fire confetti when opening a list that was already packed', async () => {
         setup(fullyPackedList)
         await waitFor(() => expect(screen.getByText('Nearly Done Trip')).toBeTruthy())
 
-        // The persistent banner still marks the list as done...
+        expect(screen.queryByTestId('completion-confetti')).toBeNull()
+    })
+
+    it('folds the person cards away once everything is packed', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText("Bob's Items")).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.queryByText("Bob's Items")).toBeNull())
+        expect(screen.queryByText("Alice's Items")).toBeNull()
+    })
+
+    it('leaves the celebration banner standing when the cards fold away', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.queryByText("Bob's Items")).toBeNull())
         expect(screen.getByText("You're all packed!")).toBeTruthy()
-        // ...but the one-off celebration must not re-fire on revisit
-        expect(screen.queryByTestId('completion-finale')).toBeNull()
     })
 
-    it('shows the finale when the last item is checked', async () => {
-        setup(oneItemLeftList)
-        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
-
-        fireEvent.click(screen.getAllByRole('checkbox')[0])
-
-        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+    it('opens an already-packed list with the cards already folded away', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.queryByText("Alice's Items")).toBeNull())
+        expect(screen.getByText("You're all packed!")).toBeTruthy()
     })
 
-    it('dismisses the finale when tapped', async () => {
-        setup(oneItemLeftList)
-        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+    it('brings the cards back when packed items are shown', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
 
-        fireEvent.click(screen.getAllByRole('checkbox')[0])
-        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
-
-        fireEvent.click(screen.getByRole('button', { name: /dismiss celebration/i }))
-
-        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
-    })
-
-    it('re-fires the finale if the last item is unchecked and checked again', async () => {
-        setup(oneItemLeftList)
-        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
-
-        fireEvent.click(screen.getAllByRole('checkbox')[0])
-        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
-        fireEvent.click(screen.getByRole('button', { name: /dismiss celebration/i }))
-        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
-
-        // Show packed items so the last item can be unchecked, then checked again
         fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
-        const toothbrush = () =>
-            screen.getByText('Toothbrush').closest('label')!.querySelector('input')!
-        fireEvent.click(toothbrush())
-        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
 
-        fireEvent.click(toothbrush())
-        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+        expect(screen.getByText("Alice's Items")).toBeTruthy()
+        expect(screen.getByText('Passport')).toBeTruthy()
+    })
+
+    it('hides the "packed items hidden" nag once everything is packed', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
+
+        expect(screen.queryByText(/packed items? hidden/i)).toBeNull()
+    })
+
+    it('restores the cards if an item is unpacked again', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText("You're all packed!")).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        const passport = screen.getByText('Passport').closest('label')!.querySelector('input')!
+        fireEvent.click(passport)
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Packed' }))
+
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
     })
 })
