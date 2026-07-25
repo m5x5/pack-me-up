@@ -167,7 +167,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-function OptionSection({ option, people, onEdit, onDelete }: {
+export function OptionSection({ option, people, onEdit, onDelete }: {
     option: Option
     people: Person[]
     onEdit: () => void
@@ -179,25 +179,50 @@ function OptionSection({ option, people, onEdit, onDelete }: {
     // sets), but stay mounted afterwards so re-expanding is instant.
     const hasExpandedRef = useRef(isExpanded)
     if (isExpanded) hasExpandedRef.current = true
+    // Nothing to reveal when an answer has no items, so drop the chevron and the
+    // toggle entirely and say so inline — an expander that opens onto nothing
+    // just reads as broken.
+    const isEmpty = option.items.length === 0
+    const heading = (
+        <>
+            {isEmpty ? (
+                // Spacer keeps the text aligned with the chevroned siblings.
+                <span className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            ) : (
+                <svg
+                    data-testid="option-expand-chevron"
+                    className={`w-4 h-4 text-gray-400 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+            )}
+            <span className="text-sm font-medium text-gray-800 flex-1 min-w-0">
+                {option.text || <em className="text-gray-400 font-normal">Untitled option</em>}
+            </span>
+            {isEmpty ? (
+                <span className="text-xs text-gray-400 italic flex-shrink-0 mr-1">No items</span>
+            ) : (
+                <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
+            )}
+        </>
+    )
     return (
         <div className="bg-gray-50 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
-                <button
-                    type="button"
-                    onClick={() => setIsExpanded(e => !e)}
-                    className="flex items-center gap-2 flex-1 text-left min-w-0"
-                >
-                    <svg
-                        className={`w-4 h-4 text-gray-400 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                {isEmpty ? (
+                    <div className="flex items-center gap-2 flex-1 text-left min-w-0">
+                        {heading}
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setIsExpanded(e => !e)}
+                        className="flex items-center gap-2 flex-1 text-left min-w-0"
                     >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    <span className="text-sm font-medium text-gray-800 flex-1 min-w-0">
-                        {option.text || <em className="text-gray-400 font-normal">Untitled option</em>}
-                    </span>
-                    <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
-                </button>
+                        {heading}
+                    </button>
+                )}
                 <div className="flex items-center flex-shrink-0">
                     {/* Mobile: context menu */}
                     <div className="sm:hidden">
