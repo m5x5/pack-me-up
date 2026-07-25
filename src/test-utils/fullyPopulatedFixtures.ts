@@ -11,8 +11,8 @@ import type { PackingListQuestionSet, Person, Item, SavedQuestion, Option } from
  * would not be checked. Here it is, which is the whole point:
  *
  *   `Required<...>` means adding a new optional field to `PackingList` or
- *   `PackingListQuestionSet` **breaks the type check** (`npm run typecheck`,
- *   run in CI) until the field is added below — and once it is added, the
+ *   `PackingListQuestionSet` **breaks the type check** (`npm test` runs it
+ *   first) until the field is added below — and once it is added, the
  *   round-trip tests fail unless the field actually survives being saved and
  *   read back.
  *

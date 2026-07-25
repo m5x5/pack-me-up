@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "npm run typecheck && vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:e2e": "npm run build && playwright test",

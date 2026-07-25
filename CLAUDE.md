@@ -3,7 +3,9 @@
 ## Testing
 
 Use TDD (red-green-refactor) when implementing new features.
-Run tests: `npm test`
+Run tests: `npm test` — type checks first (`npm run typecheck`), then runs vitest, so the
+persistence guard below fails the same command locally and in CI. `npm run test:watch`
+skips the type check.
 
 ### E2E pod isolation
 
@@ -40,7 +42,7 @@ new field is stored by default. Reads spread the whole stored payload for the sa
 An allowlist is how `nights`, `questionAnswers` and `selectedPeopleIds` were silently
 dropped for every locally stored list (#260) with no type error and no failing test.
 
-Two guards catch a repeat, and both are wired into CI (`npm run typecheck`, `npm test`):
+Two guards catch a repeat, and `npm test` runs both (CI included):
 
 1. `src/test-utils/fullyPopulatedFixtures.ts` holds `Required<...>` fixtures with **every**
    field of these types populated. Adding an optional field to the type breaks the type
