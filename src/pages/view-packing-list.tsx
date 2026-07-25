@@ -23,6 +23,8 @@ import { mergePackingLists } from '../utils/mergePackingLists'
 import { computeQuestionSetAdditions } from '../create-packing-list/updateFromQuestions'
 import { MILESTONE_MESSAGES, resolveMilestone } from './packing-milestones'
 import { formatTripDates } from '../create-packing-list/tripDetails'
+import { tapFeedback } from '../utils/haptics'
+import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 
 type FormData = {
     items: Record<string, boolean>
@@ -37,6 +39,12 @@ const CONFETTI_DURATION_MS = 4000
 
 // Kept in step with the `sections-packing-away` animation in index.css
 const SECTIONS_EXIT_MS = 550
+
+// Kept in step with the `item-packed-swell` / `item-packed-tick` animations in
+// index.css. Also how long a freshly-packed row is held on screen before the
+// "hide packed items" filter takes it — long enough to see, short enough that
+// the next item is never waiting on it.
+const ITEM_FLOURISH_MS = 450
 
 // Spread across the viewport with staggered starts so the confetti doesn't fall
 // as one rank. Fixed rather than random so the effect is identical every run.
@@ -167,6 +175,27 @@ export function ViewPackingList() {
     // Encouragement in the progress strip. Held as state rather than derived so
     // it can lag behind a boundary — see resolveMilestone.
     const [milestone, setMilestone] = useState<number | null>(null)
+    // The item currently taking its bow after being checked off. The nonce rises
+    // on every tick so re-checking the same row remounts the tick and replays it,
+    // rather than the unchanged id leaving the animation half-finished.
+    const [flourish, setFlourish] = useState<{ itemId: string; nonce: number } | null>(null)
+
+    // The reward for a tick belongs to the tick, not to the save that follows it
+    // 800ms later — everything here is local and immediate, and none of it waits
+    // on the database or the pod. Unchecking is a correction rather than an
+    // achievement, so it passes in silence.
+    const handleItemToggle = useCallback((itemId: string, checked: boolean) => {
+        if (!checked) return
+        tapFeedback()
+        if (prefersReducedMotion()) return
+        setFlourish(prev => ({ itemId, nonce: (prev?.nonce ?? 0) + 1 }))
+    }, [])
+
+    useEffect(() => {
+        if (!flourish) return
+        const timer = setTimeout(() => setFlourish(null), ITEM_FLOURISH_MS)
+        return () => clearTimeout(timer)
+    }, [flourish])
 
 
     const toggleCategory = (key: string) =>
@@ -752,6 +781,10 @@ export function ViewPackingList() {
         if (showPacked) {
             return true
         }
+        // A just-ticked item keeps its place until the flourish has played —
+        // otherwise the row it belongs to vanishes in the same frame and the
+        // feedback has nothing to happen to.
+        if (item.id === flourish?.itemId) return true
         return !watchedItems[item.id]
     })
 
@@ -1283,17 +1316,36 @@ export function ViewPackingList() {
                                                         {catItems.map((item) => (
                                                             <div
                                                                 key={`${item.id}-${sectionKey}`}
+                                                                data-testid={`item-row-${item.id}`}
                                                                 ref={(el) => {
                                                                     if (el) itemRowRefs.current.set(item.id, el)
                                                                     else itemRowRefs.current.delete(item.id)
                                                                 }}
-                                                                className={`rounded-lg p-3 transition-colors duration-1000 ${item.id === recentlyAddedItemId ? 'bg-green-100 ring-2 ring-green-400' : 'bg-gray-50'}`}
+                                                                className={`relative rounded-lg p-3 transition-colors duration-1000 ${item.id === recentlyAddedItemId ? 'bg-green-100 ring-2 ring-green-400' : 'bg-gray-50'} ${item.id === flourish?.itemId ? 'item-row-packed' : ''}`}
                                                             >
+                                                                {item.id === flourish?.itemId && (
+                                                                    <span
+                                                                        key={flourish.nonce}
+                                                                        data-testid={`item-tick-${item.id}`}
+                                                                        aria-hidden="true"
+                                                                        // Themed green rather than text-green-600 — that class is the
+                                                                        // "Saved" indicator's, and the e2e suite waits on it by selector
+                                                                        // Anchored over the checkbox; the animation owns the transform,
+                                                                        // so no translate utilities here. Themed green rather than
+                                                                        // text-green-600 — that class belongs to the "Saved" indicator,
+                                                                        // which the e2e suite waits on by selector.
+                                                                        className="item-packed-tick pointer-events-none absolute left-[22px] top-1/2 z-10 text-xl font-bold text-success-600"
+                                                                    >
+                                                                        ✓
+                                                                    </span>
+                                                                )}
                                                                 <div className="flex items-center justify-between">
                                                                     <label className="flex items-center space-x-3 cursor-pointer flex-1 min-w-0">
                                                                         <input
                                                                             type="checkbox"
-                                                                            {...register(`items.${item.id}`)}
+                                                                            {...register(`items.${item.id}`, {
+                                                                                onChange: (e) => handleItemToggle(item.id, e.target.checked),
+                                                                            })}
                                                                             className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                                                                         />
                                                                         {editingItemId === item.id ? (

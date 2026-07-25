@@ -269,6 +269,34 @@ body {
   animation: loading-skeleton-sweep 1.6s ease-in-out infinite;
 }
 
+/* Ticking an item is the move the user repeats hundreds of times a trip, so it
+   gets a beat of acknowledgement — a green swell and a tick lifting out of the
+   checkbox — before the row is whisked out of the unpacked list. Kept in step
+   with ITEM_FLOURISH_MS. Nothing here is `forwards`: with packed items shown
+   the row stays put and must settle back to looking ordinary. */
+@keyframes item-packed-swell {
+  0% { transform: scale(1); background-color: rgb(249 250 251); }
+  30% { transform: scale(1.02); background-color: rgb(220 252 231); }
+  70% { transform: scale(1); background-color: rgb(220 252 231); }
+  100% { transform: scale(1); background-color: rgb(249 250 251); }
+}
+
+/* The tick starts where the checkbox is — which is exactly where the checkbox's
+   own mark now sits — so it has to lift clear of it to be seen at all. */
+@keyframes item-packed-tick {
+  0% { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  35% { transform: translate(-50%, -95%) scale(1.25); opacity: 1; }
+  100% { transform: translate(-50%, -135%) scale(1); opacity: 0; }
+}
+
+.item-row-packed {
+  animation: item-packed-swell 0.45s ease-out;
+}
+
+.item-packed-tick {
+  animation: item-packed-tick 0.45s ease-out;
+}
+
 /* Celebrations and waiting states are decorative — hold still for anyone who
    asked us to. */
 @media (prefers-reduced-motion: reduce) {
@@ -305,6 +333,13 @@ body {
   .loading-skeleton-bar {
     animation: none;
     background-image: none;
+  }
+
+  /* The check-off flourish is pure decoration. The component skips rendering the
+     tick entirely in this mode; this is the belt to that pair of braces. */
+  .item-row-packed,
+  .item-packed-tick {
+    animation: none;
   }
 }
 

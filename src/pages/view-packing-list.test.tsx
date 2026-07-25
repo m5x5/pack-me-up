@@ -58,6 +58,11 @@ vi.mock('../hooks/useSharedListsSync', () => ({
     })),
 }))
 
+const mockTapFeedback = vi.fn()
+vi.mock('../utils/haptics', () => ({
+    tapFeedback: () => mockTapFeedback(),
+}))
+
 const mockUseDatabase = vi.mocked(useDatabase)
 const mockUseSolidPod = vi.mocked(useSolidPod)
 const mockUsePodSync = vi.mocked(usePodSync)
@@ -1949,5 +1954,174 @@ describe('ViewPackingList trip destination and dates', () => {
 
         await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
         expect(screen.queryByTestId('trip-details')).toBeNull()
+    })
+})
+
+describe('ViewPackingList check-off feedback', () => {
+    // Two people so the list is never finished by a single tick — the completion
+    // celebration has its own tests and would otherwise mask the per-item one.
+    const feedbackList = {
+        id: 'test-list-feedback',
+        name: 'Feedback Trip',
+        createdAt: '2026-01-01T00:00:00Z',
+        items: [
+            { id: 'a1', itemText: 'Passport', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: false },
+            { id: 'a2', itemText: 'Sunhat', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: false },
+            { id: 'b1', itemText: 'Wellies', personName: 'Bob', personId: 'p2', questionId: 'q1', optionId: 'o1', packed: true },
+        ],
+    }
+
+    let saveWithSyncPrevention: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+        mockTapFeedback.mockClear()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        saveWithSyncPrevention = vi.fn().mockResolvedValue({ ...feedbackList, _rev: '2' })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention,
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(feedbackList),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function renderList() {
+        return render(
+            <MemoryRouter initialEntries={['/view-list/test-list-feedback']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    function checkboxFor(itemText: string) {
+        return screen.getByText(itemText).closest('label')!.querySelector('input')!
+    }
+
+    function preferReducedMotion() {
+        vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+            matches: query.includes('prefers-reduced-motion'),
+            media: query,
+            onchange: null,
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList)
+    }
+
+    it('taps back when an item is checked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        expect(mockTapFeedback).toHaveBeenCalledTimes(1)
+    })
+
+    it('stays silent when an item is unchecked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        fireEvent.click(checkboxFor('Wellies'))
+
+        expect(mockTapFeedback).not.toHaveBeenCalled()
+    })
+
+    it('plays a flourish on the row that was just checked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        expect(screen.getByTestId('item-tick-a1')).toBeTruthy()
+        expect(screen.getByTestId('item-row-a1').className).toContain('item-row-packed')
+    })
+
+    it('flourishes only the row that was checked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        expect(screen.queryByTestId('item-tick-a2')).toBeNull()
+        expect(screen.getByTestId('item-row-a2').className).not.toContain('item-row-packed')
+    })
+
+    it('holds the row on screen for the flourish before whisking it away', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        // Packed items are hidden, but the row waits for its moment first
+        expect(screen.getByText('Passport')).toBeTruthy()
+        await waitFor(() => expect(screen.queryByText('Passport')).toBeNull())
+    })
+
+    it('does not flourish when an item is unchecked', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        fireEvent.click(checkboxFor('Wellies'))
+
+        expect(screen.queryByTestId('item-tick-b1')).toBeNull()
+        expect(screen.getByTestId('item-row-b1').className).not.toContain('item-row-packed')
+    })
+
+    it('holds still for anyone who asked for reduced motion', async () => {
+        preferReducedMotion()
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        expect(screen.queryByTestId('item-tick-a1')).toBeNull()
+        await waitFor(() => expect(screen.queryByText('Passport')).toBeNull())
+    })
+
+    it('still taps back when motion is reduced', async () => {
+        preferReducedMotion()
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        expect(mockTapFeedback).toHaveBeenCalledTimes(1)
+    })
+
+    it('gives feedback immediately, without waiting on the debounced save', async () => {
+        renderList()
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        fireEvent.click(checkboxFor('Passport'))
+
+        // The save is 800ms of debounce away; the feedback has already happened
+        expect(saveWithSyncPrevention).not.toHaveBeenCalled()
+        expect(mockTapFeedback).toHaveBeenCalledTimes(1)
+        expect(screen.getByTestId('item-tick-a1')).toBeTruthy()
     })
 })
