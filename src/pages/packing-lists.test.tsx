@@ -114,6 +114,20 @@ describe('PackingLists', () => {
         vi.restoreAllMocks()
     })
 
+    it('uses the shared loading treatment while packing lists load', () => {
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn(() => new Promise(() => {})),
+                getSharedListsWithMe: vi.fn(() => new Promise(() => {})),
+            } as unknown as PackingAppDatabase,
+        })
+
+        renderComponent()
+
+        expect(screen.getByRole('status').textContent).toContain('Loading packing lists...')
+        expect(screen.getAllByTestId('loading-skeleton-card').length).toBeGreaterThan(0)
+    })
+
     it('does not show Protect Your Packing Lists banner for non-logged-in users with lists', async () => {
         render(
             <MemoryRouter>

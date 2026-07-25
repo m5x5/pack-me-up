@@ -5,6 +5,7 @@ import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
 import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES, getCollaborators, isPubliclyAccessible, resolveOwnerDisplayName, buildSharedListPath } from '../services/solidPod'
 import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
@@ -154,7 +155,20 @@ export function PackingLists() {
     }, [packingLists, isLoggedIn, session])
 
     if (isLoading || loginSyncInProgress) {
-        return <div className="max-w-4xl mx-auto py-8 px-4 text-center text-gray-700 font-semibold">Loading packing lists...</div>
+        // Keep the real header in place so only the list area changes when the
+        // lists land.
+        return (
+            <div className="max-w-4xl mx-auto py-8 px-4">
+                <div className="mb-8 flex justify-between items-start">
+                    <div className="mb-2">
+                        <h1 className="text-4xl font-bold text-primary-900">📦 Packing Lists</h1>
+                        <p className="mt-2 text-lg text-gray-700 font-medium">View all your created packing lists.</p>
+                    </div>
+                    <Button variant="primary" onClick={() => navigate('/create-packing-list')}>➕ New List</Button>
+                </div>
+                <LoadingState message="Loading packing lists..." rows={3} />
+            </div>
+        )
     }
 
     return (

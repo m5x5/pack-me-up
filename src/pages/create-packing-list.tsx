@@ -16,6 +16,7 @@ import { questionSetToDataset, datasetToQuestionSet, packingListToDataset, datas
 import { useForeignPod } from '../components/ForeignPodContext'
 import { generateQuestionBasedItems, generateAlwaysNeededItems, withItemOrder } from '../create-packing-list/generatePackingListItems'
 import { AgePromotionCard } from '../components/AgePromotionCard'
+import { LoadingState } from '../components/LoadingState'
 
 export function deduplicateItems(items: PackingListItem[]): PackingListItem[] {
     const seen = new Set<string>()
@@ -650,11 +651,7 @@ export function CreatePackingList() {
     if (isLoading) {
         return (
             <div className="max-w-4xl mx-auto py-8 px-4">
-                <div className="flex items-center justify-center min-h-96">
-                    <div className="text-center">
-                        <div className="text-lg text-gray-600">Loading questions...</div>
-                    </div>
-                </div>
+                <LoadingState message="Loading questions..." rows={3} />
             </div>
         )
     }

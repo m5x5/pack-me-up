@@ -244,7 +244,33 @@ body {
   transition: width 0.5s ease;
 }
 
-/* Celebrations are decorative — hold still for anyone who asked us to. */
+/* Waiting should still feel like the app: a suitcase rocking on its corner
+   above a skeleton of the content that's on its way. */
+@keyframes loading-suitcase-rock {
+  0%, 100% { transform: translateY(0) rotate(-7deg); }
+  50% { transform: translateY(-6px) rotate(7deg); }
+}
+
+.loading-suitcase {
+  display: inline-block;
+  animation: loading-suitcase-rock 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-skeleton-sweep {
+  0% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+
+.loading-skeleton-bar {
+  background-color: #e2e8f0;
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.85) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: loading-skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+/* Celebrations and waiting states are decorative — hold still for anyone who
+   asked us to. */
 @media (prefers-reduced-motion: reduce) {
   .celebration-banner,
   .celebration-banner-rising,
@@ -269,6 +295,16 @@ body {
   /* The bar still has to reach the right width — it just gets there at once */
   .progress-bar-fill {
     transition: none;
+  }
+
+  .loading-suitcase {
+    animation: none;
+  }
+
+  /* The placeholder bars stay — they just stop sweeping */
+  .loading-skeleton-bar {
+    animation: none;
+    background-image: none;
   }
 }
 

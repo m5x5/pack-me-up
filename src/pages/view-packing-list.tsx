@@ -5,6 +5,7 @@ import { PackingList, PackingListItem } from '../create-packing-list/types'
 import { useDatabase } from '../components/DatabaseContext'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { LoadingState } from '../components/LoadingState'
 import { useForm, useWatch } from 'react-hook-form'
 import { useSolidPod } from '../components/SolidPodContext'
 import { useToast } from '../components/ToastContext'
@@ -735,7 +736,11 @@ export function ViewPackingList() {
     }
 
     if (isLoading) {
-        return <div className="max-w-4xl mx-auto py-8 px-4">Loading packing list...</div>
+        return (
+            <div className="max-w-4xl mx-auto py-8 px-4">
+                <LoadingState message="Loading packing list..." rows={3} />
+            </div>
+        )
     }
 
     if (!packingList) {
