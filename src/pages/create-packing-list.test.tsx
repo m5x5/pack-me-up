@@ -1431,3 +1431,35 @@ describe('CreatePackingList – nights away and suggested quantities', () => {
         savedList.items.forEach(item => expect(item.quantity).toBeUndefined())
     })
 })
+
+describe('CreatePackingList – loading state', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockUseSolidPod.mockReturnValue({ isLoggedIn: false } as ReturnType<typeof useSolidPod>)
+        mockUseToast.mockReturnValue({ showToast: vi.fn() } as ReturnType<typeof useToast>)
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    it('uses the shared loading treatment while questions load', () => {
+        mockUseDatabase.mockReturnValue({
+            db: makeDb({ getQuestionSet: vi.fn(() => new Promise(() => {})) }),
+        } as ReturnType<typeof useDatabase>)
+
+        renderCreatePackingList()
+
+        expect(screen.getByRole('status').textContent).toContain('Loading questions...')
+        expect(screen.getAllByTestId('loading-skeleton-card').length).toBeGreaterThan(0)
+    })
+
+    it('replaces the loading treatment with the questions once they arrive', async () => {
+        mockUseDatabase.mockReturnValue({ db: makeDb() } as ReturnType<typeof useDatabase>)
+
+        renderCreatePackingList()
+
+        await waitFor(() => screen.getByText(/Answer the questions below/i))
+        expect(screen.queryByRole('status')).toBeNull()
+    })
+})

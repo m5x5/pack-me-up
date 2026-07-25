@@ -4,6 +4,7 @@ import { useForeignPod } from '../components/ForeignPodContext'
 import { useSolidPod } from '../components/SolidPodContext'
 import { loadMultipleRdfFromPod, POD_CONTAINERS } from '../services/solidPod'
 import { datasetToPackingList } from '../services/rdfSerialization'
+import { LoadingState } from '../components/LoadingState'
 import type { PackingList } from '../create-packing-list/types'
 
 export function ForeignPackingListsPage() {
@@ -39,7 +40,11 @@ export function ForeignPackingListsPage() {
     if (isLoading) {
         return (
             <div className="max-w-4xl mx-auto py-8 px-4">
-                <p className="text-gray-500">Loading packing lists…</p>
+                <div className="mb-8">
+                    <h1 className="text-4xl font-bold text-primary-900">📦 Packing Lists</h1>
+                    <p className="mt-2 text-lg text-gray-700 font-medium">Shared packing lists.</p>
+                </div>
+                <LoadingState message="Loading packing lists..." rows={3} />
             </div>
         )
     }

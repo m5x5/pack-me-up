@@ -4,6 +4,7 @@ import { useDatabase } from '../components/DatabaseContext'
 import { useToast } from '../components/ToastContext'
 import { usePodErrorHandler } from '../hooks/usePodErrorHandler'
 import { Button } from '../components/Button'
+import { LoadingState } from '../components/LoadingState'
 import { getPrimaryPodUrl } from '../services/solidPod'
 import {
     createBackup,
@@ -129,9 +130,7 @@ export function BackupsPage() {
             </div>
 
             {isLoadingBackups ? (
-                <div className="text-center py-12 text-gray-700 font-semibold">
-                    Loading backups...
-                </div>
+                <LoadingState message="Loading backups..." rows={2} />
             ) : backups.length === 0 ? (
                 <div className="text-center py-12 bg-gradient-to-br from-primary-50 to-accent-50 rounded-2xl border-2 border-primary-200 shadow-soft">
                     <p className="text-lg text-gray-800 font-semibold">No backups yet</p>

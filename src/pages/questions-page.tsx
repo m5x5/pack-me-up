@@ -32,6 +32,7 @@ import { useForeignPod } from '../components/ForeignPodContext'
 import { CustomCreatableSelect } from '../components/CreatableSelect'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
+import { LoadingState } from '../components/LoadingState'
 import { AgeTransition } from '../edit-questions/age-derivation'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 
@@ -1625,7 +1626,13 @@ export function QuestionsPage() {
     const activeAlwaysNeededItems = useMemo(() => (data?.alwaysNeededItems ?? []).filter(i => !i.deletedAt), [data])
 
     if (error) return <div className="p-8 text-red-600">Error: {error}</div>
-    if (!data) return <div className="p-8 text-gray-500">Loading…</div>
+    if (!data) return (
+        <div className="w-full flex flex-col items-center py-8 px-4">
+            <div className="w-full max-w-3xl">
+                <LoadingState message="Loading questions & items..." rows={3} />
+            </div>
+        </div>
+    )
 
     return (
         <div className="w-full flex flex-col items-center py-8 px-4">

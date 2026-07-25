@@ -1200,6 +1200,19 @@ describe('ViewPackingList foreign pod (?pod= param)', () => {
         await waitFor(() => expect(screen.getByText(/loading/i)).toBeTruthy())
     })
 
+    it('uses the shared loading treatment while the packing list loads', async () => {
+        const dbWithNotFound = {
+            ...makeDb(),
+            getPackingList: vi.fn().mockRejectedValue({ name: 'not_found' }),
+        }
+        mockUseDatabase.mockReturnValue({ db: dbWithNotFound as unknown as PackingAppDatabase })
+
+        renderWithForeignPod(FOREIGN_POD_URL)
+
+        await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Loading packing list...'))
+        expect(screen.getAllByTestId('loading-skeleton-card').length).toBeGreaterThan(0)
+    })
+
     it('stops loading and shows a toast when foreign pod sync fails before data is loaded', async () => {
         const dbWithNotFound = {
             ...makeDb(),
