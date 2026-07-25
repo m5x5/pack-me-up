@@ -141,13 +141,13 @@ test.describe('B – Editing Questions', () => {
     const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
     expect(first).not.toEqual(second)
 
-    // Enter reorder mode — rows collapse to name + large move buttons
-    await page.getByRole('button', { name: 'Reorder items' }).click()
+    // Enter organise mode — rows collapse to name + large move buttons
+    await page.getByRole('button', { name: 'Organise items' }).click()
     await expect(page.locator('.cursor-text')).toHaveCount(0)
 
-    // Move the first item down one position, leave reorder mode, save
+    // Move the first item down one position, leave organise mode, save
     await page.locator('button[title="Move item down"]').first().click()
-    await page.getByRole('button', { name: 'Finish reordering' }).click()
+    await page.getByRole('button', { name: 'Finish organising' }).click()
     await expect(itemTexts.first()).toContainText(second)
     await expect(itemTexts.nth(1)).toContainText(first)
     await page.getByRole('button', { name: 'Save changes' }).click()
@@ -168,7 +168,7 @@ test.describe('B – Editing Questions', () => {
     const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
     expect(first).not.toEqual(second)
 
-    await page.getByRole('button', { name: 'Reorder items' }).click()
+    await page.getByRole('button', { name: 'Organise items' }).click()
     const rows = page.locator('[data-reorder-row]')
     await expect(rows.first()).toBeVisible()
 
@@ -176,7 +176,8 @@ test.describe('B – Editing Questions', () => {
     // edge (before its midpoint) so the item lands in exactly slot 1. Aiming
     // deeper would cross the next row's midpoint and overshoot. Low-level mouse
     // moves dispatch pointer events, driving the same code path as touch.
-    const handle = page.locator('button[title="Drag to reorder"]').first()
+    // Prefix match: the handle's tooltip also mentions moving between sections
+    const handle = page.locator('button[title^="Drag to reorder"]').first()
     const hb = (await handle.boundingBox())!
     const sb = (await rows.nth(1).boundingBox())!
     await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
@@ -184,16 +185,16 @@ test.describe('B – Editing Questions', () => {
     await page.mouse.move(hb.x + hb.width / 2, sb.y + 4, { steps: 10 })
     await page.mouse.up()
 
-    // The drag reordered the two items (still in reorder mode, rows show plain text)
+    // The drag reordered the two items (still in organise mode, rows show plain text)
     await expect(rows.first()).toContainText(second)
     await expect(rows.nth(1)).toContainText(first)
 
-    // Leave reorder mode. dnd-kit suppresses the single click that immediately
-    // follows a drop, so retry until reorder mode actually exits (a real user
+    // Leave organise mode. dnd-kit suppresses the single click that immediately
+    // follows a drop, so retry until organise mode actually exits (a real user
     // never taps this fast; the suppression is invisible in practice).
     await expect(async () => {
-      await page.getByRole('button', { name: 'Finish reordering' }).click()
-      await expect(page.getByRole('button', { name: 'Reorder items' })).toBeVisible({ timeout: 1_000 })
+      await page.getByRole('button', { name: 'Finish organising' }).click()
+      await expect(page.getByRole('button', { name: 'Organise items' })).toBeVisible({ timeout: 1_000 })
     }).toPass()
     await expect(itemTexts.first()).toContainText(second)
     await expect(itemTexts.nth(1)).toContainText(first)
