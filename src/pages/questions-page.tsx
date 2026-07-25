@@ -112,6 +112,43 @@ const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Pe
     )
 })
 
+/**
+ * Read-only item list, split by section the same way the editor and the
+ * generated packing list are — so this page shows the grouping a list will
+ * actually have without opening a modal. Headings only appear once a list is
+ * genuinely split; an unsectioned list renders exactly as it did before.
+ */
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel }: {
+    items: Item[]
+    people: Person[]
+    defaultLabel: string
+}) {
+    const sequence = useMemo(
+        () => buildSectionSequence(items, defaultLabel, []),
+        [items, defaultLabel],
+    )
+    const hasSections = sequence.filter(e => e.kind === 'header').length > 1
+    return (
+        <>
+            {sequence.map((entry, i) => entry.kind === 'header' ? (
+                hasSections && (
+                    <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-2 pb-0.5 px-2">
+                        <span
+                            data-testid="item-section-heading"
+                            className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate"
+                        >
+                            {entry.label}
+                        </span>
+                        <span className="flex-1 h-px bg-gray-100" />
+                    </div>
+                )
+            ) : (
+                <ItemRow key={`item-${i}`} item={entry.item} people={people} />
+            ))}
+        </>
+    )
+})
+
 function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
     return (
         <DropdownMenu.Root>
@@ -152,9 +189,11 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, onEdit, onDelete }: {
+export function OptionSection({ option, people, sectionDefaultLabel, onEdit, onDelete }: {
     option: Option
     people: Person[]
+    /** What the packing list will call items here that carry no category. */
+    sectionDefaultLabel: string
     onEdit: () => void
     onDelete: () => void
 }) {
@@ -243,9 +282,7 @@ export function OptionSection({ option, people, onEdit, onDelete }: {
             </div>
             {hasExpandedRef.current && (
                 <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
-                    {option.items.map((item, i) => (
-                        <ItemRow key={i} item={item} people={people} />
-                    ))}
+                    <SectionedItemRows items={option.items} people={people} defaultLabel={sectionDefaultLabel} />
                 </div>
             )}
             {showDeleteModal && (
@@ -467,6 +504,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             key={option.id}
                             option={option}
                             people={people}
+                            sectionDefaultLabel={defaultCategoryFor(question, option)}
                             onEdit={() => onEditOption(question.id, option)}
                             onDelete={() => onDeleteOption(question.id, option.id)}
                         />
@@ -527,9 +565,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, onEdit }: { i
             </div>
             {hasExpandedRef.current && (
                 <div className={`mt-3 space-y-1${isExpanded ? '' : ' hidden'}`}>
-                    {items.map((item, i) => (
-                        <ItemRow key={i} item={item} people={people} />
-                    ))}
+                    <SectionedItemRows items={items} people={people} defaultLabel={ALWAYS_NEEDED_CATEGORY} />
                 </div>
             )}
         </div>

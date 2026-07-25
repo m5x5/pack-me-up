@@ -14,9 +14,15 @@ function makeOption(overrides: Partial<Option> = {}): Option {
     return { id: 'o1', order: 0, text: 'Yes', items: [], ...overrides }
 }
 
-function renderOption(option: Option) {
+function renderOption(option: Option, sectionDefaultLabel = 'Yes') {
     return render(
-        <OptionSection option={option} people={people} onEdit={vi.fn()} onDelete={vi.fn()} />
+        <OptionSection
+            option={option}
+            people={people}
+            sectionDefaultLabel={sectionDefaultLabel}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+        />
     )
 }
 
@@ -55,5 +61,37 @@ describe('OptionSection with items', () => {
         fireEvent.click(toggle)
         expect(screen.getByText('Toothbrush')).toBeTruthy()
         expect(screen.getByText('Towel')).toBeTruthy()
+    })
+
+    it('shows no section headings when the items are all in the default section', () => {
+        renderOption(withItems())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        // 'Yes' appears as the option's own heading; it must not also appear as
+        // a section heading when the list isn't actually split.
+        expect(screen.queryByTestId('item-section-heading')).toBeNull()
+    })
+})
+
+describe('OptionSection with sectioned items', () => {
+    const sectioned = () => makeOption({
+        items: [
+            { text: 'Toothbrush', personSelections: [], category: 'Toiletries' },
+            { text: 'Pyjamas', personSelections: [], category: 'Sleep' },
+            { text: 'Socks', personSelections: [] },
+        ],
+    })
+
+    it('groups the items under their section headings', () => {
+        renderOption(sectioned())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        const headings = screen.getAllByTestId('item-section-heading').map(h => h.textContent)
+        // The default section leads, named as the generated list will name it.
+        expect(headings).toEqual(['Yes', 'Toiletries', 'Sleep'])
+    })
+
+    it('names the default section after the question for single-choice questions', () => {
+        renderOption(sectioned(), 'Staying overnight?')
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getAllByTestId('item-section-heading')[0].textContent).toBe('Staying overnight?')
     })
 })
