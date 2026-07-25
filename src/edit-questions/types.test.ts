@@ -59,6 +59,18 @@ describe('ItemSchema - order (backward compatible)', () => {
   })
 })
 
+describe('ItemSchema - category (backward compatible)', () => {
+  it('accepts an item with a category', () => {
+    const parsed = ItemSchema.parse({ text: 'Toothbrush', personSelections: [], category: 'Toiletries' })
+    expect(parsed.category).toBe('Toiletries')
+  })
+
+  it('accepts a legacy item without a category', () => {
+    const parsed = ItemSchema.parse({ text: 'Towel', personSelections: [] })
+    expect(parsed.category).toBeUndefined()
+  })
+})
+
 describe('renumberItemOrder', () => {
   const now = '2024-06-01T00:00:00.000Z'
 

@@ -152,6 +152,48 @@ describe('generateQuestionBasedItems – selected options contribute items', () 
         result.forEach(item => expect(item.category).toBe('Staying overnight?'))
     })
 
+    it("prefers an item's own category over the option text", () => {
+        const q: Question = {
+            ...activitiesQuestion,
+            options: [{
+                ...swimmingOpt,
+                items: [
+                    { text: 'Swimsuit', personSelections: [{ personId: 'p1', selected: true }], category: 'Clothes' },
+                    { text: 'Goggles', personSelections: [{ personId: 'p1', selected: true }] },
+                ],
+            }],
+        }
+        const answers = [{ questionId: 'q-activities', selectedOptionIds: ['opt-swimming'] }]
+        const result = generateQuestionBasedItems([q], answers, [p1], ['p1'])
+        expect(result.find(i => i.itemText === 'Swimsuit')?.category).toBe('Clothes')
+        // Unstamped siblings keep falling back to the option text
+        expect(result.find(i => i.itemText === 'Goggles')?.category).toBe('Swimming')
+    })
+
+    it("prefers an item's own category over the question text on single-choice questions", () => {
+        const q: Question = {
+            ...overnightQuestion,
+            options: [
+                {
+                    id: 'opt-yes',
+                    text: 'Yes',
+                    order: 0,
+                    items: [
+                        { text: 'Toothbrush', personSelections: [{ personId: 'p1', selected: true }], category: 'Toiletries' },
+                        { text: 'Pyjamas', personSelections: [{ personId: 'p1', selected: true }], category: 'Sleep' },
+                        { text: 'Socks', personSelections: [{ personId: 'p1', selected: true }] },
+                    ],
+                },
+                { id: 'opt-no', text: 'No', order: 1, items: [] },
+            ],
+        }
+        const answers = [{ questionId: 'q-overnight', selectedOptionIds: ['opt-yes'] }]
+        const result = generateQuestionBasedItems([q], answers, [p1], ['p1'])
+        expect(result.find(i => i.itemText === 'Toothbrush')?.category).toBe('Toiletries')
+        expect(result.find(i => i.itemText === 'Pyjamas')?.category).toBe('Sleep')
+        expect(result.find(i => i.itemText === 'Socks')?.category).toBe('Staying overnight?')
+    })
+
     it('processes multiple questions and merges their items', () => {
         const answers = [
             { questionId: 'q-activities', selectedOptionIds: ['opt-swimming'] },
@@ -430,6 +472,21 @@ describe('generateAlwaysNeededItems', () => {
             expect(item.optionId).toBe('always-needed')
             expect(item.category).toBe('Essentials')
         })
+    })
+
+    it("prefers an item's own category over Essentials", () => {
+        const result = generateAlwaysNeededItems(
+            [
+                { text: 'Nappies', personSelections: [{ personId: 'p1', selected: true }], category: 'Baby' },
+                { text: 'First aid kit', communal: true, personSelections: [], category: 'First aid' },
+                { text: 'Snacks', personSelections: [{ personId: 'p1', selected: true }] },
+            ],
+            [p1],
+            ['p1']
+        )
+        expect(result.find(i => i.itemText === 'Nappies')?.category).toBe('Baby')
+        expect(result.find(i => i.itemText === 'First aid kit')?.category).toBe('First aid')
+        expect(result.find(i => i.itemText === 'Snacks')?.category).toBe('Essentials')
     })
 
     it('excludes people who are not travelling', () => {

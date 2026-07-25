@@ -382,6 +382,33 @@ describe('questionSetToDataset / datasetToQuestionSet', () => {
         expect(result.alwaysNeededItems[1].perNights).toBeUndefined()
     })
 
+    it('round-trips category on alwaysNeededItems and omits it when not set', () => {
+        const qs = makeQuestionSet({
+            alwaysNeededItems: [
+                { text: 'Nappies', category: 'Baby', personSelections: [{ personId: 'p1', selected: true }] },
+                { text: 'Snacks', personSelections: [{ personId: 'p1', selected: true }] },
+            ],
+        })
+        const result = roundTripQs(qs)
+        expect(result.alwaysNeededItems[0].category).toBe('Baby')
+        expect(result.alwaysNeededItems[1].category).toBeUndefined()
+    })
+
+    it('round-trips category on option items', () => {
+        const qs = makeQuestionSet({
+            questions: [makeQuestion({
+                options: [{
+                    id: 'opt-yes',
+                    text: 'Yes',
+                    order: 0,
+                    items: [{ text: 'Toothbrush', category: 'Toiletries', personSelections: [{ personId: 'p1', selected: true }] }],
+                }],
+            })],
+        })
+        const result = roundTripQs(qs)
+        expect(result.questions[0].options[0].items[0].category).toBe('Toiletries')
+    })
+
     it('round-trips a saved question with option and items', () => {
         const option = makeOption({
             items: [{ text: 'Nappies', personSelections: [{ personId: 'p1', selected: true }] }],
