@@ -9,6 +9,11 @@ import {
     sectionNamesIn,
     buildSectionSequence,
     applySectionLayout,
+    sectionLabelAt,
+    sectionLabelsIn,
+    moveItemWithinSection,
+    moveItemToSection,
+    isAtSectionEdge,
     type SectionSequenceEntry,
 } from './item-sections'
 import type { Item, Question, Option } from './types'
@@ -250,5 +255,133 @@ describe('removeSection', () => {
         expect(result[0].category).toBeUndefined()
         expect(result[0].text).toBe('Nappies')
         expect(result[1].category).toBe('First aid')
+    })
+})
+
+describe('sequence moves', () => {
+    const snacks = item({ id: 'i1', text: 'Snacks' })
+    const crisps = item({ id: 'i2', text: 'Crisps' })
+    const water = item({ id: 'i3', text: 'Water' })
+    const nappies = item({ id: 'i4', text: 'Nappies', category: 'Baby' })
+    const wipes = item({ id: 'i5', text: 'Wipes', category: 'Baby' })
+
+    function sequence(...entries: Array<string | Item>): SectionSequenceEntry[] {
+        return entries.map(e =>
+            typeof e === 'string' ? { kind: 'header' as const, label: e } : { kind: 'item' as const, item: e }
+        )
+    }
+
+    const labels = (seq: SectionSequenceEntry[]) =>
+        seq.map(e => e.kind === 'header' ? `#${e.label}` : e.item.text)
+
+    // Essentials: Snacks, Crisps, Water | Baby: Nappies, Wipes
+    const twoSections = () =>
+        sequence('Essentials', snacks, crisps, water, 'Baby', nappies, wipes)
+
+    describe('sectionLabelAt', () => {
+        it('reports the nearest heading above the entry', () => {
+            expect(sectionLabelAt(twoSections(), 2, 'Essentials')).toBe('Essentials')
+            expect(sectionLabelAt(twoSections(), 6, 'Essentials')).toBe('Baby')
+        })
+
+        it('falls back to the default label above the first heading', () => {
+            expect(sectionLabelAt(sequence(snacks, 'Baby', nappies), 0, 'Essentials')).toBe('Essentials')
+        })
+    })
+
+    describe('sectionLabelsIn', () => {
+        it('lists the sections in display order', () => {
+            expect(sectionLabelsIn(twoSections(), 'Essentials')).toEqual(['Essentials', 'Baby'])
+        })
+
+        it('still offers the default section when it is empty and so has no heading', () => {
+            // Every item is categorised, so buildSectionSequence omits the
+            // default heading — but "back to the main pile" must stay reachable.
+            expect(sectionLabelsIn(sequence('Baby', nappies), 'Essentials')).toEqual(['Essentials', 'Baby'])
+        })
+    })
+
+    describe('moveItemWithinSection', () => {
+        it('moves an item to the top of its own section', () => {
+            expect(labels(moveItemWithinSection(twoSections(), 3, 'top')))
+                .toEqual(['#Essentials', 'Water', 'Snacks', 'Crisps', '#Baby', 'Nappies', 'Wipes'])
+        })
+
+        it('moves an item to the bottom of its own section, above the next heading', () => {
+            expect(labels(moveItemWithinSection(twoSections(), 1, 'bottom')))
+                .toEqual(['#Essentials', 'Crisps', 'Water', 'Snacks', '#Baby', 'Nappies', 'Wipes'])
+        })
+
+        it('keeps a later section intact when its own items move', () => {
+            expect(labels(moveItemWithinSection(twoSections(), 6, 'top')))
+                .toEqual(['#Essentials', 'Snacks', 'Crisps', 'Water', '#Baby', 'Wipes', 'Nappies'])
+        })
+
+        it('leaves the sequence alone when the item is already there', () => {
+            const seq = twoSections()
+            expect(moveItemWithinSection(seq, 1, 'top')).toEqual(seq)
+            expect(moveItemWithinSection(seq, 3, 'bottom')).toEqual(seq)
+        })
+
+        it('handles a section with no heading above it', () => {
+            expect(labels(moveItemWithinSection(sequence(snacks, crisps, 'Baby', nappies), 1, 'top')))
+                .toEqual(['Crisps', 'Snacks', '#Baby', 'Nappies'])
+        })
+    })
+
+    describe('isAtSectionEdge', () => {
+        it('recognises the first and last item of a section', () => {
+            const seq = twoSections()
+            expect(isAtSectionEdge(seq, 1, 'top')).toBe(true)
+            expect(isAtSectionEdge(seq, 2, 'top')).toBe(false)
+            expect(isAtSectionEdge(seq, 3, 'bottom')).toBe(true)
+            expect(isAtSectionEdge(seq, 5, 'bottom')).toBe(false)
+            expect(isAtSectionEdge(seq, 6, 'bottom')).toBe(true)
+        })
+    })
+
+    describe('moveItemToSection', () => {
+        it('appends the item to the end of the target section', () => {
+            expect(labels(moveItemToSection(twoSections(), 1, 'Baby', 'Essentials')))
+                .toEqual(['#Essentials', 'Crisps', 'Water', '#Baby', 'Nappies', 'Wipes', 'Snacks'])
+        })
+
+        it('moves an item back into the default section', () => {
+            expect(labels(moveItemToSection(twoSections(), 5, 'Essentials', 'Essentials')))
+                .toEqual(['#Essentials', 'Snacks', 'Crisps', 'Water', 'Nappies', '#Baby', 'Wipes'])
+        })
+
+        it('moves an item into a section that is still empty', () => {
+            const seq = sequence('Essentials', snacks, 'First aid')
+            expect(labels(moveItemToSection(seq, 1, 'First aid', 'Essentials')))
+                .toEqual(['#Essentials', '#First aid', 'Snacks'])
+        })
+
+        it('moves an item to the default section even when it has no heading', () => {
+            // Sits above the first heading, which applySectionLayout reads as
+            // the default section.
+            const seq = sequence('Baby', nappies, wipes)
+            expect(labels(moveItemToSection(seq, 1, 'Essentials', 'Essentials')))
+                .toEqual(['Nappies', '#Baby', 'Wipes'])
+        })
+
+        it('leaves the sequence alone for an unknown section', () => {
+            const seq = twoSections()
+            expect(moveItemToSection(seq, 1, 'Nowhere', 'Essentials')).toEqual(seq)
+        })
+    })
+
+    describe('round trip through applySectionLayout', () => {
+        it('restamps a menu move into the target section', () => {
+            const moved = moveItemToSection(twoSections(), 1, 'Baby', 'Essentials')
+            const result = applySectionLayout(moved, 'Essentials', now)
+            expect(result.map(i => [i.text, i.category])).toEqual([
+                ['Crisps', undefined],
+                ['Water', undefined],
+                ['Nappies', 'Baby'],
+                ['Wipes', 'Baby'],
+                ['Snacks', 'Baby'],
+            ])
+        })
     })
 })

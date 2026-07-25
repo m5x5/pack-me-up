@@ -130,7 +130,7 @@ test.describe('B – Editing Questions', () => {
     await expect(page.getByText('WaterBottleTest')).toBeVisible({ timeout: 5_000 })
   })
 
-  test('B6: reorder always-needed items via reorder mode', async ({ freshPage: page }) => {
+  test('B6: reorder always-needed items via the move menu', async ({ freshPage: page }) => {
     await setupWizardAndGoToQuestions(page)
     await openAlwaysNeededModal(page)
 
@@ -141,12 +141,14 @@ test.describe('B – Editing Questions', () => {
     const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
     expect(first).not.toEqual(second)
 
-    // Enter organise mode — rows collapse to name + large move buttons
+    // Enter organise mode — rows collapse to name + drag handle + move menu
     await page.getByRole('button', { name: 'Organise items' }).click()
     await expect(page.locator('.cursor-text')).toHaveCount(0)
 
-    // Move the first item down one position, leave organise mode, save
-    await page.locator('button[title="Move item down"]').first().click()
+    // Send the second item to the top of the section, swapping the two.
+    // The menu is portaled to document.body.
+    await page.locator('[data-reorder-row]').nth(1).getByTitle('Move item').click()
+    await page.getByRole('menuitem', { name: 'Move to top of section' }).click()
     await page.getByRole('button', { name: 'Finish organising' }).click()
     await expect(itemTexts.first()).toContainText(second)
     await expect(itemTexts.nth(1)).toContainText(first)
@@ -200,6 +202,44 @@ test.describe('B – Editing Questions', () => {
     await expect(itemTexts.nth(1)).toContainText(first)
 
     // Persist and reopen — the dragged order must survive a save round-trip
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
+    await openAlwaysNeededModal(page)
+    await expect(itemTexts.first()).toContainText(second)
+    await expect(itemTexts.nth(1)).toContainText(first)
+  })
+
+  test('B8: reorder always-needed items from the keyboard', async ({ freshPage: page }) => {
+    await setupWizardAndGoToQuestions(page)
+    await openAlwaysNeededModal(page)
+
+    const itemTexts = page.locator('.cursor-text')
+    const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
+    const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
+    expect(first).not.toEqual(second)
+
+    await page.getByRole('button', { name: 'Organise items' }).click()
+    const rows = page.locator('[data-reorder-row]')
+    await expect(rows.first()).toBeVisible()
+
+    // Space picks the item up, the arrow keys move it, space drops it — no
+    // pointer and no per-direction buttons involved. Each step waits for the
+    // drag to catch up: a real user cannot press the next key within the same
+    // frame, and dnd-kit ignores keys it receives before it has measured.
+    const announcements = page.locator('[role="status"][aria-live="assertive"]')
+    await page.locator('button[title^="Drag to reorder"]').first().focus()
+    await page.keyboard.press('Space')
+    await expect(announcements).toContainText(`Picked up ${first}`)
+    await page.keyboard.press('ArrowDown')
+    await expect(announcements).toContainText('position 2')
+    await page.keyboard.press('Space')
+    await expect(announcements).toContainText('Dropped')
+
+    await expect(rows.first()).toContainText(second)
+    await expect(rows.nth(1)).toContainText(first)
+
+    // Persist and reopen — the keyboard move must survive a save round-trip
+    await page.getByRole('button', { name: 'Finish organising' }).click()
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
     await openAlwaysNeededModal(page)
