@@ -24,6 +24,8 @@ import type { Item } from '../edit-questions/types'
 import {
     applySectionLayout,
     buildSectionSequence,
+    removeSection,
+    renameSection,
     type SectionSequenceEntry,
 } from '../edit-questions/item-sections'
 
@@ -245,22 +247,19 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
 
     const renameSectionAt = (from: string, to: string) => {
         setDraftSections(prev => prev.map(label => label === from ? to : label))
-        onChange(items.map(item =>
-            item.category === from ? { ...item, category: to, lastModified: new Date().toISOString() } : item
-        ))
+        onChange(renameSection(items, from, to, new Date().toISOString()))
     }
 
     const removeSectionAt = (label: string) => {
         setDraftSections(prev => prev.filter(l => l !== label))
-        onChange(items.map(item => {
-            if (item.category !== label) return item
-            const { category: _dropped, ...rest } = item
-            return { ...rest, lastModified: new Date().toISOString() }
-        }))
+        onChange(removeSection(items, label, new Date().toISOString()))
     }
 
+    // An item can step down onto any following entry — including a trailing
+    // section heading, which is how a newly added (still empty) section gets its
+    // first item without a drag. Stepping up above the very first heading is the
+    // only no-op, since that heading is already the default section.
     const firstItemIndex = sequence.findIndex(e => e.kind === 'item')
-    const lastItemIndex = sequence.map(e => e.kind).lastIndexOf('item')
 
     return (
         <>
@@ -294,7 +293,7 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
                                 id={entryIds[i]}
                                 item={entry.item}
                                 canMoveUp={i > firstItemIndex}
-                                canMoveDown={i < lastItemIndex}
+                                canMoveDown={i < sequence.length - 1}
                                 onMove={direction => moveEntry(i, direction)}
                             />
                         ))}
