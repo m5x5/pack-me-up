@@ -25,6 +25,8 @@ test.describe('C – Packing Lists', () => {
     await runWizard(page)
     await createList(page, 'Beach Holiday')
     await expect(page.getByText('Beach Holiday')).toBeVisible()
+    // The list on screen is the confirmation; no toast repeats it
+    await expect(page.getByText('Packing list created successfully!')).not.toBeVisible()
   })
 
   test('C7: reordered question-set items flow through to the view list page', async ({ freshPage: page }) => {

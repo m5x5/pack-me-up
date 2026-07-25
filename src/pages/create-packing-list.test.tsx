@@ -34,6 +34,12 @@ vi.mock('../hooks/usePodSync', () => ({
     }),
 }))
 
+const mockNavigate = vi.hoisted(() => vi.fn())
+vi.mock('react-router-dom', async (importOriginal) => ({
+    ...await importOriginal<typeof import('react-router-dom')>(),
+    useNavigate: () => mockNavigate,
+}))
+
 vi.mock('../services/solidPod', () => ({
     getPrimaryPodUrl: vi.fn(),
     saveRdfToPod: vi.fn(),
@@ -1576,5 +1582,47 @@ describe('CreatePackingList – loading state', () => {
 
         await waitFor(() => screen.getByText(/Answer the questions below/i))
         expect(screen.queryByRole('status')).toBeNull()
+    })
+})
+
+// ─── CreatePackingList – landing on the new list ──────────────────────────────
+
+describe('CreatePackingList – landing on the new list', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockUseSolidPod.mockReturnValue({ isLoggedIn: false } as ReturnType<typeof useSolidPod>)
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    async function createAList(showToast = vi.fn()) {
+        mockUseToast.mockReturnValue({ showToast } as ReturnType<typeof useToast>)
+        const db = makeDb({ getAllPackingLists: vi.fn().mockResolvedValue([]) })
+        mockUseDatabase.mockReturnValue({ db } as ReturnType<typeof useDatabase>)
+
+        renderCreatePackingList()
+        await waitFor(() => screen.getByText(/Answer the questions below/i))
+
+        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Beach Holiday' } })
+        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        return db
+    }
+
+    it('goes straight to the new list', async () => {
+        await createAList()
+
+        await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+        expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/^\/view-lists\//))
+    })
+
+    it('does not announce the creation in a toast — the list itself says it', async () => {
+        const showToast = vi.fn()
+        await createAList(showToast)
+
+        await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+        expect(showToast).not.toHaveBeenCalledWith(expect.stringMatching(/created successfully/i), 'success')
     })
 })
