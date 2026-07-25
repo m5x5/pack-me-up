@@ -1502,3 +1502,116 @@ describe('ViewPackingList section completion celebration', () => {
         expect(screen.queryByLabelText(/all packed for toiletries/i)).toBeNull()
     })
 })
+
+describe('ViewPackingList completion finale', () => {
+    // Everything packed except Bob's toothbrush — one tick from done
+    const oneItemLeftList = {
+        id: 'test-list-finale',
+        name: 'Nearly Done Trip',
+        createdAt: '2026-01-01T00:00:00Z',
+        items: [
+            { id: 'a1', itemText: 'Passport', personName: 'Alice', personId: 'p1', questionId: 'q1', optionId: 'o1', packed: true },
+            { id: 'b2', itemText: 'Toothbrush', personName: 'Bob', personId: 'p2', questionId: 'q1', optionId: 'o1', packed: false },
+        ],
+    }
+
+    const fullyPackedList = {
+        ...oneItemLeftList,
+        id: 'test-list-finale-done',
+        items: oneItemLeftList.items.map(i => ({ ...i, packed: true })),
+    }
+
+    function setup(list: typeof oneItemLeftList) {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...list, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(list),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+        return render(
+            <MemoryRouter initialEntries={[`/view-list/${list.id}`]}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('does not show the finale while items remain', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        expect(screen.queryByTestId('completion-finale')).toBeNull()
+    })
+
+    it('does not show the finale when opening a list that was already packed', async () => {
+        setup(fullyPackedList)
+        await waitFor(() => expect(screen.getByText('Nearly Done Trip')).toBeTruthy())
+
+        // The persistent banner still marks the list as done...
+        expect(screen.getByText("You're all packed!")).toBeTruthy()
+        // ...but the one-off celebration must not re-fire on revisit
+        expect(screen.queryByTestId('completion-finale')).toBeNull()
+    })
+
+    it('shows the finale when the last item is checked', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+
+        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+    })
+
+    it('dismisses the finale when tapped', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /dismiss celebration/i }))
+
+        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
+    })
+
+    it('re-fires the finale if the last item is unchecked and checked again', async () => {
+        setup(oneItemLeftList)
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        fireEvent.click(screen.getAllByRole('checkbox')[0])
+        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+        fireEvent.click(screen.getByRole('button', { name: /dismiss celebration/i }))
+        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
+
+        // Show packed items so the last item can be unchecked, then checked again
+        fireEvent.click(screen.getByRole('button', { name: 'Show Packed' }))
+        const toothbrush = () =>
+            screen.getByText('Toothbrush').closest('label')!.querySelector('input')!
+        fireEvent.click(toothbrush())
+        await waitFor(() => expect(screen.queryByTestId('completion-finale')).toBeNull())
+
+        fireEvent.click(toothbrush())
+        await waitFor(() => expect(screen.getByTestId('completion-finale')).toBeTruthy())
+    })
+})

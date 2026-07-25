@@ -161,6 +161,22 @@ body {
   user-select: none;
 }
 
+@keyframes confetti-fall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  font-size: 1.5rem;
+  animation: confetti-fall 3s ease-in forwards;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Celebrations are decorative — hold still for anyone who asked us to. */
 @media (prefers-reduced-motion: reduce) {
   .celebration-banner,
@@ -168,6 +184,11 @@ body {
   .celebration-emoji,
   .animate-pop-in {
     animation: none;
+  }
+
+  /* Falling confetti is the one piece with nothing to say when it can't move */
+  .confetti-piece {
+    display: none;
   }
 }
 

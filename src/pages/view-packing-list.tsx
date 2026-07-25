@@ -29,6 +29,22 @@ type FormData = {
 // name used as a key for the other sections.
 const SHARED_SECTION_KEY = '__shared__'
 
+// How long the completion celebration stays up before bowing out on its own
+const FINALE_DURATION_MS = 6000
+
+// Spread across the viewport with staggered starts so the confetti doesn't fall
+// as one rank. Fixed rather than random so the effect is identical every run.
+const CONFETTI_PIECES = [
+    { emoji: '🎉', left: '6%', delay: '0s' },
+    { emoji: '🎊', left: '18%', delay: '0.5s' },
+    { emoji: '✨', left: '30%', delay: '0.15s' },
+    { emoji: '🧳', left: '43%', delay: '0.8s' },
+    { emoji: '🎈', left: '56%', delay: '0.35s' },
+    { emoji: '✈️', left: '69%', delay: '0.65s' },
+    { emoji: '🌍', left: '82%', delay: '0.2s' },
+    { emoji: '🎉', left: '93%', delay: '0.95s' },
+]
+
 interface ListSection {
     key: string
     title: string
@@ -133,6 +149,9 @@ export function ViewPackingList() {
     const [guestToRemove, setGuestToRemove] = useState<string | null>(null)
     const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null)
     const itemRowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+    // One-off celebration when the final item is ticked; null means "not looked yet"
+    const [showCompletionFinale, setShowCompletionFinale] = useState(false)
+    const wasAllPackedRef = useRef<boolean | null>(null)
 
 
     const toggleCategory = (key: string) =>
@@ -212,6 +231,7 @@ export function ViewPackingList() {
         itemRowRefs.current.get(recentlyAddedItemId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, [recentlyAddedItemId])
 
+
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
         defaultValues: {
             items: {}
@@ -220,6 +240,33 @@ export function ViewPackingList() {
 
     // Use useWatch instead of watch() for proper re-renders on form changes
     const watchedItems = useWatch({ control, name: 'items', defaultValue: {} })
+
+    // The finale belongs to the *moment* the list is finished, so it fires on the
+    // transition into "everything packed" and is anchored to the viewport rather
+    // than the top of the document — you tick the last item wherever you happen
+    // to be scrolled to. The banner further down stays as the persistent "this
+    // list is done" state for when the list is reopened later.
+    useEffect(() => {
+        if (!packingList) return
+        const total = packingList.items.length
+        // The form hydrates a beat after the list loads; until it does, every
+        // item looks unpacked and an already-finished list would falsely
+        // "transition" into completion on open.
+        if (total > 0 && Object.keys(watchedItems).length === 0) return
+        const packed = packingList.items.filter(item => watchedItems[item.id]).length
+        const complete = total > 0 && packed === total
+        const previously = wasAllPackedRef.current
+        wasAllPackedRef.current = complete
+        if (previously === null) return  // first look is only a baseline
+        if (complete && !previously) setShowCompletionFinale(true)
+        if (!complete) setShowCompletionFinale(false)
+    }, [packingList, watchedItems])
+
+    useEffect(() => {
+        if (!showCompletionFinale) return
+        const timer = setTimeout(() => setShowCompletionFinale(false), FINALE_DURATION_MS)
+        return () => clearTimeout(timer)
+    }, [showCompletionFinale])
 
     // Ref to the pod save function so useSyncCoordinator can push merged results back.
     // Populated after usePodSync is called below.
@@ -1215,6 +1262,42 @@ export function ViewPackingList() {
                 </div>
             </div>
         </div>
+        {showCompletionFinale && (
+            <div
+                data-testid="completion-finale"
+                className="fixed inset-0 z-[60] pointer-events-none flex items-end justify-center px-4 pb-8"
+            >
+                <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+                    {CONFETTI_PIECES.map((piece, i) => (
+                        <span
+                            key={i}
+                            className="confetti-piece"
+                            style={{ left: piece.left, animationDelay: piece.delay }}
+                        >
+                            {piece.emoji}
+                        </span>
+                    ))}
+                </div>
+                <div
+                    role="status"
+                    className="celebration-banner celebration-bg pointer-events-auto relative w-full max-w-sm rounded-2xl px-6 py-5 text-center shadow-lg"
+                >
+                    <button
+                        type="button"
+                        aria-label="Dismiss celebration"
+                        onClick={() => setShowCompletionFinale(false)}
+                        className="absolute top-1.5 right-2.5 text-xl leading-none text-white/80 hover:text-white"
+                    >
+                        ×
+                    </button>
+                    <div className="text-4xl mb-1">🧳</div>
+                    <p className="text-2xl font-bold text-white drop-shadow-sm">That's everything!</p>
+                    <p className="mt-1 text-sm font-medium text-emerald-100">
+                        {totalCount} item{totalCount === 1 ? '' : 's'} packed — time for adventure!
+                    </p>
+                </div>
+            </div>
+        )}
         <ConfirmationDialog
             isOpen={itemToDelete !== null}
             onClose={() => setItemToDelete(null)}
