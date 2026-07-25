@@ -1,24 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-    DndContext,
-    closestCenter,
-    KeyboardSensor,
-    MouseSensor,
-    TouchSensor,
-    useSensor,
-    useSensors,
-    type DragEndEvent,
-    type Modifier,
-} from '@dnd-kit/core'
-import {
-    SortableContext,
-    sortableKeyboardCoordinates,
-    verticalListSortingStrategy,
-    useSortable,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { useDatabase } from '../components/DatabaseContext'
+import { SectionedItemReorder } from '../components/SectionedItemReorder'
+import { ALWAYS_NEEDED_CATEGORY, buildSectionSequence, defaultCategoryFor, sectionNamesIn } from '../edit-questions/item-sections'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
 import { Link } from 'react-router-dom'
@@ -631,7 +615,11 @@ function useItemListState(initialItems: Item[], people: Person[]) {
             personSelections: people.map(p => ({ personId: p.id, selected: true })),
         }]), [people])
 
-    return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem }
+    // Whole-list replacement, used when a sectioned drag re-stamps categories
+    // and reorders in one go (see applySectionLayout).
+    const replaceItems = useCallback((next: Item[]) => setItems(next), [])
+
+    return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem, replaceItems }
 }
 
 // "2 per night" / "1 per 4 nights" — the human phrasing of an item's rate
@@ -833,83 +821,14 @@ const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allIt
     )
 })
 
-// Lock the drag to the vertical axis — the list is one column, so any
-// horizontal drift just reads as jitter. (Inlined rather than pulling in
-// @dnd-kit/modifiers for a one-line transform.)
-const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
-
-// A single row in reorder mode: a drag handle (dnd-kit sortable) plus the
-// up/down buttons, which stay as the discrete, always-available fallback.
-function SortableItemRow({ id, item, index, isLast, moveItem }: {
-    id: string
-    item: Item
-    index: number
-    isLast: boolean
-    moveItem: (idx: number, direction: 'up' | 'down') => void
-}) {
-    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id })
-    const style: React.CSSProperties = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    }
-    return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            data-reorder-row
-            className={`flex items-center gap-1 rounded-lg border bg-white p-2 ${isDragging ? 'relative z-10 border-primary-400 shadow-md opacity-95' : 'border-gray-200'}`}
-        >
-            <button
-                type="button"
-                ref={setActivatorNodeRef}
-                {...attributes}
-                {...listeners}
-                className="inline-flex items-center justify-center w-11 h-11 shrink-0 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-grab active:cursor-grabbing touch-none"
-                title="Drag to reorder"
-                aria-label={`Drag ${item.text || 'item'} to reorder`}
-            >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M7 4a1 1 0 100 2 1 1 0 000-2zM7 9a1 1 0 100 2 1 1 0 000-2zM7 14a1 1 0 100 2 1 1 0 000-2zM13 4a1 1 0 100 2 1 1 0 000-2zM13 9a1 1 0 100 2 1 1 0 000-2zM13 14a1 1 0 100 2 1 1 0 000-2z" />
-                </svg>
-            </button>
-            <span className="flex-1 min-w-0 truncate text-sm text-gray-800 px-1">
-                {item.text || <span className="text-gray-400 italic">Unnamed item</span>}
-            </span>
-            <div className="flex gap-1 shrink-0">
-                <button
-                    type="button"
-                    onClick={() => moveItem(index, 'up')}
-                    disabled={index === 0}
-                    className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${index === 0 ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
-                    title="Move item up"
-                    aria-label={`Move ${item.text || 'item'} up`}
-                >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                    </svg>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => moveItem(index, 'down')}
-                    disabled={isLast}
-                    className={`inline-flex items-center justify-center w-11 h-11 rounded-lg border transition-colors ${isLast ? 'text-gray-200 border-gray-100 cursor-not-allowed' : 'text-gray-600 border-gray-200 hover:bg-gray-50 active:bg-gray-100'}`}
-                    title="Move item down"
-                    aria-label={`Move ${item.text || 'item'} down`}
-                >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-            </div>
-        </div>
-    )
-}
-
-function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem }: {
+function ItemListEditor({ items, people, allItemNames, scrollRef, sectionDefaultLabel, suggestedSectionNames, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems }: {
     items: Item[]
     people: Person[]
     allItemNames: string[]
     scrollRef: React.RefObject<HTMLDivElement | null>
+    /** What the packing list will call items that carry no category of their own. */
+    sectionDefaultLabel: string
+    suggestedSectionNames: string[]
     updateItemText: (idx: number, text: string) => void
     togglePerson: (itemIdx: number, personIdx: number) => void
     toggleCommunal: (itemIdx: number) => void
@@ -917,9 +836,8 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
     updatePerNights: (itemIdx: number, perNights: number | undefined) => void
     updateMaxQuantity: (itemIdx: number, maxQuantity: number | undefined) => void
     removeItem: (idx: number) => void
-    moveItem: (idx: number, direction: 'up' | 'down') => void
-    reorderItem: (from: number, to: number) => void
     addItem: () => void
+    replaceItems: (items: Item[]) => void
 }) {
     const [openQuantityIdx, setOpenQuantityIdx] = useState<number | null>(null)
     const [reorderMode, setReorderMode] = useState(false)
@@ -931,42 +849,21 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
     const canReorder = items.length > 1
     const inReorder = reorderMode && canReorder
 
-    // dnd-kit needs a stable id per row that survives reorders. Items may lack
-    // an `id` (e.g. defaults not yet saved), so map each item object to a
-    // client-only drag id. Reordering splices the same object references, so
-    // ids stay put across a drag; edits create new objects (fine — not mid-drag).
-    const dragIdMap = useRef(new WeakMap<Item, string>())
-    const dragIdSeq = useRef(0)
-    const dragIdFor = (item: Item): string => {
-        let id = dragIdMap.current.get(item)
-        if (!id) {
-            id = `item-${dragIdSeq.current++}`
-            dragIdMap.current.set(item, id)
-        }
-        return id
-    }
-    const itemIds = items.map(dragIdFor)
+    // Normal editing mode shows the same section headings as the reorder view,
+    // read-only, so the editor always previews how the packing list will group
+    // these items. Each entry keeps its flat array index, which is what every
+    // per-item handler addresses.
+    const editorSequence = useMemo(() => {
+        const indexOf = new Map(items.map((item, i) => [item, i]))
+        return buildSectionSequence(items, sectionDefaultLabel, [])
+            .map(entry => entry.kind === 'header'
+                ? { kind: 'header' as const, label: entry.label }
+                : { kind: 'item' as const, item: entry.item, index: indexOf.get(entry.item)! })
+    }, [items, sectionDefaultLabel])
 
-    // Split mouse/touch sensors so each platform gets the right activation:
-    //  - Mouse: a small distance threshold, so desktop drags start instantly
-    //    while taps on the sibling buttons still register as clicks.
-    //  - Touch: a press-and-hold delay, so an ordinary swipe scrolls the list
-    //    (and doesn't jump the page / toggle the mobile URL bar); only a
-    //    deliberate hold begins a drag. This is dnd-kit's recommended mobile
-    //    setup and is what fixes the touch jankiness.
-    //  - Keyboard: makes the drag operable without a pointer.
-    const sensors = useSensors(
-        useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-    )
-    const handleDragEnd = (e: DragEndEvent) => {
-        const { active, over } = e
-        if (!over || active.id === over.id) return
-        const from = itemIds.indexOf(String(active.id))
-        const to = itemIds.indexOf(String(over.id))
-        if (from !== -1 && to !== -1) reorderItem(from, to)
-    }
+    // Only worth showing headings once the list is actually split.
+    const hasSections = editorSequence.filter(e => e.kind === 'header').length > 1
+
     return (
         <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
             {items.length > 0 && (
@@ -982,55 +879,39 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, updateItemText
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                             </svg>
-                            {reorderMode ? 'Finish reordering' : 'Reorder items'}
+                            {reorderMode ? 'Finish organising' : 'Organise items'}
                         </button>
                     )}
                 </div>
             )}
-            {inReorder && (
-                <div className="text-[11px] text-gray-400 mb-2 px-0.5">
-                    Drag the handle (press and hold on touch), or use the arrows, then tap Finish reordering.
-                </div>
-            )}
             <div className="space-y-2">
                 {inReorder && (
-                    <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        modifiers={[restrictToVerticalAxis]}
-                        // Only ever auto-scroll the modal's own scroll area. The
-                        // modal doesn't lock body scroll, so without this dnd-kit
-                        // scrolls the whole window when a drag nears the screen
-                        // edge — which jumps the page and toggles the mobile URL
-                        // bar mid-drag.
-                        autoScroll={{ canScroll: (el) => el === scrollRef.current }}
-                        onDragEnd={handleDragEnd}
-                    >
-                        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-2">
-                                {items.map((item, itemIdx) => (
-                                    <SortableItemRow
-                                        key={itemIds[itemIdx]}
-                                        id={itemIds[itemIdx]}
-                                        item={item}
-                                        index={itemIdx}
-                                        isLast={itemIdx === items.length - 1}
-                                        moveItem={moveItem}
-                                    />
-                                ))}
-                            </div>
-                        </SortableContext>
-                    </DndContext>
+                    <SectionedItemReorder
+                        items={items}
+                        defaultLabel={sectionDefaultLabel}
+                        suggestedSectionNames={suggestedSectionNames}
+                        scrollRef={scrollRef}
+                        onChange={replaceItems}
+                    />
                 )}
-                {!inReorder && items.map((item, itemIdx) => (
+                {!inReorder && editorSequence.map(entry => entry.kind === 'header' ? (
+                    hasSections && (
+                        <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-3 pb-1">
+                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">
+                                {entry.label}
+                            </span>
+                            <span className="flex-1 h-px bg-gray-200" />
+                        </div>
+                    )
+                ) : (
                     <ItemEditorRow
-                        key={itemIdx}
-                        item={item}
-                        itemIdx={itemIdx}
+                        key={`item-${entry.index}`}
+                        item={entry.item}
+                        itemIdx={entry.index}
                         people={people}
                         allItemNames={allItemNames}
                         isDesktop={isDesktop}
-                        quantityOpen={openQuantityIdx === itemIdx}
+                        quantityOpen={openQuantityIdx === entry.index}
                         onToggleQuantity={toggleQuantity}
                         updateItemText={updateItemText}
                         togglePerson={togglePerson}
@@ -1078,16 +959,24 @@ function useBodyScrollLock() {
     }, [])
 }
 
-function OptionEditModal({ option, people, allItemNames, onSave, onClose }: {
+function OptionEditModal({ option, question, people, allItemNames, suggestedSectionNames, onSave, onClose }: {
     option: Option | null
+    question: Question | undefined
     people: Person[]
     allItemNames: string[]
+    suggestedSectionNames: string[]
     onSave: (updated: Option) => void
     onClose: () => void
 }) {
     useBodyScrollLock()
     const [text, setText] = useState(option?.text ?? '')
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem } = useItemListState(option?.items ?? [], people)
+    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems } = useItemListState(option?.items ?? [], people)
+
+    // Tracks the option text as it's typed, so the default section heading shows
+    // the name the generated list will actually use.
+    const sectionDefaultLabel = question
+        ? defaultCategoryFor(question, { id: option?.id ?? '', text, order: option?.order ?? 0, items: [] })
+        : text
 
     const handleSave = () => onSave({
         id: option?.id ?? crypto.randomUUID(),
@@ -1135,9 +1024,10 @@ function OptionEditModal({ option, people, allItemNames, onSave, onClose }: {
                 <ItemListEditor
                     items={items} people={people} allItemNames={allItemNames}
                     scrollRef={scrollRef} updateItemText={updateItemText}
+                    sectionDefaultLabel={sectionDefaultLabel} suggestedSectionNames={suggestedSectionNames}
                     togglePerson={togglePerson} toggleCommunal={toggleCommunal}
                     updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} moveItem={moveItem} reorderItem={reorderItem} addItem={addItem}
+                    removeItem={removeItem} addItem={addItem} replaceItems={replaceItems}
                 />
                 <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
@@ -1152,15 +1042,16 @@ function OptionEditModal({ option, people, allItemNames, onSave, onClose }: {
     )
 }
 
-function AlwaysNeededModal({ initialItems, people, allItemNames, onSave, onClose }: {
+function AlwaysNeededModal({ initialItems, people, allItemNames, suggestedSectionNames, onSave, onClose }: {
     initialItems: Item[]
     people: Person[]
     allItemNames: string[]
+    suggestedSectionNames: string[]
     onSave: (items: Item[]) => void
     onClose: () => void
 }) {
     useBodyScrollLock()
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem } = useItemListState(initialItems, people)
+    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems } = useItemListState(initialItems, people)
 
     return (
         <div
@@ -1190,9 +1081,10 @@ function AlwaysNeededModal({ initialItems, people, allItemNames, onSave, onClose
                 <ItemListEditor
                     items={items} people={people} allItemNames={allItemNames}
                     scrollRef={scrollRef} updateItemText={updateItemText}
+                    sectionDefaultLabel={ALWAYS_NEEDED_CATEGORY} suggestedSectionNames={suggestedSectionNames}
                     togglePerson={togglePerson} toggleCommunal={toggleCommunal}
                     updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} moveItem={moveItem} reorderItem={reorderItem} addItem={addItem}
+                    removeItem={removeItem} addItem={addItem} replaceItems={replaceItems}
                 />
                 <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
@@ -1619,6 +1511,11 @@ export function QuestionsPage() {
         return [...new Set(names)]
     }, [data])
 
+    // Section names already in use anywhere in the question set, offered as
+    // suggestions so the same section spelled two ways doesn't split into two
+    // groups on the packing list.
+    const suggestedSectionNames = useMemo(() => data ? sectionNamesIn(data) : [], [data])
+
     // Memoized so their identity is stable across re-renders that don't change
     // the data (modal opens, sync ticks) — they feed the memoized sections.
     const people = useMemo(() => (data?.people ?? []).filter(p => !p.deletedAt), [data])
@@ -1686,8 +1583,10 @@ export function QuestionsPage() {
             {optionModal !== null && (
                 <OptionEditModal
                     option={optionModal.option}
+                    question={data?.questions.find(q => q.id === optionModal.questionId)}
                     people={people}
                     allItemNames={allItemNames}
+                    suggestedSectionNames={suggestedSectionNames}
                     onSave={handleOptionModalSave}
                     onClose={() => setOptionModal(null)}
                 />
@@ -1697,6 +1596,7 @@ export function QuestionsPage() {
                     initialItems={activeAlwaysNeededItems}
                     people={people}
                     allItemNames={allItemNames}
+                    suggestedSectionNames={suggestedSectionNames}
                     onSave={handleAlwaysSave}
                     onClose={() => setAlwaysModal(false)}
                 />

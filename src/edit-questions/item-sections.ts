@@ -41,6 +41,89 @@ export function groupItemsIntoSections(items: Item[], defaultLabel: string): Cat
     return groupItemsByCategory(items, ITEM_ACCESSORS, { uncategorisedLabel: defaultLabel })
 }
 
+/**
+ * A section list flattened for display: a header before each section, then its
+ * items. This is the only place position carries meaning — it's what the editor
+ * drags against, and `applySectionLayout` turns it straight back into stamped
+ * categories. Nothing positional is ever stored.
+ */
+export type SectionSequenceEntry =
+    | { kind: 'header'; label: string }
+    | { kind: 'item'; item: Item }
+
+/**
+ * Build the display sequence for the editor. `draftSections` are sections the
+ * user has created but not yet dragged anything into; they exist only in editor
+ * state, since a section with no items has nothing to stamp and so cannot be
+ * stored.
+ *
+ * Unlike `groupItemsIntoSections` — which the packing list uses, and which sorts
+ * by the stamped `order` — this groups by *array position*. Inside the editor
+ * the array is the source of truth: `order` is deliberately left stale until
+ * `renumberItemOrder` runs at save, because that staleness is exactly how a
+ * reorder earns its `lastModified` bump. Both paths share the same bucketing by
+ * label, so the sections themselves can't drift; only the basis for ordering
+ * within them differs, and saving makes the two agree.
+ */
+export function buildSectionSequence(
+    items: Item[],
+    defaultLabel: string,
+    draftSections: string[],
+): SectionSequenceEntry[] {
+    const buckets = new Map<string, Item[]>()
+    // The default section always leads, so the "main pile" stays the top of the
+    // list even if a categorised item happens to sit first in the array.
+    buckets.set(defaultLabel, [])
+    for (const item of items) {
+        const label = item.category ?? defaultLabel
+        if (!buckets.has(label)) buckets.set(label, [])
+        buckets.get(label)!.push(item)
+    }
+    for (const draft of draftSections) {
+        if (!buckets.has(draft)) buckets.set(draft, [])
+    }
+    return [...buckets.entries()]
+        // An empty default section has no header to show; drafts do, since their
+        // header is the drop target that brings them into existence.
+        .filter(([label, bucket]) => bucket.length > 0 || label !== defaultLabel)
+        .flatMap(([label, bucket]) => [
+            { kind: 'header' as const, label },
+            ...bucket.map(item => ({ kind: 'item' as const, item })),
+        ])
+}
+
+/**
+ * Turn a dragged sequence back into a flat item list, stamping each item with
+ * the nearest header above it. Items under the default header (or above the
+ * first header) carry no category at all, so "back to the main pile" stores
+ * nothing rather than storing the default name.
+ *
+ * Only items whose section actually changed get a fresh `lastModified` —
+ * position changes are stamped separately by `renumberItemOrder` at save.
+ */
+export function applySectionLayout(
+    sequence: SectionSequenceEntry[],
+    defaultLabel: string,
+    now: string,
+): Item[] {
+    let current: string | undefined
+    const result: Item[] = []
+    for (const entry of sequence) {
+        if (entry.kind === 'header') {
+            current = entry.label === defaultLabel ? undefined : entry.label
+            continue
+        }
+        const item = entry.item
+        if (item.category === current) {
+            result.push(item)
+            continue
+        }
+        const { category: _dropped, ...rest } = item
+        result.push({ ...rest, ...(current !== undefined ? { category: current } : {}), lastModified: now })
+    }
+    return result
+}
+
 /** Every distinct section name in use, for offering existing names as suggestions. */
 export function sectionNamesIn(qs: PackingListQuestionSet): string[] {
     const names = new Set<string>()

@@ -7,6 +7,9 @@ import {
     renameSection,
     removeSection,
     sectionNamesIn,
+    buildSectionSequence,
+    applySectionLayout,
+    type SectionSequenceEntry,
 } from './item-sections'
 import type { Item, Question, Option } from './types'
 
@@ -132,6 +135,107 @@ describe('renameSection', () => {
         // items are renamed too rather than being left pointing at a dead name.
         expect(result[1].category).toBe('Baby & toddler')
         expect(result[2].lastModified).toBe(before)
+    })
+})
+
+describe('buildSectionSequence', () => {
+    it('interleaves a header before each section, default section first', () => {
+        const items = [
+            item({ id: 'i1', text: 'Snacks', order: 0 }),
+            item({ id: 'i2', text: 'Nappies', order: 1, category: 'Baby' }),
+        ]
+        const sequence = buildSectionSequence(items, 'Essentials', [])
+        expect(sequence.map(e => e.kind === 'header' ? `#${e.label}` : e.item.text))
+            .toEqual(['#Essentials', 'Snacks', '#Baby', 'Nappies'])
+    })
+
+    it('includes draft sections that have no items yet', () => {
+        const items = [item({ id: 'i1', text: 'Snacks', order: 0 })]
+        const sequence = buildSectionSequence(items, 'Essentials', ['First aid'])
+        expect(sequence.map(e => e.kind === 'header' ? `#${e.label}` : e.item.text))
+            .toEqual(['#Essentials', 'Snacks', '#First aid'])
+    })
+
+    it('does not duplicate a draft section that has since gained items', () => {
+        const items = [item({ id: 'i1', text: 'Plasters', order: 0, category: 'First aid' })]
+        const sequence = buildSectionSequence(items, 'Essentials', ['First aid'])
+        expect(sequence.filter(e => e.kind === 'header')).toHaveLength(1)
+    })
+
+    it('follows array position, not the stale order field', () => {
+        // Mid-edit the array is the truth: `order` is left stale on purpose so
+        // renumberItemOrder can tell at save which items actually moved.
+        const items = [
+            item({ id: 'i1', text: 'Wipes', order: 5 }),
+            item({ id: 'i2', text: 'Snacks', order: 1 }),
+        ]
+        const sequence = buildSectionSequence(items, 'Essentials', [])
+        expect(sequence.filter(e => e.kind === 'item').map(e => e.kind === 'item' && e.item.text))
+            .toEqual(['Wipes', 'Snacks'])
+    })
+
+    it('omits the default header when every item is in a named section', () => {
+        const items = [item({ id: 'i1', text: 'Plasters', category: 'First aid' })]
+        const sequence = buildSectionSequence(items, 'Essentials', [])
+        expect(sequence.map(e => e.kind === 'header' ? `#${e.label}` : e.item.text))
+            .toEqual(['#First aid', 'Plasters'])
+    })
+})
+
+describe('applySectionLayout', () => {
+    const snacks = item({ id: 'i1', text: 'Snacks' })
+    const nappies = item({ id: 'i2', text: 'Nappies' })
+
+    function sequence(...entries: Array<string | Item>): SectionSequenceEntry[] {
+        return entries.map(e =>
+            typeof e === 'string' ? { kind: 'header' as const, label: e } : { kind: 'item' as const, item: e }
+        )
+    }
+
+    it('stamps each item with the nearest header above it', () => {
+        const result = applySectionLayout(
+            sequence('Essentials', snacks, 'Baby', nappies), 'Essentials', now
+        )
+        expect(result.map(i => [i.text, i.category])).toEqual([
+            ['Snacks', undefined],
+            ['Nappies', 'Baby'],
+        ])
+    })
+
+    it('returns items in displayed order so a cross-section drag also moves them', () => {
+        const result = applySectionLayout(
+            sequence('Baby', nappies, 'Essentials', snacks), 'Essentials', now
+        )
+        expect(result.map(i => i.text)).toEqual(['Nappies', 'Snacks'])
+        expect(result.map(i => i.category)).toEqual(['Baby', undefined])
+    })
+
+    it('clears the category for items dragged back under the default header', () => {
+        const stamped = item({ id: 'i2', text: 'Nappies', category: 'Baby' })
+        const result = applySectionLayout(sequence('Essentials', stamped), 'Essentials', now)
+        expect(result[0].category).toBeUndefined()
+        expect(result[0].lastModified).toBe(now)
+    })
+
+    it('treats items dragged above the first header as the default section', () => {
+        const stamped = item({ id: 'i2', text: 'Nappies', category: 'Baby' })
+        const result = applySectionLayout(sequence(stamped, 'Baby'), 'Essentials', now)
+        expect(result[0].category).toBeUndefined()
+    })
+
+    it('only bumps lastModified on items whose section actually changed', () => {
+        const stamped = item({ id: 'i2', text: 'Nappies', category: 'Baby' })
+        const result = applySectionLayout(sequence('Essentials', snacks, 'Baby', stamped), 'Essentials', now)
+        expect(result[0].lastModified).toBe(before)
+        expect(result[1].lastModified).toBe(before)
+    })
+
+    it('drops empty sections — a header with no items below it stamps nothing', () => {
+        const result = applySectionLayout(
+            sequence('Essentials', snacks, 'First aid'), 'Essentials', now
+        )
+        expect(result).toHaveLength(1)
+        expect(result[0].category).toBeUndefined()
     })
 })
 
