@@ -34,10 +34,19 @@ import {
     sectionLabelsIn,
     type SectionSequenceEntry,
 } from '../edit-questions/item-sections'
+import { sectionAccent } from '../edit-questions/section-accent'
 
 // Drags only ever move rows up and down the list.
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
+/**
+ * A section's banner, and the drop target that puts an item into it.
+ *
+ * Drawn as a filled bar in the section's own colour rather than a caption with
+ * a rule beside it: this is the line you drag an item across, so it has to be
+ * obvious where one section stops and the next starts, and the colour is the
+ * same one the section wears on the questions page behind the modal.
+ */
 function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
     id: string
     label: string
@@ -50,6 +59,7 @@ function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
     const { setNodeRef, transform, transition } = useSortable({ id, disabled: true })
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(label)
+    const accent = sectionAccent(label, isDefault)
 
     const commit = () => {
         const trimmed = draft.trim()
@@ -62,7 +72,7 @@ function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
         <div
             ref={setNodeRef}
             style={{ transform: CSS.Transform.toString(transform), transition }}
-            className="flex items-center gap-2 pt-3 pb-1"
+            className="pt-1"
         >
             {editing ? (
                 <input
@@ -75,21 +85,21 @@ function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
                         if (e.key === 'Escape') { setDraft(label); setEditing(false) }
                     }}
                     aria-label={`Rename section ${label}`}
-                    className="flex-1 min-w-0 border border-primary-300 rounded-lg px-2 py-1 text-xs font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full border border-primary-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
             ) : (
-                <>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">
+                <div className={`flex items-center gap-2 rounded-lg border ${accent.border} ${accent.header} px-3 py-2`}>
+                    <span className={`w-1.5 h-4 rounded-full shrink-0 ${accent.rail}`} aria-hidden="true" />
+                    <span className={`text-sm font-semibold truncate ${accent.text}`}>
                         {label}
                     </span>
-                    <span className="flex-1 h-px bg-gray-200" />
                     {!isDefault && (
                         <>
                             <button
                                 type="button"
                                 onClick={() => { setDraft(label); setEditing(true) }}
                                 aria-label={`Rename section ${label}`}
-                                className="text-[11px] text-gray-400 hover:text-primary-600 px-1"
+                                className={`ml-auto text-[11px] px-1 ${accent.muted} hover:text-primary-700`}
                             >
                                 Rename
                             </button>
@@ -97,13 +107,13 @@ function SectionHeaderRow({ id, label, isDefault, onRename, onRemove }: {
                                 type="button"
                                 onClick={onRemove}
                                 aria-label={`Remove section ${label}`}
-                                className="text-[11px] text-gray-400 hover:text-red-600 px-1"
+                                className={`text-[11px] px-1 ${accent.muted} hover:text-red-600`}
                             >
                                 Remove
                             </button>
                         </>
                     )}
-                </>
+                </div>
             )}
         </div>
     )

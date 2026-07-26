@@ -10,6 +10,7 @@ import {
     removeSection,
     sectionNamesIn,
     buildSectionSequence,
+    buildSectionGroups,
     applySectionLayout,
     sectionLabelAt,
     sectionLabelsIn,
@@ -186,6 +187,41 @@ describe('buildSectionSequence', () => {
         const sequence = buildSectionSequence(items, 'Essentials', [])
         expect(sequence.map(e => e.kind === 'header' ? `#${e.label}` : e.item.text))
             .toEqual(['#First aid', 'Plasters'])
+    })
+})
+
+describe('buildSectionGroups', () => {
+    it('gathers each section and its items', () => {
+        const items = [
+            item({ id: 'i1', text: 'Snacks' }),
+            item({ id: 'i2', text: 'Nappies', category: 'Baby' }),
+            item({ id: 'i3', text: 'Wipes', category: 'Baby' }),
+        ]
+        expect(buildSectionGroups(items, 'Essentials').map(g => [g.label, g.entries.map(e => e.item.text)]))
+            .toEqual([['Essentials', ['Snacks']], ['Baby', ['Nappies', 'Wipes']]])
+    })
+
+    it('keeps each item pointing at its place in the flat array', () => {
+        // Sections group by category, so the last row on screen need not be the
+        // last item in the array. Addressing an edit by what the eye sees would
+        // change the wrong item.
+        const items = [
+            item({ id: 'i1', text: 'Nappies', category: 'Baby' }),
+            item({ id: 'i2', text: 'Snacks' }),
+            item({ id: 'i3', text: 'Wipes', category: 'Baby' }),
+        ]
+        expect(buildSectionGroups(items, 'Essentials').map(g => g.entries.map(e => e.index)))
+            .toEqual([[1], [0, 2]])
+    })
+
+    it('returns a single group for a list nobody has split up', () => {
+        const groups = buildSectionGroups([item({ id: 'i1', text: 'Snacks' })], 'Essentials')
+        expect(groups).toHaveLength(1)
+        expect(groups[0].label).toBe('Essentials')
+    })
+
+    it('has no groups at all for an empty list', () => {
+        expect(buildSectionGroups([], 'Essentials')).toEqual([])
     })
 })
 

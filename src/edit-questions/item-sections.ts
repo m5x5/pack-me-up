@@ -149,6 +149,40 @@ export function buildSectionSequence(
         ])
 }
 
+/** An item together with its position in the flat list every edit addresses. */
+export interface PositionedItem {
+    item: Item
+    index: number
+}
+
+/** One section and its items, in display order. */
+export interface SectionGroup {
+    label: string
+    entries: PositionedItem[]
+}
+
+/**
+ * The display sequence gathered back up into sections, for views that draw a
+ * section as a container rather than as a heading followed by loose rows.
+ *
+ * Each item keeps its index in `items`, because sections group by category
+ * while every per-item handler addresses the flat array — the two orders differ,
+ * so the index has to be carried rather than recomputed from the position on
+ * screen. Drafts aren't accepted: an empty section only exists inside the
+ * reorder view, which works against the sequence directly.
+ */
+export function buildSectionGroups(items: Item[], defaultLabel: string): SectionGroup[] {
+    const indexOf = new Map(items.map((item, i) => [item, i]))
+    const groups: SectionGroup[] = []
+    for (const entry of buildSectionSequence(items, defaultLabel, [])) {
+        if (entry.kind === 'header') groups.push({ label: entry.label, entries: [] })
+        // The sequence always opens with a header, so there is a group to put
+        // this in — but a stray item is dropped rather than crashing a page.
+        else groups[groups.length - 1]?.entries.push({ item: entry.item, index: indexOf.get(entry.item)! })
+    }
+    return groups
+}
+
 /**
  * Turn a dragged sequence back into a flat item list, stamping each item with
  * the nearest header above it. Items under the default header (or above the
