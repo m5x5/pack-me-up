@@ -6,7 +6,7 @@
  * back through `applySectionLayout`, which stamps each item with the nearest
  * header above it. See `item-sections.ts` for why the storage is stamped.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
     DndContext,
     closestCenter,
@@ -36,48 +36,6 @@ import {
     type SectionSequenceEntry,
 } from '../edit-questions/item-sections'
 import { sectionAccent } from '../edit-questions/section-accent'
-
-/**
- * Freeze the page while a drag is in progress.
- *
- * Not cosmetic. On a phone, scrolling the window is what shows and hides the
- * browser's URL bar, which resizes the viewport — so every row the drag has
- * already measured moves, mid-gesture. The item jumps, the drop lands somewhere
- * else, and the chrome flickers in and out the whole time.
- *
- * This used to come free: the reorder view only existed inside a modal, and the
- * modal locked body scroll for its own reasons. On the page it has to be asked
- * for, and only for the length of the gesture — locking scroll for as long as
- * the mode is open would trap a list longer than the screen.
- */
-function useScrollLockWhileDragging() {
-    const [dragging, setDragging] = useState(false)
-    useEffect(() => {
-        if (!dragging) return
-        const body = document.body
-        const html = document.documentElement
-        const previous = {
-            body: body.style.overflow,
-            html: html.style.overflow,
-            overscroll: body.style.overscrollBehavior,
-        }
-        // Both: the scrolling element is <body> on some browsers and <html> on
-        // others (notably mobile). Chaining is stopped too, so a drag that runs
-        // off the end of the list doesn't hand the scroll to the page.
-        body.style.overflow = 'hidden'
-        html.style.overflow = 'hidden'
-        body.style.overscrollBehavior = 'none'
-        return () => {
-            body.style.overflow = previous.body
-            html.style.overflow = previous.html
-            body.style.overscrollBehavior = previous.overscroll
-        }
-    }, [dragging])
-    return {
-        onDragStart: useCallback(() => setDragging(true), []),
-        onDragStop: useCallback(() => setDragging(false), []),
-    }
-}
 
 // Drags only ever move rows up and down the list.
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
@@ -325,10 +283,7 @@ export function SectionedItemReorder({ items, defaultLabel, emptySections, scrol
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
     )
 
-    const { onDragStart, onDragStop } = useScrollLockWhileDragging()
-
     const handleDragEnd = (e: DragEndEvent) => {
-        onDragStop()
         const { active, over } = e
         if (!over || active.id === over.id) return
         const from = entryIds.indexOf(String(active.id))
@@ -392,9 +347,10 @@ export function SectionedItemReorder({ items, defaultLabel, emptySections, scrol
                 modifiers={[restrictToVerticalAxis]}
                 // Only ever auto-scroll the modal's own scroll area — see the
                 // note on the unsectioned editor for why.
-                // Never `true`: that lets dnd-kit scroll every scrollable
-                // ancestor, the window included, which is what was moving the
-                // page — and the URL bar with it — underneath the drag.
+                // Only ever the container it was given. `true` would let
+                // dnd-kit scroll every scrollable ancestor, the window
+                // included — which moves the page, and on a phone the URL bar,
+                // underneath a gesture that has already measured it.
                 autoScroll={{ canScroll: (el) => el === scrollRef?.current }}
                 accessibility={{
                     screenReaderInstructions: {
@@ -416,8 +372,6 @@ export function SectionedItemReorder({ items, defaultLabel, emptySections, scrol
                         onDragCancel: ({ active }) => `Cancelled moving ${describe(active.id)}.`,
                     },
                 }}
-                onDragStart={onDragStart}
-                onDragCancel={onDragStop}
                 onDragEnd={handleDragEnd}
             >
                 <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>

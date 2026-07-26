@@ -162,6 +162,98 @@ const LIST_COMPOSER = '__list__'
 const REORDER_SAVE_DELAY_MS = 600
 
 /**
+ * Lock background page scroll while a modal is open.
+ *
+ * Besides being correct modal behaviour, it is what keeps the page — and on a
+ * phone the browser's URL bar — from moving while a drag is happening inside.
+ * A moving URL bar resizes the viewport, which moves every row the drag has
+ * already measured, mid-gesture.
+ */
+function useBodyScrollLock() {
+    useEffect(() => {
+        const body = document.body
+        const html = document.documentElement
+        const previous = {
+            body: body.style.overflow,
+            html: html.style.overflow,
+            overscroll: body.style.overscrollBehavior,
+        }
+        // Both: the scrolling element is <body> on some browsers and <html> on
+        // others (notably mobile). Chaining is stopped too.
+        body.style.overflow = 'hidden'
+        html.style.overflow = 'hidden'
+        body.style.overscrollBehavior = 'none'
+        return () => {
+            body.style.overflow = previous.body
+            html.style.overflow = previous.html
+            body.style.overscrollBehavior = previous.overscroll
+        }
+    }, [])
+}
+
+/**
+ * Reorganising an item list, as the only thing on the screen.
+ *
+ * It was tried inline, on the page, and it does not work: a drag needs a scroll
+ * container it owns, and inside the page that meant a scroll area nested in a
+ * scroll area, with neither obviously in charge of the gesture. Full-screen is
+ * not a step backwards to a modal-shaped editor — the modal that used to be
+ * here also edited every item, and that part stays on the page. This does one
+ * thing, and it needs the whole screen to do it.
+ *
+ * There is no Save. Like everything else on the page the moves are written as
+ * they are made (coalesced — see `useDeferredReorder`), and closing writes
+ * whatever is still in hand.
+ */
+function ReorganiseModal({ items, defaultLabel, emptySections, onChange, onClose }: {
+    items: Item[]
+    defaultLabel: string
+    emptySections: string[] | undefined
+    onChange: (items: Item[], emptySections: string[] | undefined) => void
+    onClose: () => void
+}) {
+    useBodyScrollLock()
+    const scrollRef = useRef<HTMLDivElement>(null)
+    return (
+        <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            onClick={onClose}
+            onKeyDown={e => { if (e.key === 'Escape') onClose() }}
+        >
+            <div
+                role="dialog"
+                aria-label={`Organise ${defaultLabel} items`}
+                className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[85vh]"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-5 border-b border-gray-100 flex-shrink-0">
+                    <h2 className="text-lg font-semibold text-gray-900">Organise items</h2>
+                    <p className="mt-0.5 text-sm text-gray-500 truncate">{defaultLabel}</p>
+                </div>
+                <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
+                    <SectionedItemReorder
+                        items={items}
+                        defaultLabel={defaultLabel}
+                        emptySections={emptySections}
+                        scrollRef={scrollRef}
+                        onChange={onChange}
+                    />
+                </div>
+                <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                    >
+                        Finish organising
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+/**
  * Hold a reorder in hand for a moment before writing it.
  *
  * Every other edit on this page saves the instant it is made, and should: they
@@ -331,7 +423,6 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     const closeComposer = useCallback(() => setOpenComposer(null), [])
     const [addingSection, setAddingSection] = useState(false)
     const [organising, setOrganising] = useState(false)
-    const organiseScrollRef = useRef<HTMLDivElement>(null)
     const { draft: organiseDraft, onChange: onOrganiseChange, flush: flushOrganise } =
         useDeferredReorder(onReorder)
 
@@ -471,58 +562,32 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         <div className="flex justify-end mb-2">
             <button
                 type="button"
-                onClick={() => {
-                    // Leaving the mode writes whatever is still in hand, so
-                    // "Finish organising" means finished, not merely hidden.
-                    if (organising) flushOrganise()
-                    setOrganising(o => !o)
-                }}
-                aria-pressed={organising}
-                className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 transition-colors ${organising ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+                onClick={() => setOrganising(true)}
+                className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 text-primary-600 hover:bg-primary-50 transition-colors"
             >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
-                {organising ? 'Finish organising' : 'Organise items'}
+                Organise items
             </button>
         </div>
     )
 
-    // Organising replaces the rows and nothing else: the footer stays, so adding
-    // an item or a section mid-reorganisation doesn't mean leaving the mode you
-    // are reorganising in.
-    if (organising && onReorder) {
-        // Rendered from the draft while one is in hand: the props behind it are
-        // a save cycle behind, and the list must not flicker back to the old
-        // order between the drop and the write.
-        const organiseItems = organiseDraft?.items ?? items
-        const organiseSections = organiseDraft
-            ? organiseDraft.emptySections
-            : (emptySections.length > 0 ? emptySections : undefined)
-        return (
-            <div>
-                {organiseToggle}
-                {/* The drag needs somewhere of its own to scroll. Given none,
-                    dnd-kit scrolls the window instead, which on a phone shows
-                    and hides the URL bar — resizing the viewport underneath a
-                    gesture that has already measured it. Bounded only when the
-                    list is long enough to need it. */}
-                <div
-                    ref={organiseScrollRef}
-                    className="max-h-[60vh] overflow-y-auto overscroll-contain"
-                >
-                    <SectionedItemReorder
-                        items={organiseItems}
-                        defaultLabel={defaultLabel}
-                        emptySections={organiseSections}
-                        scrollRef={organiseScrollRef}
-                        onChange={onOrganiseChange}
-                    />
-                </div>
-                {listFooter}
-            </div>
-        )
-    }
+    // A drag needs a scroll container of its own, and the only honest way to
+    // give it one is to be the whole screen for a moment. Nested inside the
+    // page it was a scroll area within a scroll area: neither one obviously in
+    // charge of a gesture, and unusable on a phone.
+    const organiseModal = organising && onReorder && (
+        <ReorganiseModal
+            items={organiseDraft?.items ?? items}
+            defaultLabel={defaultLabel}
+            emptySections={organiseDraft
+                ? organiseDraft.emptySections
+                : (emptySections.length > 0 ? emptySections : undefined)}
+            onChange={onOrganiseChange}
+            onClose={() => { flushOrganise(); setOrganising(false) }}
+        />
+    )
 
     if (!hasSections) {
         return (
@@ -530,6 +595,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                 {organiseToggle}
                 <div className="space-y-0.5">{groups.flatMap(group => group.entries).map(renderRow)}</div>
                 {listFooter}
+                {organiseModal}
             </div>
         )
     }
@@ -599,6 +665,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                 })}
             </div>
             {listFooter}
+            {organiseModal}
         </div>
     )
 })

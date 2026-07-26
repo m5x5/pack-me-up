@@ -137,9 +137,10 @@ test.describe('B – Editing Questions', () => {
     const [first, second] = await itemNames(page)
     expect(first).not.toEqual(second)
 
-    // Organising is a toggle on the list itself now — no modal to open first.
+    // Organising opens onto its own screen: a drag needs a scroll container it
+    // owns, which nested in the page meant a scroll area inside a scroll area.
     await page.getByRole('button', { name: 'Organise items' }).click()
-    await expect(page.getByTestId('item-row')).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: /^Organise / })).toBeVisible({ timeout: 3_000 })
 
     // Send the second item to the top of the section, swapping the two.
     // The menu is portaled to document.body.

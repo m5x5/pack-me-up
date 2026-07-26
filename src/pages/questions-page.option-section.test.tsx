@@ -660,7 +660,7 @@ describe('OptionSection: creating a section', () => {
     })
 })
 
-describe('OptionSection: organising in place', () => {
+describe('OptionSection: organising', () => {
     const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
 
     function renderOrganisable(option: Option, onReorder = vi.fn()) {
@@ -697,21 +697,28 @@ describe('OptionSection: organising in place', () => {
         expect(screen.queryByRole('button', { name: 'Organise items' })).toBeNull()
     })
 
-    it('swaps the rows for drag handles and back again', () => {
+    it('opens onto the whole screen, which is what the drag needs', () => {
+        // Tried nested in the page first: a scroll area inside a scroll area,
+        // with neither in charge of the gesture.
         renderOrganisable(withItems())
         fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
-        expect(screen.getAllByRole('button', { name: /^Drag / })).toHaveLength(2)
-        expect(screen.queryByTestId('item-row')).toBeNull()
+        const dialog = screen.getByRole('dialog', { name: 'Organise Yes items' })
+        expect(within(dialog).getAllByRole('button', { name: /^Drag / })).toHaveLength(2)
+    })
 
+    it('closes back to the list', () => {
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
         fireEvent.click(screen.getByRole('button', { name: 'Finish organising' }))
-        expect(screen.queryByRole('button', { name: /^Drag / })).toBeNull()
+        expect(screen.queryByRole('dialog')).toBeNull()
         expect(screen.getAllByTestId('item-row')).toHaveLength(2)
     })
 
-    it('keeps the footer, so a section can still be added mid-reorganisation', () => {
+    it('closes on Escape', () => {
         renderOrganisable(withItems())
         fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
-        expect(screen.getByRole('button', { name: '+ Add item' })).toBeTruthy()
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+        expect(screen.queryByRole('dialog')).toBeNull()
     })
 
     function moveTowelToTop() {
@@ -749,7 +756,7 @@ describe('OptionSection: organising in place', () => {
         }
     })
 
-    it('writes what is still in hand when organising finishes', () => {
+    it('writes what is still in hand when the dialog is closed', () => {
         const { onReorder } = renderOrganisable(withItems())
         fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
         moveTowelToTop()
