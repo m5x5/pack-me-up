@@ -151,6 +151,20 @@ describe('Wizard', () => {
             expect(await screen.findByText(/filled in the people from your current setup/i)).toBeTruthy()
         })
 
+        it('keeps letting a large family add more people', async () => {
+            const people = Array.from({ length: 12 }, (_, i) => ({
+                id: String(i),
+                name: `Person ${i + 1}`,
+                ageRange: 'Adult',
+            }))
+            renderWithExisting({ ...existingSet, people })
+
+            await waitFor(() => expect(screen.getAllByLabelText(/^name$/i)).toHaveLength(12))
+            expect(screen.getByRole('button', { name: /add another person/i })).toBeTruthy()
+            expect(screen.getByRole('button', { name: /add a pet/i })).toBeTruthy()
+            expect(screen.queryByText(/maximum of 10/i)).toBeNull()
+        })
+
         it('keeps the default single row when the existing set has nobody left', async () => {
             renderWithExisting({ ...existingSet, people: [] })
 

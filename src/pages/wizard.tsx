@@ -318,34 +318,26 @@ export const Wizard = () => {
                         })}
                     </div>
 
-                    {fields.length < 10 && (
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={handleAddPerson}
-                                className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                                Add Another Person
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleAddPet}
-                                className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
-                            >
-                                <span className="text-lg leading-none">🐾</span>
-                                Add a Pet
-                            </button>
-                        </div>
-                    )}
-
-                    {fields.length >= 10 && (
-                        <p className="mt-4 text-sm text-gray-600 text-center">
-                            Maximum of 10 reached
-                        </p>
-                    )}
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            onClick={handleAddPerson}
+                            className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                            Add Another Person
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleAddPet}
+                            className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <span className="text-lg leading-none">🐾</span>
+                            Add a Pet
+                        </button>
+                    </div>
 
                     {errors.people && typeof errors.people.message === 'string' && (
                         <p className="text-danger-500 text-sm mt-2">{errors.people.message}</p>
