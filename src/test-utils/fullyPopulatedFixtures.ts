@@ -109,7 +109,6 @@ const fullyPopulatedQuestionSetItem: Required<Item> = {
     ageRanges: ['Adult'],
     category: 'Toiletries',
     order: 1,
-    category: 'Toiletries',
     perNight: 2,
     perNights: 3,
     maxQuantity: 7,

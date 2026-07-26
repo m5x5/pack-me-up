@@ -186,6 +186,16 @@ export async function getPodOwnerName(session: Session, podUrl: string, explicit
     }
 }
 
+/**
+ * Derives the Pod root from a WebID that lives inside the Pod it describes —
+ * the `.../profile/card#me` convention used by CSS and NSS.
+ *
+ * Returns null for every other WebID shape. A WebID minted by an identity
+ * provider (e.g. https://id.inrupt.com/alice) says nothing about where that
+ * user's storage lives — it is on a different host entirely
+ * (https://storage.inrupt.com/<uuid>/). Guessing a Pod root from it sends every
+ * read and write to the identity provider, which 404s.
+ */
 export function derivePodUrlFromWebId(webId: string): string | null {
     try {
         const url = new URL(webId)
@@ -193,11 +203,6 @@ export function derivePodUrlFromWebId(webId: string): string | null {
         const path = url.pathname
         if (path.endsWith('/profile/card')) {
             url.pathname = path.slice(0, -'profile/card'.length)
-            return url.toString()
-        }
-        const firstSegment = path.split('/').find(s => s.length > 0)
-        if (firstSegment) {
-            url.pathname = '/' + firstSegment + '/'
             return url.toString()
         }
     } catch { /* ignore URL parse errors */ }
@@ -449,44 +454,70 @@ function getStatusCode(err: unknown): number | undefined {
     return typeof code === 'number' ? code : undefined
 }
 
+const POD_URL_CACHE_PREFIX = 'pod-url:'
+
 /**
- * Validates session and retrieves the user's primary Pod URL
- * @returns Pod URL if valid, null otherwise
+ * The last Pod URL we successfully resolved for a WebID. Used only when the
+ * profile document can't be read, so a momentary network blip doesn't leave the
+ * app with no idea where the Pod is (which would also switch the local database
+ * namespace, making the user's lists look like they had vanished).
+ */
+function readCachedPodUrl(webId: string): string | null {
+    try {
+        return localStorage.getItem(`${POD_URL_CACHE_PREFIX}${webId}`)
+    } catch {
+        return null
+    }
+}
+
+function cachePodUrl(webId: string, podUrl: string): void {
+    try {
+        localStorage.setItem(`${POD_URL_CACHE_PREFIX}${webId}`, podUrl)
+    } catch { /* storage unavailable (private browsing, quota) — caching is best-effort */ }
+}
+
+/**
+ * Validates session and retrieves the user's primary Pod URL.
+ *
+ * The `pim:storage` triple in the WebID profile is the only authoritative source
+ * for where a Pod lives, so an unreadable profile means "unknown", never "guess
+ * from the WebID host".
+ *
+ * @returns Pod URL if it can be determined, null otherwise
  */
 export async function getPrimaryPodUrl(session: Session | null): Promise<string | null> {
     if (!session || !session.info.isLoggedIn || !session.info.webId) {
         return null
     }
 
+    const webId = session.info.webId
+
+    let podUrls: string[]
     try {
-        const podUrls = await getPodUrlAll(session.info.webId, { fetch: session.fetch })
-        if (podUrls && podUrls.length > 0) {
-            return podUrls[0]
-        }
-    } catch {
-        // getPodUrlAll failed (e.g. CSS v7 doesn't expose pim:storage) — fall through to derivation
+        podUrls = await getPodUrlAll(webId, { fetch: session.fetch })
+    } catch (err) {
+        // The profile document itself couldn't be fetched (transient network
+        // error, DPoP nonce race, expired token). We know nothing about the
+        // Pod's location, so reuse the last known one and otherwise give up —
+        // callers report "no pod" and retry on the next sync.
+        console.warn('getPrimaryPodUrl: could not read the WebID profile', err)
+        return readCachedPodUrl(webId)
     }
 
-    // Fallback: derive Pod URL from WebID using CSS convention.
-    // WebID = http://host/podName/profile/card#me → Pod = http://host/podName/
-    // This covers CSS v7 installations that don't include pim:storage in the profile.
-    try {
-        const url = new URL(session.info.webId)
-        url.hash = ''
-        const path = url.pathname
-        if (path.endsWith('/profile/card')) {
-            url.pathname = path.slice(0, -'profile/card'.length)
-            return url.toString()
-        }
-        // Generic fallback: use the first path segment as Pod root
-        const firstSegment = path.split('/').find(s => s.length > 0)
-        if (firstSegment) {
-            url.pathname = '/' + firstSegment + '/'
-            return url.toString()
-        }
-    } catch { /* ignore URL parse errors */ }
+    if (podUrls && podUrls.length > 0) {
+        cachePodUrl(webId, podUrls[0])
+        return podUrls[0]
+    }
 
-    return null
+    // Profile was readable but declares no pim:storage — the case for CSS v7,
+    // where the WebID sits inside the Pod it belongs to.
+    const derivedPodUrl = derivePodUrlFromWebId(webId)
+    if (derivedPodUrl) {
+        cachePodUrl(webId, derivedPodUrl)
+        return derivedPodUrl
+    }
+
+    return readCachedPodUrl(webId)
 }
 
 /**
