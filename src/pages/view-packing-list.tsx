@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDebouncedCallback } from 'use-debounce'
 import { PackingList, PackingListItem } from '../create-packing-list/types'
@@ -27,6 +27,9 @@ import { tapFeedback } from '../utils/haptics'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
+import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
+import { buildSuggestionIndex } from '../utils/itemSuggestions'
+import { useIsDesktop } from '../hooks/useIsDesktop'
 
 type FormData = {
     items: Record<string, boolean>
@@ -88,10 +91,15 @@ function sortByItemOrder(items: PackingListItem[]): PackingListItem[] {
 
 export function groupByCategory(items: PackingListItem[]) {
     return groupItemsByCategory(items, PACKING_ITEM_ACCESSORS, {
-        uncategorisedLabel: 'Other',
+        uncategorisedLabel: UNCATEGORISED_LABEL,
         order: CATEGORY_ORDER,
-        pinLast: 'Other',
+        pinLast: UNCATEGORISED_LABEL,
     })
+}
+
+/** The catch-all section is the absence of a category, not a category named "Other". */
+function categoryFromLabel(label: string): string | undefined {
+    return label === UNCATEGORISED_LABEL ? undefined : label
 }
 
 export function groupByPerson(items: PackingListItem[]) {
@@ -136,7 +144,10 @@ export function ViewPackingList() {
     const [showPacked, setShowPacked] = useState(false)
     const [viewMode, setViewMode] = useState<'person' | 'question'>('person')
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-    const [newItemInputs, setNewItemInputs] = useState<Record<string, string>>({})
+    // Which section has an add-item composer open inside it. Only one is mounted
+    // at a time: a composer per group would put an input in front of every
+    // heading on the page, which is what the list already pays for in item rows.
+    const [openComposerKey, setOpenComposerKey] = useState<string | null>(null)
     const [itemToDelete, setItemToDelete] = useState<string | null>(null)
     const [editingItemId, setEditingItemId] = useState<string | null>(null)
     const [editingItemText, setEditingItemText] = useState<string>('')
@@ -204,6 +215,7 @@ export function ViewPackingList() {
 
     const handleCheckAll = (items: PackingListItem[]) =>
         items.forEach(item => setValue(`items.${item.id}`, true))
+    const isDesktop = useIsDesktop()
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
     const { db } = useDatabase()
@@ -262,8 +274,40 @@ export function ViewPackingList() {
 
     useEffect(() => {
         if (!recentlyAddedItemId) return
-        itemRowRefs.current.get(recentlyAddedItemId)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // 'nearest' rather than 'center': items are usually added in runs, and
+        // centring a row that is already on screen drags the composer being
+        // typed into out from under the cursor.
+        itemRowRefs.current.get(recentlyAddedItemId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, [recentlyAddedItemId])
+
+    // Everything the add-item composers need, derived once per list rather than
+    // per composer: there is one on every card, and they re-render whenever an
+    // item is ticked.
+    const suggestionIndex = useMemo(
+        () => buildSuggestionIndex(packingList?.items ?? [], packingList?.deletedItems ?? []),
+        [packingList?.items, packingList?.deletedItems],
+    )
+
+    // The sections a new item can be filed into: the ones this list already
+    // shows, in the order it shows them, plus the catch-all. Offering sections
+    // the list doesn't use would invent cards no one asked for — new sections
+    // belong to the question set, where they can be arranged.
+    const categoryOptions = useMemo(() => {
+        const labels = groupByCategory(packingList?.items ?? []).map(group => group.label)
+        return labels.includes(UNCATEGORISED_LABEL) ? labels : [...labels, UNCATEGORISED_LABEL]
+    }, [packingList?.items])
+
+    const peopleOptions = useMemo<PersonOption[]>(() => {
+        const byName = new Map<string, string>()
+        for (const guest of packingList?.guests ?? []) byName.set(guest.name, guest.id)
+        for (const item of packingList?.items ?? []) {
+            if (item.communal || !item.personName) continue
+            if (!byName.has(item.personName)) byName.set(item.personName, item.personId)
+        }
+        return [...byName.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([name, id]) => ({ name, id }))
+    }, [packingList?.items, packingList?.guests])
 
 
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
@@ -665,43 +709,51 @@ export function ViewPackingList() {
         }
     }
 
-    const handleAddItem = async (inputKey: string, personName: string, guestId?: string, communal?: boolean) => {
+    const handleAddItem = async (target: AddItemTarget, itemText: string, quantity?: number) => {
         if (!packingList) return
 
-        const newItemText = newItemInputs[inputKey]?.trim()
+        const newItemText = itemText.trim()
         if (!newItemText) return
 
         try {
             setAutoSaveStatus('saving')
 
             const maxOrder = Math.max(-1, ...packingList.items.map(i => i.order ?? -1))
-            const newItem = {
+            const newItem: PackingListItem = {
                 id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
                 itemText: newItemText,
-                personName: communal ? '' : personName,
-                personId: guestId ?? '',
+                personName: target.communal ? '' : target.personName,
+                personId: target.communal ? '' : target.personId,
                 questionId: '',
                 optionId: '',
                 packed: false,
-                ...(communal ? { communal: true } : {}),
+                ...(target.communal ? { communal: true } : {}),
+                ...(target.category ? { category: target.category } : {}),
+                // A quantity of one is what an absent quantity already means.
+                ...(quantity && quantity > 1 ? { quantity } : {}),
                 order: maxOrder + 1,
                 lastModified: new Date().toISOString(),
             }
 
-            // Add to form values and clear the input before saving
             setValue(`items.${newItem.id}`, false)
-            setNewItemInputs({ ...newItemInputs, [inputKey]: '' })
 
-            // Make sure the category the new item lands in is expanded so it's
-            // visible. New items have no category, so they land under "Other" —
-            // keyed `${sectionKey}::Other` in person view and
-            // `Other::${personName}` in question view.
+            // Make sure the group the item lands in is expanded, so an item
+            // filed into a collapsed section isn't added into thin air. The two
+            // views key the same group the opposite way round.
+            const sectionKey = target.communal ? SHARED_SECTION_KEY : target.personName
+            const categoryLabel = target.category ?? UNCATEGORISED_LABEL
             setCollapsedCategories(prev => {
-                const sectionKey = inputKey.split('::add::')[0]
-                const keysToExpand = [`${sectionKey}::Other`, `Other::${personName}`]
+                const keysToExpand = [`${sectionKey}::${categoryLabel}`, `${categoryLabel}::${target.personName}`]
                 if (!keysToExpand.some(k => prev.has(k))) return prev
                 const next = new Set(prev)
                 for (const k of keysToExpand) next.delete(k)
+                return next
+            })
+            setCollapsedPersons(prev => {
+                if (!prev.has(sectionKey) && !prev.has(categoryLabel)) return prev
+                const next = new Set(prev)
+                next.delete(sectionKey)
+                next.delete(categoryLabel)
                 return next
             })
 
@@ -717,6 +769,17 @@ export function ViewPackingList() {
             setAutoSaveStatus('error')
         }
     }
+
+    // The composers are memoised, so their onAdd has to keep the same identity
+    // across renders or every tick of a checkbox would re-render every one of
+    // them. The ref carries the current list to a callback that never changes.
+    const addItemRef = useRef(handleAddItem)
+    useEffect(() => { addItemRef.current = handleAddItem })
+    const handleComposerAdd = useCallback(
+        (target: AddItemTarget, itemText: string, quantity?: number) => {
+            addItemRef.current(target, itemText, quantity)
+        }, [])
+    const closeComposer = useCallback(() => setOpenComposerKey(null), [])
 
     const handleAddGuest = async () => {
         if (!packingList || !newGuestName.trim()) return
@@ -824,7 +887,9 @@ export function ViewPackingList() {
     }, {} as Record<string, { packed: number; total: number }>)
 
     const guestNames = new Set((packingList.guests ?? []).map(g => g.name))
-    const guestIdByName = new Map((packingList.guests ?? []).map(g => [g.name, g.id]))
+    const personIdByName = new Map(peopleOptions.map(person => [person.name, person.id]))
+    // Only worth offering a section picker once the list has sections to pick.
+    const sectionChoices = categoryOptions.length > 1 ? categoryOptions : undefined
 
     // A section is worth celebrating once every item in it is packed
     const isSectionComplete = (stats?: { packed: number; total: number }) =>
@@ -1217,33 +1282,23 @@ export function ViewPackingList() {
                                     </div>
                                 </div>
                                 {!collapsedPersons.has(sectionKey) && <div>
-                                    {/* Add new item input — only shown when this section maps to a single person/guest */}
-                                    {!isCategorySection && (
-                                        <div className="mb-4 pb-4 border-b border-gray-200">
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={newItemInputs[sectionKey] || ''}
-                                                    onChange={(e) => setNewItemInputs({ ...newItemInputs, [sectionKey]: e.target.value })}
-                                                    onKeyPress={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault()
-                                                            handleAddItem(sectionKey, section.name, section.guestId, section.communal)
-                                                        }
-                                                    }}
-                                                    placeholder="Add new item..."
-                                                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleAddItem(sectionKey, section.name, section.guestId, section.communal)}
-                                                    className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-                                                >
-                                                    Add
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* Every card can be typed into directly. What varies is which
+                                        part of the target the card already knows: a person's card
+                                        knows who, and asks which section; a section's card knows
+                                        which section, and asks who. */}
+                                    <div className="mb-4 pb-4 border-b border-gray-200">
+                                        <AddItemComposer
+                                            personName={isCategorySection ? '' : section.name}
+                                            personId={isCategorySection ? '' : (guestId ?? personIdByName.get(section.name) ?? '')}
+                                            communal={section.communal}
+                                            category={isCategorySection ? categoryFromLabel(title) : undefined}
+                                            categoryOptions={isCategorySection ? undefined : sectionChoices}
+                                            peopleOptions={isCategorySection && peopleOptions.length > 0 ? peopleOptions : undefined}
+                                            suggestions={suggestionIndex}
+                                            targetLabel={isShared ? 'shared items' : isCategorySection ? title : `${section.name}'s items`}
+                                            onAdd={handleComposerAdd}
+                                        />
+                                    </div>
                                     {isComplete && items.length === 0 && (
                                         <p className="text-sm font-medium text-emerald-700">
                                             Nothing left to pack 🎒
@@ -1252,53 +1307,78 @@ export function ViewPackingList() {
                                     {innerGroups.map(({ label, items: catItems }) => {
                                         const categoryKey = `${sectionKey}::${label}`
                                         const isCollapsed = collapsedCategories.has(categoryKey)
-                                        const innerInputKey = `${sectionKey}::add::${label}`
+                                        // Both views end up describing the same place; only which
+                                        // half the card supplies changes.
+                                        const groupLabel = isCategorySection
+                                            ? `${title} for ${label}`
+                                            : `${label} for ${isShared ? 'shared items' : section.name}`
+                                        const groupTarget = isCategorySection
+                                            ? {
+                                                personName: label,
+                                                personId: personIdByName.get(label) ?? '',
+                                                category: categoryFromLabel(title),
+                                            }
+                                            : {
+                                                personName: section.name,
+                                                personId: guestId ?? personIdByName.get(section.name) ?? '',
+                                                communal: section.communal,
+                                                category: categoryFromLabel(label),
+                                            }
+                                        const composerOpen = openComposerKey === categoryKey
                                         return (
                                             <div key={categoryKey} className="mb-3">
-                                                <div className="flex items-center justify-between py-1 mb-1">
+                                                <div className="flex items-center justify-between gap-2 py-1 mb-1">
                                                     <button
                                                         type="button"
                                                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${label}`}
                                                         onClick={() => toggleCategory(categoryKey)}
-                                                        className="flex items-center gap-1 text-sm font-semibold text-gray-600 hover:text-gray-900"
+                                                        className="flex items-center gap-1 text-left text-sm font-semibold text-gray-600 hover:text-gray-900"
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
                                                         <span>{label}</span>
                                                         <span className="text-xs font-normal text-gray-400 ml-1">({catItems.length})</span>
                                                     </button>
                                                     {!isCollapsed && (
-                                                        <button
-                                                            type="button"
-                                                            aria-label="Check all"
-                                                            onClick={() => handleCheckAll(catItems)}
-                                                            className="text-xs text-blue-600 hover:text-blue-800"
-                                                        >
-                                                            Check all
-                                                        </button>
+                                                        <div className="flex shrink-0 items-center gap-2">
+                                                            {/* Adding straight into a group is the whole point: the
+                                                                item lands where it was typed instead of falling
+                                                                into the catch-all section. */}
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`Add item to ${groupLabel}`}
+                                                                aria-expanded={composerOpen}
+                                                                onClick={() => setOpenComposerKey(composerOpen ? null : categoryKey)}
+                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${composerOpen ? 'border-blue-300 bg-blue-100 text-blue-800' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                                            >
+                                                                {/* A section name is what the heading is for; on a
+                                                                    phone the word "Add" is what pushes it off. */}
+                                                                {isDesktop ? '+ Add' : '+'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                aria-label="Check all"
+                                                                onClick={() => handleCheckAll(catItems)}
+                                                                className="text-xs text-blue-600 hover:text-blue-800"
+                                                            >
+                                                                Check all
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
-                                                {!isCollapsed && isCategorySection && (
-                                                    <div className="flex gap-2 mb-2">
-                                                        <input
-                                                            type="text"
-                                                            value={newItemInputs[innerInputKey] || ''}
-                                                            onChange={(e) => setNewItemInputs({ ...newItemInputs, [innerInputKey]: e.target.value })}
-                                                            onKeyPress={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    e.preventDefault()
-                                                                    handleAddItem(innerInputKey, label, guestIdByName.get(label))
-                                                                }
-                                                            }}
-                                                            placeholder={`Add item for ${label}...`}
-                                                            className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                {!isCollapsed && composerOpen && (
+                                                    <div className="mb-2">
+                                                        <AddItemComposer
+                                                            personName={groupTarget.personName}
+                                                            personId={groupTarget.personId}
+                                                            communal={groupTarget.communal}
+                                                            category={groupTarget.category}
+                                                            suggestions={suggestionIndex}
+                                                            targetLabel={groupLabel}
+                                                            placeholder={`Add to ${label}...`}
+                                                            onAdd={handleComposerAdd}
+                                                            onClose={closeComposer}
+                                                            autoFocus
                                                         />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAddItem(innerInputKey, label, guestIdByName.get(label))}
-                                                            className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-                                                        >
-                                                            Add
-                                                        </button>
                                                     </div>
                                                 )}
                                                 {!isCollapsed && (
