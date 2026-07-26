@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo, Fragment } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
@@ -19,17 +19,21 @@ import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { LoadingState } from '../components/LoadingState'
 import { AgeTransition } from '../edit-questions/age-derivation'
 import { useIsDesktop } from '../hooks/useIsDesktop'
+import { applyItemEdit, withQuestionOptions } from '../edit-questions/item-edits'
+import { ItemInlineEditor } from '../components/ItemInlineEditor'
+import {
+    AVATAR_ON,
+    AVATAR_OFF,
+    PersonToggles,
+    QuantityPanel,
+    rateBadge,
+    rateLabel,
+    quantityTitle,
+} from '../components/ItemEditorControls'
 
-// One distinct colour per person slot (by index). Tailwind classes must be literal strings.
-const AVATAR_ON = [
-    'bg-blue-500 text-white',
-    'bg-violet-500 text-white',
-    'bg-emerald-500 text-white',
-    'bg-amber-500 text-white',
-    'bg-rose-500 text-white',
-    'bg-cyan-500 text-white',
-]
-const AVATAR_OFF = 'bg-gray-100 text-gray-300'
+// Stable empty default for the optional inline-editing props, so a section that
+// isn't editable doesn't hand its memoized children a new array every render.
+const NO_NAMES: string[] = []
 
 function PersonDot({ person, index, selected }: { person: Person; index: number; selected: boolean }) {
     return (
@@ -73,11 +77,23 @@ const PersonLegend = memo(function PersonLegend({ people, onEdit }: { people: Pe
     )
 })
 
-const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Person[] }) {
+/**
+ * One item, read-only. When `onOpen` is supplied the whole row becomes the
+ * target that opens the inline editor — the affordance that used to be missing,
+ * and the reason changing one word meant scrolling back to the option's pencil
+ * and reopening the whole list in a modal.
+ */
+const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
+    item: Item
+    people: Person[]
+    index: number
+    isOpen?: boolean
+    onOpen?: (index: number) => void
+}) {
     const showDots = people.length > 1
-    return (
-        <div className="flex items-center gap-2 py-0.5 px-2 text-sm">
-            <span className={`flex-1 min-w-0 ${item.text ? 'text-gray-700' : 'text-gray-400 italic'}`}>
+    const content = (
+        <>
+            <span className={`flex-1 min-w-0 text-left ${item.text ? 'text-gray-700' : 'text-gray-400 italic'}`}>
                 {item.text || 'no text'}
             </span>
             {item.communal && (
@@ -90,7 +106,7 @@ const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Pe
             )}
             {item.perNight !== undefined && (
                 <span
-                    title={`Suggested quantity: ${rateLabel(item)}${item.maxQuantity !== undefined ? `, up to ${item.maxQuantity}` : ''}`}
+                    title={quantityTitle(item)}
                     className="inline-flex items-center justify-center h-5 rounded-full px-1.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 select-none shrink-0"
                 >
                     ×{rateLabel(item).replace(' per ', '/')}
@@ -108,7 +124,22 @@ const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Pe
                     ))}
                 </div>
             )}
-        </div>
+        </>
+    )
+    if (!onOpen) {
+        return <div className="flex items-center gap-2 py-0.5 px-2 text-sm">{content}</div>
+    }
+    return (
+        <button
+            type="button"
+            data-testid="item-row"
+            onClick={() => onOpen(index)}
+            aria-expanded={isOpen ?? false}
+            title={`Edit ${item.text || 'item'}`}
+            className={`w-full flex items-center gap-2 py-1 px-2 text-sm rounded transition-colors ${isOpen ? 'bg-primary-50' : 'hover:bg-gray-100'}`}
+        >
+            {content}
+        </button>
     )
 })
 
@@ -118,19 +149,62 @@ const ItemRow = memo(function ItemRow({ item, people }: { item: Item; people: Pe
  * actually have without opening a modal. Headings only appear once a list is
  * genuinely split; an unsectioned list renders exactly as it did before.
  */
-const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel }: {
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, allItemNames = NO_NAMES, sectionNames = NO_NAMES, onItemChange }: {
     items: Item[]
     people: Person[]
     defaultLabel: string
+    allItemNames?: string[]
+    sectionNames?: string[]
+    /** Omit to keep the list purely read-only — rows then aren't clickable. */
+    onItemChange?: (index: number, edited: Item) => void
 }) {
-    const sequence = useMemo(
-        () => buildSectionSequence(items, defaultLabel, []),
-        [items, defaultLabel],
-    )
+    // Which row is expanded, by its position in `items` — the same flat index
+    // every edit is addressed by. At most one is open, so a long list never
+    // costs more than one mounted editor.
+    const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+    // Each entry keeps its flat array index, which is what `applyItemEdit`
+    // addresses. Sections group by category, not by array position, so the two
+    // orders differ and the index has to be carried rather than recomputed.
+    const sequence = useMemo(() => {
+        const indexOf = new Map(items.map((item, i) => [item, i]))
+        return buildSectionSequence(items, defaultLabel, [])
+            .map(entry => entry.kind === 'header'
+                ? { kind: 'header' as const, label: entry.label }
+                : { kind: 'item' as const, item: entry.item, index: indexOf.get(entry.item)! })
+    }, [items, defaultLabel])
+
     const hasSections = sequence.filter(e => e.kind === 'header').length > 1
+    // A sync or a delete can shrink the list under an open row; treat an index
+    // that no longer exists as closed rather than rendering against undefined.
+    const openAt = openIndex !== null && openIndex < items.length ? openIndex : null
+
+    const handleOpen = useCallback((index: number) =>
+        setOpenIndex(prev => prev === index ? null : index), [])
+    const handleClose = useCallback(() => setOpenIndex(null), [])
+
+    const handleChange = useCallback((edited: Item) => {
+        if (openAt === null) return
+        const before = items[openAt]
+        if (!before) return
+        // Deliberately not inside a setState updater: StrictMode double-invokes
+        // those, and this one saves.
+        onItemChange?.(openAt, edited)
+        // Changing an item's section moves it to the bottom of that section, so
+        // every index after it shifts and this one no longer names the row being
+        // edited. Closing is also the clearer outcome — the row has visibly gone
+        // to sit under its new heading.
+        if ((edited.category ?? null) !== (before.category ?? null)) setOpenIndex(null)
+    }, [openAt, items, onItemChange])
+
     return (
         <>
-            {sequence.map((entry, i) => entry.kind === 'header' ? (
+            {/* Rows look exactly as read-only as they used to, so say once per
+                list that they now do something. One node per list, not per row. */}
+            {onItemChange && items.length > 0 && (
+                <p className="px-2 pb-0.5 text-[11px] text-gray-300">Tap an item to edit it</p>
+            )}
+            {sequence.map(entry => entry.kind === 'header' ? (
                 hasSections && (
                     <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-2 pb-0.5 px-2">
                         <span
@@ -143,7 +217,26 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                     </div>
                 )
             ) : (
-                <ItemRow key={`item-${i}`} item={entry.item} people={people} />
+                <Fragment key={`item-${entry.index}`}>
+                    <ItemRow
+                        item={entry.item}
+                        people={people}
+                        index={entry.index}
+                        isOpen={openAt === entry.index}
+                        onOpen={onItemChange ? handleOpen : undefined}
+                    />
+                    {openAt === entry.index && (
+                        <ItemInlineEditor
+                            item={entry.item}
+                            people={people}
+                            allItemNames={allItemNames}
+                            sectionNames={sectionNames}
+                            sectionDefaultLabel={defaultLabel}
+                            onChange={handleChange}
+                            onClose={handleClose}
+                        />
+                    )}
+                </Fragment>
             ))}
         </>
     )
@@ -189,15 +282,28 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, sectionDefaultLabel, onEdit, onDelete }: {
+export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, onEdit, onDelete, onItemChange }: {
     option: Option
     people: Person[]
     /** What the packing list will call items here that carry no category. */
     sectionDefaultLabel: string
+    allItemNames?: string[]
+    sectionNames?: string[]
+    questionId?: string
     onEdit: () => void
     onDelete: () => void
+    /** Omit to leave the item rows read-only. */
+    onItemChange?: (questionId: string, optionId: string, index: number, edited: Item) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
+    // Bound to this option's ids once, so the memoized row list isn't handed a
+    // fresh callback on every render of the page around it.
+    const optionId = option.id
+    const handleItemChange = useMemo(
+        () => onItemChange && questionId
+            ? (index: number, edited: Item) => onItemChange(questionId, optionId, index, edited)
+            : undefined,
+        [onItemChange, questionId, optionId])
     const [showDeleteModal, setShowDeleteModal] = useState(false)
     // Items aren't mounted until first expand (cheap initial render for large
     // sets), but stay mounted afterwards so re-expanding is instant.
@@ -282,7 +388,14 @@ export function OptionSection({ option, people, sectionDefaultLabel, onEdit, onD
             </div>
             {hasExpandedRef.current && (
                 <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
-                    <SectionedItemRows items={option.items} people={people} defaultLabel={sectionDefaultLabel} />
+                    <SectionedItemRows
+                        items={option.items}
+                        people={people}
+                        defaultLabel={sectionDefaultLabel}
+                        allItemNames={allItemNames}
+                        sectionNames={sectionNames}
+                        onItemChange={handleItemChange}
+                    />
                 </div>
             )}
             {showDeleteModal && (
@@ -400,17 +513,20 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
 
 // Memoized with id-based handlers whose identity survives page re-renders, so
 // opening a modal (or a background sync tick) doesn't re-render every question.
-const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove }: {
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange }: {
     question: Question
     people: Person[]
     canMoveUp: boolean
     canMoveDown: boolean
+    allItemNames: string[]
+    sectionNames: string[]
     onEdit: (question: Question) => void
     onDelete: (id: string) => void
     onAddOption: (questionId: string) => void
     onEditOption: (questionId: string, option: Option) => void
     onDeleteOption: (questionId: string, optionId: string) => void
     onMove: (id: string, direction: 'up' | 'down') => void
+    onItemChange: (questionId: string, optionId: string, index: number, edited: Item) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -505,8 +621,12 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             option={option}
                             people={people}
                             sectionDefaultLabel={defaultCategoryFor(question, option)}
+                            allItemNames={allItemNames}
+                            sectionNames={sectionNames}
+                            questionId={question.id}
                             onEdit={() => onEditOption(question.id, option)}
                             onDelete={() => onDeleteOption(question.id, option.id)}
+                            onItemChange={onItemChange}
                         />
                     ))}
                     <button
@@ -528,7 +648,14 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     )
 })
 
-const AlwaysSection = memo(function AlwaysSection({ items, people, onEdit }: { items: Item[]; people: Person[]; onEdit: () => void }) {
+const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames, sectionNames, onEdit, onItemChange }: {
+    items: Item[]
+    people: Person[]
+    allItemNames: string[]
+    sectionNames: string[]
+    onEdit: () => void
+    onItemChange: (index: number, edited: Item) => void
+}) {
     const [isExpanded, setIsExpanded] = useState(false)
     // Same lazy-mount-then-keep pattern as the sections above.
     const hasExpandedRef = useRef(isExpanded)
@@ -565,7 +692,14 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, onEdit }: { i
             </div>
             {hasExpandedRef.current && (
                 <div className={`mt-3 space-y-1${isExpanded ? '' : ' hidden'}`}>
-                    <SectionedItemRows items={items} people={people} defaultLabel={ALWAYS_NEEDED_CATEGORY} />
+                    <SectionedItemRows
+                        items={items}
+                        people={people}
+                        defaultLabel={ALWAYS_NEEDED_CATEGORY}
+                        allItemNames={allItemNames}
+                        sectionNames={sectionNames}
+                        onItemChange={onItemChange}
+                    />
                 </div>
             )}
         </div>
@@ -665,17 +799,6 @@ function useItemListState(initialItems: Item[], people: Person[]) {
     return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem, replaceItems }
 }
 
-// "2 per night" / "1 per 4 nights" — the human phrasing of an item's rate
-function rateLabel(item: Item): string {
-    const nights = item.perNights ?? 1
-    return nights > 1 ? `${item.perNight} per ${nights} nights` : `${item.perNight} per night`
-}
-
-function parseQty(raw: string): number | undefined {
-    const n = parseInt(raw, 10)
-    return Number.isFinite(n) && n > 0 ? n : undefined
-}
-
 // One editable item row. Memoized (with stable handlers from useItemListState)
 // so toggling a person or typing in one row doesn't re-render every other row —
 // with dozens of items and a large family that re-render is what made the
@@ -698,16 +821,7 @@ const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allIt
     removeItem: (idx: number) => void
 }) {
     const isCommunal = item.communal === true
-    const communalTitle = isCommunal
-        ? 'Shared item — packed once for the group. Click to make per-person.'
-        : 'Make this a shared item, packed once for the group'
-    const personTitle = (name: string) => isCommunal
-        ? `Needed when ${name} is on the trip`
-        : name
     const hasRate = item.perNight !== undefined
-    const quantityTitle = hasRate
-        ? `Suggested quantity: ${rateLabel(item)}${item.maxQuantity !== undefined ? `, up to ${item.maxQuantity}` : ''}`
-        : 'Suggest a quantity based on nights away (e.g. 1 pair of socks per night, or 1 jumper per 4 nights)'
     return (
         // content-visibility lets the browser skip layout/paint for rows that
         // are scrolled out of view — noticeable when a list has dozens of items.
@@ -728,44 +842,23 @@ const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allIt
                 </div>
                 {/* Desktop: shared toggle + inline avatars */}
                 {isDesktop && (
-                    <div className="flex gap-0.5 shrink-0 items-center">
-                        <button
-                            type="button"
-                            onClick={() => toggleCommunal(itemIdx)}
-                            title={communalTitle}
-                            aria-label={`Toggle shared for ${item.text || 'item'}`}
-                            aria-pressed={isCommunal}
-                            className={`inline-flex items-center justify-center h-5 rounded-full px-1 text-[10px] transition-colors mr-1 ${isCommunal ? 'bg-blue-600 text-white' : AVATAR_OFF}`}
-                        >
-                            👥
-                        </button>
-                        {people.length > 1 && people.map((person, personIdx) => {
-                            const selected = item.personSelections?.[personIdx]?.selected ?? false
-                            return (
-                                <button
-                                    key={person.id}
-                                    type="button"
-                                    onClick={() => togglePerson(itemIdx, personIdx)}
-                                    title={personTitle(person.name)}
-                                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF} ${isCommunal && selected ? 'ring-2 ring-blue-300 ring-offset-1' : ''}`}
-                                >
-                                    {person.name.charAt(0).toUpperCase()}
-                                </button>
-                            )
-                        })}
-                    </div>
+                    <PersonToggles
+                        item={item}
+                        people={people}
+                        layout="avatars"
+                        onTogglePerson={personIdx => togglePerson(itemIdx, personIdx)}
+                        onToggleCommunal={() => toggleCommunal(itemIdx)}
+                    />
                 )}
                 <button
                     type="button"
                     onClick={() => onToggleQuantity(itemIdx)}
-                    title={quantityTitle}
+                    title={quantityTitle(item)}
                     aria-label={`Set suggested quantity for ${item.text || 'item'}`}
                     aria-expanded={quantityOpen}
                     className={`inline-flex items-center justify-center h-5 rounded-full px-1.5 text-[10px] font-medium shrink-0 transition-colors ${hasRate ? 'bg-emerald-600 text-white' : AVATAR_OFF}`}
                 >
-                    {hasRate
-                        ? ((item.perNights ?? 1) > 1 ? `×${item.perNight}/${item.perNights}nt` : `×${item.perNight}/nt`)
-                        : '×n'}
+                    {hasRate ? rateBadge(item) : '×n'}
                 </button>
                 <button
                     type="button"
@@ -778,38 +871,14 @@ const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allIt
             </div>
             {/* Mobile: shared toggle + people on their own row as large labelled tiles */}
             {!isDesktop && (
-                <div className="mt-2 flex gap-2">
-                    <button
-                        type="button"
-                        onClick={() => toggleCommunal(itemIdx)}
-                        title={communalTitle}
-                        aria-pressed={isCommunal}
-                        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${isCommunal ? 'bg-blue-600 text-white border-transparent' : 'bg-white border-gray-200 text-gray-400'}`}
-                    >
-                        <span className="text-lg font-bold leading-none">👥</span>
-                        <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
-                            Shared
-                        </span>
-                    </button>
-                    {people.length > 1 && people.map((person, personIdx) => {
-                        const selected = item.personSelections?.[personIdx]?.selected ?? false
-                        return (
-                            <button
-                                key={person.id}
-                                type="button"
-                                onClick={() => togglePerson(itemIdx, personIdx)}
-                                title={personTitle(person.name)}
-                                className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${AVATAR_ON[personIdx % AVATAR_ON.length]} border-transparent` : `bg-white border-gray-200 text-gray-400`}`}
-                            >
-                                <span className="text-lg font-bold leading-none">
-                                    {person.name.charAt(0).toUpperCase()}
-                                </span>
-                                <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1">
-                                    {person.name}
-                                </span>
-                            </button>
-                        )
-                    })}
+                <div className="mt-2">
+                    <PersonToggles
+                        item={item}
+                        people={people}
+                        layout="tiles"
+                        onTogglePerson={personIdx => togglePerson(itemIdx, personIdx)}
+                        onToggleCommunal={() => toggleCommunal(itemIdx)}
+                    />
                 </div>
             )}
             {!isDesktop && isCommunal && people.length > 1 && (
@@ -818,46 +887,13 @@ const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allIt
                 </div>
             )}
             {quantityOpen && (
-                <div className="mt-2 sm:mt-0 w-full flex items-center gap-3 flex-wrap text-xs text-gray-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-1.5">
-                    <span className="flex items-center gap-1.5">
-                        Pack
-                        <input
-                            type="number"
-                            min={1}
-                            value={item.perNight ?? ''}
-                            onChange={e => updatePerNight(itemIdx, parseQty(e.target.value))}
-                            aria-label={`Quantity to pack for ${item.text || 'item'}`}
-                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                        />
-                        per
-                        <input
-                            type="number"
-                            min={1}
-                            placeholder="1"
-                            value={item.perNights ?? ''}
-                            onChange={e => updatePerNights(itemIdx, parseQty(e.target.value))}
-                            disabled={!hasRate}
-                            aria-label={`Number of nights per ${item.text || 'item'}`}
-                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-40"
-                        />
-                        night{(item.perNights ?? 1) > 1 ? 's' : ''}
-                    </span>
-                    <label className={`flex items-center gap-1.5 ${hasRate ? '' : 'opacity-40'}`}>
-                        Max
-                        <input
-                            type="number"
-                            min={1}
-                            value={item.maxQuantity ?? ''}
-                            onChange={e => updateMaxQuantity(itemIdx, parseQty(e.target.value))}
-                            disabled={!hasRate}
-                            aria-label={`Maximum quantity for ${item.text || 'item'}`}
-                            className="w-12 border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                        />
-                    </label>
-                    <span className="text-gray-400">
-                        e.g. socks: 1 per night; a jumper: 1 per 4 nights. Suggests a
-                        quantity when a list has nights away — leave blank to skip
-                    </span>
+                <div className="mt-2 sm:mt-0 w-full">
+                    <QuantityPanel
+                        item={item}
+                        onPerNight={value => updatePerNight(itemIdx, value)}
+                        onPerNights={value => updatePerNights(itemIdx, value)}
+                        onMaxQuantity={value => updateMaxQuantity(itemIdx, value)}
+                    />
                 </div>
             )}
         </div>
@@ -1459,22 +1495,49 @@ export function QuestionsPage() {
 
     const handleOptionModalSave = useCallback(async (updatedOption: Option) => {
         if (!data || optionModal === null) return
-        const newQuestions = data.questions.map(q => {
-            if (q.id !== optionModal.questionId) return q
-            let newOptions: Option[]
+        const newQuestions = withQuestionOptions(data.questions, optionModal.questionId, options => {
             if (optionModal.option) {
-                newOptions = q.options.map(o =>
-                    o.id === optionModal.option!.id ? updatedOption : o
-                )
-            } else {
-                const maxOrder = q.options.reduce((max, o) => Math.max(max, o.order), -1)
-                newOptions = [...q.options, { ...updatedOption, order: maxOrder + 1 }]
+                return options.map(o => o.id === optionModal.option!.id ? updatedOption : o)
             }
-            return { ...q, options: newOptions }
-        })
+            const maxOrder = options.reduce((max, o) => Math.max(max, o.order), -1)
+            return [...options, { ...updatedOption, order: maxOrder + 1 }]
+        }, new Date().toISOString())
         setOptionModal(null)
         await saveData({ ...data, questions: newQuestions })
     }, [data, optionModal, saveData])
+
+    // An edit made inline on one item, rather than through the option's modal.
+    // The whole option is still what gets written — the question set is a single
+    // document — but only the edited item changes, so every other row keeps its
+    // identity and skips re-rendering.
+    const handleOptionItemChange = useCallback(async (questionId: string, optionId: string, index: number, edited: Item) => {
+        const data = dataRef.current
+        if (!data) return
+        const question = data.questions.find(q => q.id === questionId)
+        const option = question?.options.find(o => o.id === optionId)
+        if (!question || !option) return
+        const now = new Date().toISOString()
+        const items = applyItemEdit(option.items, index, edited, defaultCategoryFor(question, option), now)
+        await saveData({
+            ...data,
+            questions: withQuestionOptions(data.questions, questionId, options =>
+                options.map(o => o.id === optionId ? { ...o, items } : o), now),
+        })
+    }, [saveData])
+
+    const handleAlwaysItemChange = useCallback(async (index: number, edited: Item) => {
+        const data = dataRef.current
+        if (!data) return
+        const stored = data.alwaysNeededItems ?? []
+        // The rows render the active items only, so that is what the index
+        // addresses; the tombstones are carried through untouched so a delete
+        // made on another device still propagates.
+        const active = stored.filter(i => !i.deletedAt)
+        const deleted = stored.filter(i => i.deletedAt)
+        const now = new Date().toISOString()
+        const items = applyItemEdit(active, index, edited, ALWAYS_NEEDED_CATEGORY, now)
+        await saveData({ ...data, alwaysNeededItems: [...items, ...deleted] })
+    }, [saveData])
 
     const handleAlwaysSave = useCallback(async (newItems: Item[]) => {
         if (!data) return
@@ -1532,9 +1595,8 @@ export function QuestionsPage() {
     const handleDeleteOption = useCallback(async (questionId: string, optionId: string) => {
         const data = dataRef.current
         if (!data) return
-        const newQuestions = data.questions.map(q =>
-            q.id === questionId ? { ...q, options: q.options.filter(o => o.id !== optionId) } : q
-        )
+        const newQuestions = withQuestionOptions(data.questions, questionId,
+            options => options.filter(o => o.id !== optionId), new Date().toISOString())
         await saveData({ ...data, questions: newQuestions })
     }, [saveData])
 
@@ -1592,7 +1654,14 @@ export function QuestionsPage() {
                 )}
                 {!isForeign && <TemplateUpdatesCard questionSet={data} onApply={saveData} />}
                 <PersonLegend people={people} onEdit={openPeopleModal} />
-                <AlwaysSection items={activeAlwaysNeededItems} people={people} onEdit={openAlwaysModal} />
+                <AlwaysSection
+                    items={activeAlwaysNeededItems}
+                    people={people}
+                    allItemNames={allItemNames}
+                    sectionNames={suggestedSectionNames}
+                    onEdit={openAlwaysModal}
+                    onItemChange={handleAlwaysItemChange}
+                />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
                         key={q.id}
@@ -1600,12 +1669,15 @@ export function QuestionsPage() {
                         people={people}
                         canMoveUp={qi > 0}
                         canMoveDown={qi < activeQuestions.length - 1}
+                        allItemNames={allItemNames}
+                        sectionNames={suggestedSectionNames}
                         onEdit={openEditQuestion}
                         onDelete={handleDeleteQuestion}
                         onAddOption={openAddOption}
                         onEditOption={openEditOption}
                         onDeleteOption={handleDeleteOption}
                         onMove={handleMoveQuestion}
+                        onItemChange={handleOptionItemChange}
                     />
                 ))}
                 <button
