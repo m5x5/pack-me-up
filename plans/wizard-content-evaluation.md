@@ -185,15 +185,17 @@ or caravan*, both of which need towels:
   do not dedupe at all.
 
 **Rule to write the options against:** any item that could legitimately appear in
-two options must use **byte-identical text** in both, so dedup collapses it.
-Anything that must genuinely appear twice must be worded distinctly and
-deliberately (`Beach towel` vs `Bath towel`, never `Towel` twice).
+two options must use **byte-identical text**, which is what lets
+`deduplicateItems` recognise the copies as one item. Anything that must genuinely
+appear twice needs distinct wording (`Beach towel` vs `Bath towel`, never `Towel`
+twice).
 
-A second, sharper hazard: dedup keeps the **first** row and discards the rest
-*including its quantity rate*. If `Towels` is `{ perNight: 1, perNights: 3 }`
-under Self-catering and rateless under Hotel, and Hotel sorts first, the family
-gets one towel for the whole trip. **Where an item is duplicated across options,
-give it the same rate in both.**
+The rate hazard originally noted here — dedup keeping the first copy *and its
+quantity*, so a rated `Towels` behind a rateless one gave one towel for a
+fortnight — has been fixed in `deduplicateItems` rather than worked around in the
+content: the surviving row now takes the **largest** quantity of the copies, in
+both the creation and the update-from-questions path. Sections still have to
+match by hand, because there is no "larger" of two categories to pick.
 
 ### Consequence 2: mutual exclusivity is not expressible — and should not be
 

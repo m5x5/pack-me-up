@@ -141,11 +141,11 @@ function communalItem(text: string, people: Person[], ageFilter?: (p: Person[]) 
  * how the overnight list ended up as one 70-row card headed
  * "Will you be staying overnight?".
  *
- * Two rules for anything appearing in more than one option: use byte-identical
- * text (so `deduplicateItems` collapses it) and give it the same category in
- * every copy (so the surviving row isn't filed somewhere arbitrary — the first
- * copy wins and takes its category with it). The "same rate, flag and category
- * wherever they collide" test in example-data.test.ts enforces both.
+ * For anything appearing in more than one option: use byte-identical text, which
+ * is what lets `deduplicateItems` recognise the copies as one item, and give it
+ * the same category in every copy — the surviving row keeps the first copy's
+ * category, and there is no "larger" of two sections for the generator to pick.
+ * Quantities need no such care: dedup takes the largest of the copies.
  */
 function section(category: string, ...args: Item[]): Item[] {
     return args.map(i => ({ ...i, category }));

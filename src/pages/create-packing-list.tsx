@@ -18,16 +18,7 @@ import { generateQuestionBasedItems, generateAlwaysNeededItems, withItemOrder } 
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { LoadingState } from '../components/LoadingState'
 import { tripDatesOutOfOrder } from '../create-packing-list/tripDetails'
-
-export function deduplicateItems(items: PackingListItem[]): PackingListItem[] {
-    const seen = new Set<string>()
-    return items.filter((item) => {
-        const key = `${item.personId}::${item.itemText.trim().toLowerCase()}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-    })
-}
+import { deduplicateItems } from '../create-packing-list/deduplicate'
 
 export function getUnreviewedDeletedItems(
     packingLists: PackingList[],

@@ -533,12 +533,17 @@ describe('createExampleData - items shared across options', () => {
         i.personSelections.filter(ps => ps.selected).map(ps => ps.personId)
 
     /**
-     * The generated list is deduplicated on `personId` + lowercased text, and
-     * the first copy wins — taking its quantity rate and its section heading
-     * with it. So wherever the same text can reach the same person from two
-     * options, the copies have to agree, or the survivor is arbitrary.
+     * The generated list deduplicates on `personId` + lowercased text, so the
+     * same item reaching one person twice is collapsed for us — quantities are
+     * merged by `deduplicateItems`, which takes the largest.
+     *
+     * What it cannot resolve is the *section*: the surviving row keeps the first
+     * copy's category, so two copies filed differently would land under
+     * whichever option sorts first. Keeping them consistent is a content
+     * concern, and the communal flag has to match too — it decides identity, so
+     * a mismatch means the copies never collapse at all.
      */
-    it('gives identically-named items the same rate, flag and category wherever they can collide', () => {
+    it('gives identically-named items the same section and communal flag wherever they can collide', () => {
         const all = everyItem(createExampleData(family))
         const byText = new Map<string, typeof all>()
         for (const i of all) {
@@ -561,10 +566,6 @@ describe('createExampleData - items shared across options', () => {
                     // The surviving copy takes its category with it, so a
                     // mismatch files the row under whichever option sorts first.
                     expect(x.category, `"${text}" category differs between copies`).toBe(y.category)
-                    expect(
-                        { perNight: x.perNight, perNights: x.perNights, maxQuantity: x.maxQuantity },
-                        `"${text}" quantity rate differs between copies`,
-                    ).toEqual({ perNight: y.perNight, perNights: y.perNights, maxQuantity: y.maxQuantity })
                 }
             }
         }
