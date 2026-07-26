@@ -630,7 +630,8 @@ export function CreatePackingList() {
                     data: packingList,
                     serializer: packingListToDataset,
                 })
-                showToast('Packing list created successfully!', 'success')
+                // No toast: landing on the finished list is its own confirmation,
+                // and it says far more than "created successfully" ever did.
                 navigate(`/pod/${encodedForeignPodUrl}/view-lists/${packingList.id}`)
             } else {
                 await db.savePackingList(packingList)
@@ -645,7 +646,6 @@ export function CreatePackingList() {
                         })
                     }
                 }
-                showToast('Packing list created successfully!', 'success')
                 navigate(`/view-lists/${packingList.id}`)
             }
         } catch (err) {

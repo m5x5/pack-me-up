@@ -107,6 +107,7 @@ const fullyPopulatedQuestionSetItem: Required<Item> = {
     // Single value on purpose: RDF multi-values are an unordered set, so a
     // longer list would make the pod round-trip assertion order-dependent.
     ageRanges: ['Adult'],
+    category: 'Toiletries',
     order: 1,
     category: 'Toiletries',
     perNight: 2,
