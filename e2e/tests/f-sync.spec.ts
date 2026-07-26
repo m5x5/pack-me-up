@@ -149,7 +149,9 @@ test.describe('F – Solid Pod Sync', () => {
       await expect(page.locator('span.text-red-600')).not.toBeVisible()
 
       await page.reload()
-      await page.getByRole('button', { name: 'Show Packed' }).click()
+      // The list reopens as it was left, so packed items are already showing —
+      // clicking "Show Packed" again would be clicking "Hide Packed".
+      await expect(page.getByRole('button', { name: 'Hide Packed' })).toBeVisible({ timeout: 10_000 })
       await expect(page.locator(`input[name="${box0Name}"]`)).toBeChecked({ timeout: 5_000 })
       await expect(page.locator(`input[name="${box1Name}"]`)).toBeChecked({ timeout: 5_000 })
     } finally {

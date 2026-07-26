@@ -162,7 +162,7 @@ export function ViewPackingList() {
     // How this list was last left — folded sections, view mode, whether packed
     // items were showing. Read once, synchronously, so a list opens folded the
     // way it was closed rather than flashing its full self first.
-    const storedPreferences = useRef(loadListViewPreferences(id)).current
+    const [storedPreferences] = useState(() => loadListViewPreferences(id))
     const [showPacked, setShowPacked] = useState(storedPreferences.showPacked)
     const [viewMode, setViewMode] = useState<ListViewMode>(storedPreferences.viewMode)
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -1240,7 +1240,10 @@ export function ViewPackingList() {
                             <span className={`text-sm font-medium whitespace-nowrap ${allPacked ? 'text-emerald-600' : 'text-gray-600'}`}>
                                 {allPacked ? '🎉 All packed!' : `${packedCount} / ${totalCount} packed (${percentComplete}%)`}
                             </span>
-                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                            {/* The bar shrinks to its minimum before the encouragement
+                                gives way, and at 320px the encouragement takes a line of
+                                its own rather than running off the side of the phone. */}
+                            <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <div
                                     role="progressbar"
                                     aria-label="Packing progress"
@@ -1261,7 +1264,7 @@ export function ViewPackingList() {
                                     </span>
                                 )}
                             </div>
-                            <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+                            <div className="w-full sm:w-auto flex flex-wrap items-center justify-end gap-2">
                                 {showFoldAllControl && (
                                     <button
                                         type="button"
@@ -1269,28 +1272,36 @@ export function ViewPackingList() {
                                         title={everySectionFolded ? 'Open every section' : 'Fold every section down to its header'}
                                         className="shrink-0 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
                                     >
-                                        <span aria-hidden="true" className="text-xs text-gray-400">{everySectionFolded ? '▼' : '▶'}</span>
+                                        {/* Same glyph the section headers use for the same
+                                            state, so the toolbar and the cards never point
+                                            opposite ways at each other. */}
+                                        <span aria-hidden="true" className="text-xs text-gray-400">{everySectionFolded ? '▶' : '▼'}</span>
                                         {/* The word "all" is what tips this row onto a second
                                             line on a phone, and the icon already says it. */}
                                         {everySectionFolded ? (isDesktop ? 'Expand all' : 'Expand') : (isDesktop ? 'Collapse all' : 'Collapse')}
                                     </button>
                                 )}
-                                <div className="flex items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
+                                {/* "View" is what the group is labelled; repeating it in both
+                                    buttons is what pushes this row off a 390px screen. The
+                                    accessible name keeps the full wording either way. */}
+                                <div className="flex shrink-0 items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
                                     <button
                                         type="button"
                                         aria-pressed={viewMode === 'person'}
+                                        aria-label="Person View"
                                         onClick={() => setViewMode('person')}
-                                        className={`px-3 py-1.5 text-sm font-medium transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                                     >
-                                        Person View
+                                        {isDesktop ? 'Person View' : 'Person'}
                                     </button>
                                     <button
                                         type="button"
                                         aria-pressed={viewMode === 'question'}
+                                        aria-label="Question View"
                                         onClick={() => setViewMode('question')}
-                                        className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-300 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors border-l border-gray-300 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                                     >
-                                        Question View
+                                        {isDesktop ? 'Question View' : 'Question'}
                                     </button>
                                 </div>
                                 <Button
@@ -1401,9 +1412,13 @@ export function ViewPackingList() {
                             const innerGroups = (isShared || !isCategorySection)
                                 ? groupByCategory(items)
                                 : groupByPerson(items)
+                            const isSectionCollapsed = collapsedSections.has(sectionKey)
                             return (
                             <div key={sectionKey} className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${isComplete ? 'border-emerald-300 bg-emerald-50' : `bg-white ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`}`} style={{ breakInside: 'avoid' }}>
-                                <div className="mb-4 pb-2 border-b border-gray-200">
+                                {/* The rule under the heading separates it from the items
+                                    below; a folded card has none, so it would just be a
+                                    line ruling off empty space. */}
+                                <div className={isSectionCollapsed ? undefined : 'mb-4 pb-2 border-b border-gray-200'}>
                                     <div className="flex flex-wrap items-center gap-1 min-h-[2rem]">
                                         {isGuest && renamingGuestId === guestId ? (
                                             <>
@@ -1424,13 +1439,15 @@ export function ViewPackingList() {
                                         ) : (
                                             <button
                                                 type="button"
-                                                aria-label={`${collapsedSections.has(sectionKey) ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
+                                                aria-label={`${isSectionCollapsed ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
                                                 onClick={() => toggleSection(sectionKey)}
-                                                className="flex items-center gap-2 flex-1 text-left"
+                                                className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                             >
-                                                <span className="text-sm text-gray-400">{collapsedSections.has(sectionKey) ? '▶' : '▼'}</span>
+                                                <span className="shrink-0 text-sm text-gray-400">{isSectionCollapsed ? '▶' : '▼'}</span>
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
-                                                <span className="ml-1 text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
+                                                {/* Never let a count break across lines — "9 /" above "9" is
+                                                    a fraction the eye has to reassemble. */}
+                                                <span className="ml-1 shrink-0 whitespace-nowrap text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
                                             </button>
                                         )}
                                         {isComplete && (
@@ -1473,7 +1490,7 @@ export function ViewPackingList() {
                                         )}
                                     </div>
                                 </div>
-                                {!collapsedSections.has(sectionKey) && <div>
+                                {!isSectionCollapsed && <div>
                                     {/* Every card can be typed into directly. What varies is which
                                         part of the target the card already knows: a person's card
                                         knows who, and asks which section; a section's card knows
@@ -1532,7 +1549,7 @@ export function ViewPackingList() {
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
                                                         <span>{label}</span>
-                                                        <span className="text-xs font-normal text-gray-400 ml-1">{groupStat.packed} / {groupStat.total}</span>
+                                                        <span className="ml-1 shrink-0 whitespace-nowrap text-xs font-normal text-gray-400">{groupStat.packed} / {groupStat.total}</span>
                                                     </button>
                                                     {!isCollapsed && (
                                                         <div className="flex shrink-0 items-center gap-2">
