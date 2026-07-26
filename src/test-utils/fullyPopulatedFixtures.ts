@@ -121,6 +121,9 @@ const fullyPopulatedOption: Required<Option> = {
     text: 'Sunny',
     items: [fullyPopulatedQuestionSetItem],
     order: 0,
+    // Single value for the same reason as `ageRanges` above: these are repeated
+    // strings on one Thing, and RDF multi-values come back as an unordered set.
+    emptySections: ['Beach kit'],
 }
 
 const fullyPopulatedQuestion: Required<SavedQuestion> = {
@@ -141,6 +144,7 @@ const fullyPopulatedQuestion: Required<SavedQuestion> = {
 export const fullyPopulatedQuestionSet: Required<Omit<PackingListQuestionSet, '_id' | '_rev'>> = {
     people: [fullyPopulatedPerson],
     alwaysNeededItems: [fullyPopulatedQuestionSetItem],
+    alwaysNeededEmptySections: ['Documents'],
     questions: [fullyPopulatedQuestion],
     lastModified: '2025-01-02T00:00:00.000Z',
     templateVersion: 3,

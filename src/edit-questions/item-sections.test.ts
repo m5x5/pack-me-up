@@ -17,6 +17,8 @@ import {
     moveItemWithinSection,
     moveItemToSection,
     isAtSectionEdge,
+    pruneFilledSections,
+    addEmptySection,
     type SectionSequenceEntry,
 } from './item-sections'
 import type { Item, Question, Option } from './types'
@@ -444,5 +446,95 @@ describe('CATEGORY_ORDER', () => {
         expect(at(CATEGORIES.clothes)).toBeLessThan(at(CATEGORIES.kit))
         expect(at(CATEGORIES.kit)).toBe(CATEGORY_ORDER.length - 2)
         expect(at(CATEGORIES.pet)).toBe(CATEGORY_ORDER.length - 1)
+    })
+})
+
+describe('empty sections', () => {
+    describe('buildSectionGroups with recorded empty sections', () => {
+        it('shows a section that has nothing in it yet', () => {
+            const groups = buildSectionGroups([item({ id: 'i1', text: 'Socks' })], 'Yes', ['Toiletries'])
+            expect(groups.map(g => g.label)).toEqual(['Yes', 'Toiletries'])
+            expect(groups[1].entries).toEqual([])
+        })
+
+        it('keeps the flat index of items right when an empty section precedes them', () => {
+            // The index addresses the items array, which knows nothing about a
+            // section that holds none of them.
+            const items = [item({ id: 'i1', text: 'Socks' }), item({ id: 'i2', text: 'Soap', category: 'Toiletries' })]
+            const groups = buildSectionGroups(items, 'Yes', ['Spare'])
+            const soap = groups.flatMap(g => g.entries).find(e => e.item.text === 'Soap')
+            expect(soap?.index).toBe(1)
+        })
+
+        it('does not duplicate a section that has items and is also recorded', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries' })]
+            const groups = buildSectionGroups(items, 'Yes', ['Toiletries'])
+            expect(groups.filter(g => g.label === 'Toiletries')).toHaveLength(1)
+        })
+
+        it('behaves as before when none are recorded', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries' })]
+            expect(buildSectionGroups(items, 'Yes')).toEqual(buildSectionGroups(items, 'Yes', []))
+        })
+    })
+
+    describe('pruneFilledSections', () => {
+        it('forgets a section once something lands in it', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries' })]
+            expect(pruneFilledSections(['Toiletries', 'Spare'], items)).toEqual(['Spare'])
+        })
+
+        it('drops the field entirely once every section has items', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries' })]
+            expect(pruneFilledSections(['Toiletries'], items)).toBeUndefined()
+        })
+
+        it('ignores a soft-deleted item, which leaves its section empty again', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries', deletedAt: now })]
+            expect(pruneFilledSections(['Toiletries'], items)).toEqual(['Toiletries'])
+        })
+
+        it('passes undefined through', () => {
+            expect(pruneFilledSections(undefined, [])).toBeUndefined()
+        })
+    })
+
+    describe('addEmptySection', () => {
+        it('records a brand new section', () => {
+            expect(addEmptySection(undefined, [], 'Toiletries', 'Yes')).toEqual(['Toiletries'])
+        })
+
+        it('appends to the ones already recorded', () => {
+            expect(addEmptySection(['Spare'], [], 'Toiletries', 'Yes')).toEqual(['Spare', 'Toiletries'])
+        })
+
+        it('refuses a name that already has items — it exists already', () => {
+            const items = [item({ id: 'i1', text: 'Soap', category: 'Toiletries' })]
+            expect(addEmptySection(undefined, items, 'Toiletries', 'Yes')).toBeUndefined()
+        })
+
+        it('refuses a duplicate of one already recorded', () => {
+            expect(addEmptySection(['Toiletries'], [], 'Toiletries', 'Yes')).toEqual(['Toiletries'])
+        })
+
+        it('refuses the default section, which always exists', () => {
+            expect(addEmptySection(undefined, [], 'Yes', 'Yes')).toBeUndefined()
+        })
+    })
+
+    describe('sectionNamesIn', () => {
+        it('offers an empty section by name, so it can be filed into from elsewhere', () => {
+            const qs = {
+                _id: '1',
+                people: [],
+                alwaysNeededItems: [],
+                alwaysNeededEmptySections: ['Documents'],
+                questions: [{
+                    id: 'q1', type: 'saved' as const, text: 'Overnight?', order: 0,
+                    options: [{ id: 'o1', text: 'Yes', order: 0, items: [], emptySections: ['Toiletries'] }],
+                }],
+            }
+            expect(sectionNamesIn(qs).sort()).toEqual(['Documents', 'Toiletries'])
+        })
     })
 })

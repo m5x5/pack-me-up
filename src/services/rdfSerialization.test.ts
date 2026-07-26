@@ -325,6 +325,37 @@ describe('questionSetToDataset / datasetToQuestionSet', () => {
         expect(names).toContain('Bob')
     })
 
+    it('round-trips a section that has no items in it at all', () => {
+        // The case the field exists for: nothing carries this section's name, so
+        // without storing it the section would not survive the trip.
+        const result = roundTripQs(makeQuestionSet({
+            alwaysNeededItems: [],
+            alwaysNeededEmptySections: ['Documents'],
+        }))
+        expect(result.alwaysNeededEmptySections).toEqual(['Documents'])
+    })
+
+    it('round-trips an option’s empty section', () => {
+        const result = roundTripQs(makeQuestionSet({
+            questions: [{
+                id: 'q1', type: 'saved', text: 'Beach?', order: 0,
+                options: [{ id: 'o1', text: 'Yes', order: 0, items: [], emptySections: ['Beach kit'] }],
+            }],
+        }))
+        expect(result.questions[0].options[0].emptySections).toEqual(['Beach kit'])
+    })
+
+    it('omits both when no section is empty', () => {
+        const result = roundTripQs(makeQuestionSet({
+            questions: [{
+                id: 'q1', type: 'saved', text: 'Beach?', order: 0,
+                options: [{ id: 'o1', text: 'Yes', order: 0, items: [] }],
+            }],
+        }))
+        expect(result.alwaysNeededEmptySections).toBeUndefined()
+        expect(result.questions[0].options[0].emptySections).toBeUndefined()
+    })
+
     it('round-trips alwaysNeededItems with personSelections', () => {
         const qs = makeQuestionSet({
             alwaysNeededItems: [{
