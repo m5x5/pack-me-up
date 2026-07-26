@@ -23,10 +23,13 @@ export const wizardPetSchema = z.object({
 
 export const wizardEntrySchema = z.discriminatedUnion('kind', [wizardPersonSchema, wizardPetSchema])
 
+// No upper bound on the group: 'Edit People' has never capped it, so a cap
+// here only blocked large families from (re-)running the wizard. The cost of
+// more people is linear — the question and item counts don't change, only the
+// per-person selections on each item.
 export const wizardSchema = z.object({
     people: z.array(wizardEntrySchema)
-        .min(1, 'At least 1 person or pet required')
-        .max(10, 'Maximum of 10 reached'),
+        .min(1, 'At least 1 person or pet required'),
 }).superRefine((data, ctx) => {
     data.people.forEach((entry, index) => {
         if (entry.kind === 'person' && !entry.ageRange && !entry.dateOfBirth) {

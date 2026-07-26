@@ -98,6 +98,84 @@ describe('Wizard', () => {
         expect(screen.queryByText(/you already have packing list questions set up/i)).toBeNull()
     })
 
+    describe('re-running the wizard', () => {
+        const existingSet = {
+            people: [
+                { id: '1', name: 'Sam', ageRange: 'Adult', gender: 'female', dateOfBirth: '1990-04-02' },
+                { id: '2', name: 'Ellie', ageRange: 'Baby' },
+                { id: '3', name: 'Rex', species: 'dog' },
+                { id: '4', name: 'Gone', ageRange: 'Child', deletedAt: '2025-01-01T00:00:00.000Z' },
+            ],
+            alwaysNeededItems: [],
+            questions: [],
+        }
+
+        function renderWithExisting(questionSet: unknown) {
+            const db = makeDb({ getQuestionSet: vi.fn().mockResolvedValue(questionSet) })
+            mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })
+            return render(
+                <MemoryRouter>
+                    <Wizard />
+                </MemoryRouter>
+            )
+        }
+
+        it('prefills the group with the people and pets already saved, skipping deleted ones', async () => {
+            renderWithExisting(existingSet)
+
+            await waitFor(() => {
+                const nameInputs = screen.getAllByLabelText(/^name$/i) as HTMLInputElement[]
+                expect(nameInputs.map(input => input.value)).toEqual(['Sam', 'Ellie', 'Rex'])
+            })
+            expect(screen.getByText('3 in your group')).toBeTruthy()
+        })
+
+        it('prefills age range, gender, birthday and species', async () => {
+            const { container } = renderWithExisting(existingSet)
+
+            await waitFor(() => expect(screen.getAllByLabelText(/^name$/i)).toHaveLength(3))
+
+            const selects = screen.getAllByRole('combobox') as HTMLSelectElement[]
+            // Sam: age + gender, Ellie: age + gender, Rex: species
+            expect(selects.map(select => select.value)).toEqual(['Adult', 'female', 'Baby', '', 'dog'])
+
+            const birthdays = Array.from(
+                container.querySelectorAll('input[type="date"]')
+            ) as HTMLInputElement[]
+            expect(birthdays.map(input => input.value)).toEqual(['1990-04-02', ''])
+        })
+
+        it('tells the user their existing group has been filled in', async () => {
+            renderWithExisting(existingSet)
+
+            expect(await screen.findByText(/filled in the people from your current setup/i)).toBeTruthy()
+        })
+
+        it('keeps letting a large family add more people', async () => {
+            const people = Array.from({ length: 12 }, (_, i) => ({
+                id: String(i),
+                name: `Person ${i + 1}`,
+                ageRange: 'Adult',
+            }))
+            renderWithExisting({ ...existingSet, people })
+
+            await waitFor(() => expect(screen.getAllByLabelText(/^name$/i)).toHaveLength(12))
+            expect(screen.getByRole('button', { name: /add another person/i })).toBeTruthy()
+            expect(screen.getByRole('button', { name: /add a pet/i })).toBeTruthy()
+            expect(screen.queryByText(/maximum of 10/i)).toBeNull()
+        })
+
+        it('keeps the default single row when the existing set has nobody left', async () => {
+            renderWithExisting({ ...existingSet, people: [] })
+
+            await waitFor(() => {
+                const nameInputs = screen.getAllByLabelText(/^name$/i) as HTMLInputElement[]
+                expect(nameInputs.map(input => input.value)).toEqual(['Me'])
+            })
+            expect(screen.queryByText(/filled in the people from your current setup/i)).toBeNull()
+        })
+    })
+
     it('shows success modal but not pod prompt immediately after generation succeeds', async () => {
         const db = makeDb()
         mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })

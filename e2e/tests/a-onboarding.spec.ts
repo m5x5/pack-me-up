@@ -84,4 +84,32 @@ test.describe('A – Onboarding & Wizard', () => {
     await expect(page.getByRole('button', { name: 'Yes, Override' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
   })
+
+  test('A5: re-running the wizard pre-populates the group from the saved question set', async ({ freshPage: page }) => {
+    // First run: a person and a pet, so both row types get re-populated
+    await page.goto('/#/wizard')
+    const nameInputs = page.locator('input[type="text"]')
+    await nameInputs.first().fill('Alice')
+    await page.selectOption('[name="people.0.ageRange"]', 'Adult')
+    await page.selectOption('[name="people.0.gender"]', 'female')
+    await page.getByRole('button', { name: /Add a Pet/i }).click()
+    await nameInputs.nth(1).fill('Rex')
+    await page.selectOption('[name="people.1.species"]', 'dog')
+    await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
+    await waitForWizardSuccess(page)
+    await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
+    await page.getByRole('button', { name: 'Maybe Later' }).click()
+    await page.waitForURL(/#\/manage-questions/, { timeout: 8_000 })
+    await page.waitForLoadState('networkidle')
+
+    // Second run: the wizard starts from the family set up the first time
+    await page.goto('/#/wizard')
+    await expect(page.getByText(/filled in the people from your current setup/i)).toBeVisible({ timeout: 10_000 })
+    await expect(nameInputs.first()).toHaveValue('Alice')
+    await expect(nameInputs.nth(1)).toHaveValue('Rex')
+    await expect(page.locator('[name="people.0.ageRange"]')).toHaveValue('Adult')
+    await expect(page.locator('[name="people.0.gender"]')).toHaveValue('female')
+    await expect(page.locator('[name="people.1.species"]')).toHaveValue('dog')
+    await expect(page.getByText('2 in your group')).toBeVisible()
+  })
 })

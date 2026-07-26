@@ -13,6 +13,7 @@ import { useWizardGeneration } from './useWizardGeneration'
 import { AGE_RANGE_OPTIONS, GENDER_OPTIONS, PET_SPECIES_OPTIONS } from '../edit-questions/types'
 import { deriveAgeRange } from '../edit-questions/age-derivation'
 import { buildRevealSteps, buildGenerationSummary, REVEAL_STEP_MS } from './wizard-reveal'
+import { peopleToWizardEntries } from './wizard-prefill'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 
 const SOLID_POD_UPSELL_SHOWN_KEY = 'solid-pod-upsell-shown'
@@ -24,6 +25,7 @@ export const Wizard = () => {
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [pendingNavRoute, setPendingNavRoute] = useState<string | null>(null)
     const [hasExistingData, setHasExistingData] = useState(false)
+    const [isPrefilled, setIsPrefilled] = useState(false)
     const [revealedCount, setRevealedCount] = useState(0)
     const [isRevealComplete, setIsRevealComplete] = useState(false)
     const { isLoggedIn } = useSolidPod()
@@ -39,7 +41,7 @@ export const Wizard = () => {
         [generatedSet]
     )
 
-    const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<WizardFormData>({
+    const { register, control, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<WizardFormData>({
         resolver: zodResolver(wizardSchema),
         defaultValues: {
             people: [{ kind: 'person', name: 'Me', ageRange: undefined, gender: undefined }],
@@ -51,12 +53,18 @@ export const Wizard = () => {
         name: 'people'
     })
 
-    // Check for existing data on mount
+    // Check for existing data on mount, and start someone re-running the wizard
+    // from the group they already set up rather than from a blank 'Me' row.
     useEffect(() => {
         const checkExistingData = async () => {
             try {
-                await db.getQuestionSet()
+                const existingSet = await db.getQuestionSet()
                 setHasExistingData(true)
+                const existingEntries = peopleToWizardEntries(existingSet.people ?? [])
+                if (existingEntries.length > 0) {
+                    reset({ people: existingEntries })
+                    setIsPrefilled(true)
+                }
             } catch (err: unknown) {
                 const hasName = typeof err === 'object' && err !== null && 'name' in err
                 if (!hasName || (err as { name: string }).name !== 'not_found') {
@@ -66,7 +74,7 @@ export const Wizard = () => {
             }
         }
         checkExistingData()
-    }, [db])
+    }, [db, reset])
 
     // Open success modal when generation completes, starting the reveal at the
     // first person. Users who prefer reduced motion get the whole thing at once.
@@ -188,6 +196,12 @@ export const Wizard = () => {
                         </span>
                     </div>
 
+                    {isPrefilled && (
+                        <p className="mb-4 text-sm text-gray-600">
+                            We've filled in the people from your current setup — add, remove or change anyone before generating.
+                        </p>
+                    )}
+
                     <div className="space-y-4">
                         {fields.map((field, index) => {
                             const dob = field.kind === 'person' ? watch(`people.${index}.dateOfBirth`) : undefined
@@ -304,34 +318,26 @@ export const Wizard = () => {
                         })}
                     </div>
 
-                    {fields.length < 10 && (
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={handleAddPerson}
-                                className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                                Add Another Person
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleAddPet}
-                                className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
-                            >
-                                <span className="text-lg leading-none">🐾</span>
-                                Add a Pet
-                            </button>
-                        </div>
-                    )}
-
-                    {fields.length >= 10 && (
-                        <p className="mt-4 text-sm text-gray-600 text-center">
-                            Maximum of 10 reached
-                        </p>
-                    )}
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            onClick={handleAddPerson}
+                            className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                            Add Another Person
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleAddPet}
+                            className="w-full py-3 px-4 border-2 border-dashed border-primary-300 rounded-xl text-primary-700 font-semibold hover:border-primary-500 hover:bg-primary-50 transition-all duration-200 flex items-center justify-center gap-2"
+                        >
+                            <span className="text-lg leading-none">🐾</span>
+                            Add a Pet
+                        </button>
+                    </div>
 
                     {errors.people && typeof errors.people.message === 'string' && (
                         <p className="text-danger-500 text-sm mt-2">{errors.people.message}</p>
