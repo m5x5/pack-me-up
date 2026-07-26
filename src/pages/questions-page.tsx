@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Fragment } fro
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
-import { ALWAYS_NEEDED_CATEGORY, buildSectionGroups, defaultCategoryFor, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
+import { ALWAYS_NEEDED_CATEGORY, buildSectionGroups, defaultCategoryFor, reconcileEmptySections, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
 import { sectionAccent } from '../edit-questions/section-accent'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
@@ -193,16 +193,20 @@ export interface ItemAdding {
  * of every section on the page, which is the cost the read-only rows exist to
  * avoid.
  */
-const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange }: {
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, emptySections = NO_NAMES, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange, onItemDelete }: {
     items: Item[]
     people: Person[]
     defaultLabel: string
+    /** Sections of this list that have nothing in them yet — drawn as empty cards. */
+    emptySections?: string[]
     allItemNames?: string[]
     sectionNames?: string[]
     /** Omit to leave the list read-only — no ＋ buttons, no composer. */
     adding?: ItemAdding
     /** Omit to keep the list purely read-only — rows then aren't clickable. */
     onItemChange?: (index: number, edited: Item) => void
+    /** Omit to leave items undeletable. */
+    onItemDelete?: (index: number) => void
 }) {
     // Which row is expanded, by its position in `items` — the same flat index
     // every edit is addressed by. At most one is open, so a long list never
@@ -213,8 +217,13 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     const [openComposer, setOpenComposer] = useState<string | null>(null)
     const closeComposer = useCallback(() => setOpenComposer(null), [])
 
-    const groups = useMemo(() => buildSectionGroups(items, defaultLabel), [items, defaultLabel])
-    const hasSections = groups.length > 1
+    const groups = useMemo(
+        () => buildSectionGroups(items, defaultLabel, emptySections),
+        [items, defaultLabel, emptySections])
+    // Worth drawing as cards once the list is genuinely split — or once its one
+    // group is something other than the default pile, which is what a list whose
+    // only section is a newly created empty one looks like.
+    const hasSections = groups.length > 1 || (groups[0] !== undefined && groups[0].label !== defaultLabel)
 
     // Sections the foot composer can file into: the ones this list already has,
     // plus every name used elsewhere in the set — so filing an item under
@@ -248,6 +257,14 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         setOpenIndex(prev => prev === index ? null : index), [])
     const handleClose = useCallback(() => setOpenIndex(null), [])
 
+    // The row being edited has gone, and every index after it has shifted up, so
+    // the open editor is closed rather than left addressing its neighbour.
+    const handleDelete = useCallback(() => {
+        if (openAt === null) return
+        onItemDelete?.(openAt)
+        setOpenIndex(null)
+    }, [openAt, onItemDelete])
+
     const handleChange = useCallback((edited: Item) => {
         if (openAt === null) return
         const before = items[openAt]
@@ -279,6 +296,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                     sectionNames={sectionNames}
                     sectionDefaultLabel={defaultLabel}
                     onChange={handleChange}
+                    onDelete={onItemDelete ? handleDelete : undefined}
                     onClose={handleClose}
                 />
             )}
@@ -356,7 +374,17 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                                     </button>
                                 )}
                             </div>
-                            <div className="p-1 space-y-0.5">{group.entries.map(renderRow)}</div>
+                            <div className="p-1 space-y-0.5">
+                                {group.entries.length === 0 && openComposer !== group.label && (
+                                    // A section you have just made, before anything is
+                                    // in it. Says so rather than drawing a card with a
+                                    // blank body, which reads as a rendering fault.
+                                    <p className="px-1.5 py-1 text-xs text-gray-400 italic">
+                                        Nothing here yet — use ＋ to add the first item
+                                    </p>
+                                )}
+                                {group.entries.map(renderRow)}
+                            </div>
                             {openComposer === group.label && (
                                 <div className="px-1.5 pb-1.5 pt-0.5">{renderComposer(group.label, true)}</div>
                             )}
@@ -368,6 +396,17 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         </div>
     )
 })
+
+/**
+ * Set an option's empty-section list, dropping the field when there is nothing
+ * to record. Nested objects don't pass through `toDocumentData`'s undefined
+ * filter — only the top level does — so an option would otherwise carry an
+ * `emptySections: undefined` key into storage.
+ */
+function withEmptySections(option: Option, emptySections: string[] | undefined): Option {
+    const { emptySections: _dropped, ...rest } = option
+    return emptySections?.length ? { ...rest, emptySections } : rest
+}
 
 function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
     return (
@@ -409,7 +448,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd }: {
+export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd, onItemDelete }: {
     option: Option
     people: Person[]
     /** What the packing list will call items here that carry no category. */
@@ -424,6 +463,8 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     onItemChange?: (questionId: string, optionId: string, index: number, edited: Item) => void
     /** Omit to leave the list unaddable — no ＋ buttons appear. */
     onItemAdd?: (questionId: string, optionId: string, text: string, category: string | undefined) => void
+    /** Omit to leave items undeletable. */
+    onItemDelete?: (questionId: string, optionId: string, index: number) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     // Bound to this option's ids once, so the memoized row list isn't handed a
@@ -434,6 +475,11 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
             ? (index: number, edited: Item) => onItemChange(questionId, optionId, index, edited)
             : undefined,
         [onItemChange, questionId, optionId])
+    const handleItemDelete = useMemo(
+        () => onItemDelete && questionId
+            ? (index: number) => onItemDelete(questionId, optionId, index)
+            : undefined,
+        [onItemDelete, questionId, optionId])
     const adding = useMemo<ItemAdding | undefined>(
         () => onItemAdd && questionId && suggestions
             ? {
@@ -454,7 +500,8 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     // nothing, and an answer with no items is exactly the one most in need of
     // somewhere to put the first.
     const isEmpty = option.items.length === 0
-    const canExpand = !isEmpty || adding !== undefined
+    // A section with nothing in it yet is still something to open onto.
+    const canExpand = !isEmpty || adding !== undefined || (option.emptySections?.length ?? 0) > 0
     const heading = (
         <>
             {!canExpand ? (
@@ -534,10 +581,12 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                         items={option.items}
                         people={people}
                         defaultLabel={sectionDefaultLabel}
+                        emptySections={option.emptySections}
                         allItemNames={allItemNames}
                         sectionNames={sectionNames}
                         adding={adding}
                         onItemChange={handleItemChange}
+                        onItemDelete={handleItemDelete}
                     />
                 </div>
             )}
@@ -656,7 +705,7 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
 
 // Memoized with id-based handlers whose identity survives page re-renders, so
 // opening a modal (or a background sync tick) doesn't re-render every question.
-const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd }: {
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd, onItemDelete }: {
     question: Question
     people: Person[]
     canMoveUp: boolean
@@ -672,6 +721,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     onMove: (id: string, direction: 'up' | 'down') => void
     onItemChange: (questionId: string, optionId: string, index: number, edited: Item) => void
     onItemAdd: (questionId: string, optionId: string, text: string, category: string | undefined) => void
+    onItemDelete: (questionId: string, optionId: string, index: number) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -774,6 +824,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             onDelete={() => onDeleteOption(question.id, option.id)}
                             onItemChange={onItemChange}
                             onItemAdd={onItemAdd}
+                            onItemDelete={onItemDelete}
                         />
                     ))}
                     <button
@@ -795,15 +846,17 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     )
 })
 
-const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd }: {
+const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd, onItemDelete }: {
     items: Item[]
     people: Person[]
+    emptySections?: string[]
     allItemNames: string[]
     sectionNames: string[]
     suggestions: SuggestionIndex
     onEdit: () => void
     onItemChange: (index: number, edited: Item) => void
     onItemAdd: (text: string, category: string | undefined) => void
+    onItemDelete: (index: number) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     const adding = useMemo<ItemAdding>(
@@ -848,10 +901,12 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames,
                         items={items}
                         people={people}
                         defaultLabel={ALWAYS_NEEDED_CATEGORY}
+                        emptySections={emptySections}
                         allItemNames={allItemNames}
                         sectionNames={sectionNames}
                         adding={adding}
                         onItemChange={onItemChange}
+                        onItemDelete={onItemDelete}
                     />
                 </div>
             )}
@@ -1688,7 +1743,9 @@ export function QuestionsPage() {
         await saveData({
             ...data,
             questions: withQuestionOptions(data.questions, questionId, options =>
-                options.map(o => o.id === optionId ? { ...o, items } : o), now),
+                options.map(o => o.id === optionId
+                    ? withEmptySections({ ...o, items }, reconcileEmptySections(o.items, items, o.emptySections))
+                    : o), now),
         })
     }, [saveData])
 
@@ -1714,7 +1771,9 @@ export function QuestionsPage() {
         await saveData({
             ...data,
             questions: withQuestionOptions(data.questions, questionId, options =>
-                options.map(o => o.id === optionId ? { ...o, items } : o), now),
+                options.map(o => o.id === optionId
+                    ? withEmptySections({ ...o, items }, reconcileEmptySections(o.items, items, o.emptySections))
+                    : o), now),
         })
     }, [saveData, newItem])
 
@@ -1728,8 +1787,50 @@ export function QuestionsPage() {
         const deleted = stored.filter(i => i.deletedAt)
         const now = new Date().toISOString()
         const items = appendItemToSection(active, newItem(text), category, ALWAYS_NEEDED_CATEGORY, now)
-        await saveData({ ...data, alwaysNeededItems: [...items, ...deleted] })
+        await saveData({
+            ...data,
+            alwaysNeededItems: [...items, ...deleted],
+            alwaysNeededEmptySections: reconcileEmptySections(active, items, data.alwaysNeededEmptySections),
+        })
     }, [saveData, newItem])
+
+    // An option's items are merged whole-question, so a delete here can simply
+    // remove the row — there is no per-item merge to resurrect it, which is why
+    // this needs no tombstone where the always-needed list below does.
+    const handleOptionItemDelete = useCallback(async (questionId: string, optionId: string, index: number) => {
+        const data = dataRef.current
+        if (!data) return
+        const question = data.questions.find(q => q.id === questionId)
+        const option = question?.options.find(o => o.id === optionId)
+        if (!question || !option || !option.items[index]) return
+        const now = new Date().toISOString()
+        const items = renumberItemOrder(option.items.filter((_, i) => i !== index), now)
+        await saveData({
+            ...data,
+            questions: withQuestionOptions(data.questions, questionId, options =>
+                options.map(o => o.id === optionId
+                    ? withEmptySections({ ...o, items }, reconcileEmptySections(o.items, items, o.emptySections))
+                    : o), now),
+        })
+    }, [saveData])
+
+    const handleAlwaysItemDelete = useCallback(async (index: number) => {
+        const data = dataRef.current
+        if (!data) return
+        const stored = data.alwaysNeededItems ?? []
+        const active = stored.filter(i => !i.deletedAt)
+        if (!active[index]) return
+        const now = new Date().toISOString()
+        // Tombstoned, not dropped: always-needed items merge per id, so an item
+        // that simply vanished from this side would come back from the pod.
+        const kept = renumberItemOrder(active.filter((_, i) => i !== index), now)
+        const items = tombstoneRemovedItems(stored, kept, now)
+        await saveData({
+            ...data,
+            alwaysNeededItems: items,
+            alwaysNeededEmptySections: reconcileEmptySections(active, kept, data.alwaysNeededEmptySections),
+        })
+    }, [saveData])
 
     const handleAlwaysItemChange = useCallback(async (index: number, edited: Item) => {
         const data = dataRef.current
@@ -1742,7 +1843,11 @@ export function QuestionsPage() {
         const deleted = stored.filter(i => i.deletedAt)
         const now = new Date().toISOString()
         const items = applyItemEdit(active, index, edited, ALWAYS_NEEDED_CATEGORY, now)
-        await saveData({ ...data, alwaysNeededItems: [...items, ...deleted] })
+        await saveData({
+            ...data,
+            alwaysNeededItems: [...items, ...deleted],
+            alwaysNeededEmptySections: reconcileEmptySections(active, items, data.alwaysNeededEmptySections),
+        })
     }, [saveData])
 
     // The modal is handed the active items only, so anything it hands back
@@ -1869,12 +1974,14 @@ export function QuestionsPage() {
                 <AlwaysSection
                     items={activeAlwaysNeededItems}
                     people={people}
+                    emptySections={data.alwaysNeededEmptySections}
                     allItemNames={allItemNames}
                     sectionNames={suggestedSectionNames}
                     suggestions={suggestions}
                     onEdit={openAlwaysModal}
                     onItemChange={handleAlwaysItemChange}
                     onItemAdd={handleAlwaysItemAdd}
+                    onItemDelete={handleAlwaysItemDelete}
                 />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
@@ -1894,6 +2001,7 @@ export function QuestionsPage() {
                         onMove={handleMoveQuestion}
                         onItemChange={handleOptionItemChange}
                         onItemAdd={handleOptionItemAdd}
+                        onItemDelete={handleOptionItemDelete}
                     />
                 ))}
                 <button

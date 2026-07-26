@@ -174,3 +174,50 @@ describe('ItemInlineEditor: closing', () => {
         expect(onClose).toHaveBeenCalled()
     })
 })
+
+describe('ItemInlineEditor: deleting', () => {
+    function renderDeletable(item: Item) {
+        const onDelete = vi.fn()
+        const onClose = vi.fn()
+        render(
+            <ItemInlineEditor
+                item={item}
+                people={people}
+                allItemNames={['Socks', 'Towel']}
+                sectionNames={['Toiletries']}
+                sectionDefaultLabel="Yes"
+                onChange={vi.fn()}
+                onDelete={onDelete}
+                onClose={onClose}
+            />
+        )
+        return { onDelete, onClose }
+    }
+
+    it('offers no delete when the caller supplies no handler', () => {
+        renderEditor(makeItem())
+        expect(screen.queryByRole('button', { name: /Delete/ })).toBeNull()
+    })
+
+    it('names the item it will delete, so the wrong row is obvious', () => {
+        renderDeletable(makeItem({ text: 'Socks' }))
+        expect(screen.getByRole('button', { name: 'Delete Socks' })).toBeTruthy()
+    })
+
+    it('deletes on click', () => {
+        const { onDelete } = renderDeletable(makeItem())
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(onDelete).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves closing to the caller, whose list has just changed shape', () => {
+        const { onClose } = renderDeletable(makeItem())
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('still names the button when the item has no text yet', () => {
+        renderDeletable(makeItem({ text: '' }))
+        expect(screen.getByRole('button', { name: 'Delete item' })).toBeTruthy()
+    })
+})

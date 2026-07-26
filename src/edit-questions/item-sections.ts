@@ -365,6 +365,34 @@ export function pruneFilledSections(
 }
 
 /**
+ * Bring the recorded empty sections up to date after an item list changed.
+ *
+ * Two things happen here, and the second is why this exists rather than
+ * `pruneFilledSections` alone: a section whose last item just left stays, now
+ * recorded as empty. Deleting an item — or dragging it elsewhere — is not a
+ * request to delete the section it was in, and letting the section evaporate
+ * underneath the change is exactly the disappearing-section behaviour the
+ * stored names were added to stop.
+ *
+ * Removing a section is a separate, deliberate action, so that path drops the
+ * name itself rather than going through here.
+ */
+export function reconcileEmptySections(
+    previous: Item[],
+    next: Item[],
+    emptySections: string[] | undefined,
+): string[] | undefined {
+    const before = filledSectionsOf(previous)
+    const after = filledSectionsOf(next)
+    const emptied = [...before].filter(label => !after.has(label))
+    const combined = [...(emptySections ?? [])]
+    for (const label of emptied) {
+        if (!combined.includes(label)) combined.push(label)
+    }
+    return pruneFilledSections(combined, next)
+}
+
+/**
  * Record a new, empty section — the "+ Add section" action.
  *
  * A name that already exists is not an error and not a second section: it is

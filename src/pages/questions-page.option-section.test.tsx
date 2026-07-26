@@ -507,3 +507,91 @@ describe('OptionSection with no items, once items can be added', () => {
         expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Socks', undefined)
     })
 })
+
+describe('OptionSection: deleting an item', () => {
+    const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
+
+    /** The section with inline editing *and* deleting switched on. */
+    function renderDeletable(option: Option) {
+        const onItemDelete = vi.fn()
+        render(
+            <OptionSection
+                option={option}
+                people={twoPeople}
+                sectionDefaultLabel="Yes"
+                allItemNames={['Socks', 'Towel']}
+                questionId="q1"
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemDelete={onItemDelete}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onItemDelete }
+    }
+
+    it('offers no delete when the page supplies no handler', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        // Scoped to the editor: the option's own "Delete option" button is a
+        // different thing entirely and is always there.
+        const editor = screen.getByTestId('item-inline-editor')
+        expect(within(editor).queryByRole('button', { name: /^Delete/ })).toBeNull()
+    })
+
+    it('deletes the row the editor was opened on', () => {
+        const { onItemDelete } = renderDeletable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Towel'))
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Towel' }))
+        expect(onItemDelete).toHaveBeenCalledWith('q1', 'o1', 1)
+    })
+
+    it('closes the editor, whose row has gone and whose index now means another', () => {
+        renderDeletable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+    })
+})
+
+describe('OptionSection: a section with nothing in it yet', () => {
+    function renderWithEmptySection(option: Option) {
+        render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+            />
+        )
+    }
+
+    it('can be opened even though the option has no items', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        expect(screen.getByTestId('option-expand-chevron')).toBeTruthy()
+    })
+
+    it('draws the section, so a section you just made is actually there', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByText('Toiletries')).toBeTruthy()
+    })
+
+    it('says it is empty rather than drawing a blank card', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByText(/Nothing here yet/)).toBeTruthy()
+    })
+
+    it('carries its own ＋, so the first item goes straight into it', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByRole('button', { name: 'Add an item to Toiletries' })).toBeTruthy()
+    })
+})

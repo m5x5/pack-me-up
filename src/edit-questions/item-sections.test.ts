@@ -18,6 +18,7 @@ import {
     moveItemToSection,
     isAtSectionEdge,
     pruneFilledSections,
+    reconcileEmptySections,
     addEmptySection,
     type SectionSequenceEntry,
 } from './item-sections'
@@ -536,5 +537,37 @@ describe('empty sections', () => {
             }
             expect(sectionNamesIn(qs).sort()).toEqual(['Documents', 'Toiletries'])
         })
+    })
+})
+
+describe('reconcileEmptySections', () => {
+    const soap = item({ id: 'i1', text: 'Soap', category: 'Toiletries' })
+    const socks = item({ id: 'i2', text: 'Socks' })
+
+    it('keeps a section whose last item has just gone', () => {
+        // Deleting an item is not a request to delete the section it was in.
+        expect(reconcileEmptySections([soap, socks], [socks], undefined)).toEqual(['Toiletries'])
+    })
+
+    it('forgets a recorded section once it has items', () => {
+        expect(reconcileEmptySections([socks], [socks, soap], ['Toiletries'])).toBeUndefined()
+    })
+
+    it('leaves a section alone while it still has items', () => {
+        const other = item({ id: 'i3', text: 'Shampoo', category: 'Toiletries' })
+        expect(reconcileEmptySections([soap, other], [other], undefined)).toBeUndefined()
+    })
+
+    it('does not invent a section that was already empty and unrecorded', () => {
+        expect(reconcileEmptySections([socks], [socks], undefined)).toBeUndefined()
+    })
+
+    it('keeps recorded sections that are still empty', () => {
+        expect(reconcileEmptySections([socks], [socks], ['Spare'])).toEqual(['Spare'])
+    })
+
+    it('treats a soft-deleted item as gone, keeping its section', () => {
+        const tombstoned = { ...soap, deletedAt: now }
+        expect(reconcileEmptySections([soap, socks], [tombstoned, socks], undefined)).toEqual(['Toiletries'])
     })
 })

@@ -20,7 +20,7 @@ import type { Item, Person } from '../edit-questions/types'
 
 const FIELD_LABEL = 'block text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1'
 
-export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, allItemNames, sectionNames, sectionDefaultLabel, onChange, onClose }: {
+export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, allItemNames, sectionNames, sectionDefaultLabel, onChange, onDelete, onClose }: {
     item: Item
     people: Person[]
     allItemNames: string[]
@@ -29,6 +29,12 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
     /** What the packing list calls items here that carry no category of their own. */
     sectionDefaultLabel: string
     onChange: (edited: Item) => void
+    /**
+     * Omit to leave the item undeletable. Closing afterwards is the caller's
+     * job, not this panel's: it is the caller that knows the list has just lost
+     * a row and that every index after this one has shifted up.
+     */
+    onDelete?: () => void
     onClose: () => void
 }) {
     const setText = useCallback((text: string) => onChange({ ...item, text }), [item, onChange])
@@ -116,7 +122,20 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
                 />
             </div>
 
-            <div className="flex justify-end">
+            {/* Delete sits opposite Done, at the far end of the panel: it is the
+                one action here that cannot be undone by typing something else,
+                so it stays well away from the button people reach for to leave. */}
+            <div className="flex items-center justify-between">
+                {onDelete ? (
+                    <button
+                        type="button"
+                        onClick={onDelete}
+                        aria-label={item.text ? `Delete ${item.text}` : 'Delete item'}
+                        className="px-2 py-1.5 text-sm font-medium text-gray-400 rounded-lg hover:text-red-600 hover:bg-red-50"
+                    >
+                        Delete
+                    </button>
+                ) : <span />}
                 <button
                     type="button"
                     onClick={onClose}
