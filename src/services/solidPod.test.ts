@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import PouchDB from 'pouchdb'
+import PouchDBMemoryAdapter from 'pouchdb-adapter-memory'
 import type { AppSession as Session } from '../types/AppSession'
 import type { SolidDataset, WithServerResourceInfo } from '@inrupt/solid-client'
 import {
@@ -19,10 +21,15 @@ import {
     friendlyPodName,
 } from './solidPod'
 import { AuthenticationError } from './solidPod'
-import type { PackingAppDatabase } from './database'
+import { PackingAppDatabase } from './database'
 import type { PackingListQuestionSet } from '../edit-questions/types'
 import type { PackingList } from '../create-packing-list/types'
 import { packingListToDataset, questionSetToDataset } from './rdfSerialization'
+import { fullyPopulatedPackingList, withoutLocalOnlyFields } from '../test-utils/fullyPopulatedFixtures'
+
+// Most tests here use a stubbed db (see makeDb); the field-fidelity test uses a
+// real PouchDB-backed one.
+PouchDB.plugin(PouchDBMemoryAdapter)
 
 vi.mock('@inrupt/solid-client', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@inrupt/solid-client')>()
@@ -422,6 +429,26 @@ describe('syncAllDataFromPod', () => {
 
             expect(result.packingListsSynced).toBe(1)
             expect(result.packingListsUploaded).toBe(1)
+        })
+
+        // #260: login sync writes pod lists through savePackingList, whose field
+        // allowlist stripped nights / questionAnswers / selectedPeopleIds — so
+        // data that was safe in the pod was lost on its way into PouchDB.
+        it('keeps every pod-serialisable field of a synced list in the local DB', async () => {
+            const podList: PackingList = { ...fullyPopulatedPackingList, id: 'pod-full' }
+            const realDb = PackingAppDatabase.getInstance('sync-field-fidelity')
+            const podListUrl = `${LISTS_CONTAINER_URL}pod-full.ttl`
+
+            mockGetSolidDataset
+                .mockRejectedValueOnce({ statusCode: 404 }) // no question set
+                .mockResolvedValueOnce(makeContainerDataset([podListUrl]))
+                .mockResolvedValueOnce(makeRdfListDataset(podList))
+
+            const result = await syncAllDataFromPod(mockSession, POD_URL, realDb)
+
+            expect(result.packingListsSynced).toBe(1)
+            const stored = await realDb.getPackingList('pod-full')
+            expect(stored).toEqual({ ...withoutLocalOnlyFields(podList), _rev: expect.any(String) })
         })
     })
 })

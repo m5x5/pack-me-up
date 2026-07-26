@@ -8,6 +8,7 @@ import { AuthenticationError } from './solidPod'
 import { createBackup, listBackups, deleteBackup, restoreBackup } from './solidPodBackup'
 import type { PackingListQuestionSet } from '../edit-questions/types'
 import type { PackingList } from '../create-packing-list/types'
+import { fullyPopulatedPackingList, fullyPopulatedQuestionSet } from '../test-utils/fullyPopulatedFixtures'
 
 // Setup PouchDB with memory adapter for testing
 PouchDB.plugin(PouchDBMemoryAdapter)
@@ -343,6 +344,29 @@ describe('restoreBackup', () => {
         const lists = await db.getAllPackingLists()
         expect(lists.map(l => l.id)).not.toContain('old-list')
         expect(lists.map(l => l.id)).toContain('new-list')
+    })
+
+    // #260: restoring went through savePackingList, whose field allowlist
+    // stripped nights / questionAnswers / selectedPeopleIds on the way in, so a
+    // backup could not fully restore a list.
+    it('keeps every field of a restored packing list', async () => {
+        const backupFile = {
+            version: 1 as const,
+            createdAt: '2025-01-01T00:00:00.000Z',
+            questionSet: fullyPopulatedQuestionSet,
+            packingLists: [fullyPopulatedPackingList]
+        }
+        mockLoadFileFromPod.mockResolvedValue(backupFile)
+        mockSaveRdfToPod.mockResolvedValue(undefined)
+        mockSaveMultipleRdfToPod.mockResolvedValue({ success: true, successCount: 1, failCount: 0, totalCount: 1 })
+
+        await restoreBackup(mockSession, POD_URL, db, backupUrl)
+
+        const restored = await db.getPackingList(fullyPopulatedPackingList.id)
+        expect(restored).toEqual({ ...fullyPopulatedPackingList, _rev: expect.any(String) })
+
+        const restoredQs = await db.getQuestionSet()
+        expect(restoredQs).toEqual({ ...fullyPopulatedQuestionSet, _id: '1', _rev: expect.any(String) })
     })
 
     it('saves restored packing lists to local DB', async () => {
