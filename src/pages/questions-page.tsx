@@ -157,6 +157,68 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
 /** Composer key for the one at the foot of a list, which picks its own section. */
 const LIST_COMPOSER = '__list__'
 
+/** How long a reorder rests before it is written. Long enough to absorb a run
+ *  of drags, short enough that walking away from the screen still saves. */
+const REORDER_SAVE_DELAY_MS = 600
+
+/**
+ * Hold a reorder in hand for a moment before writing it.
+ *
+ * Every other edit on this page saves the instant it is made, and should: they
+ * are one-shot, and the write is invisible. A drag is neither. Saving on each
+ * drop re-renders every question on the page and rebuilds the whole set's
+ * suggestion index — twice, since the save sets state optimistically and again
+ * when it lands — and it does so in the frame the item is released, which is
+ * the one frame the user is watching. Reorganising is also *iterative*: nobody
+ * moves one item and stops, so it paid that cost per drop and dropped frames
+ * the whole way through.
+ *
+ * So the drop updates a local copy and the page renders from it immediately;
+ * the write follows once the dragging stops. Anything still pending is flushed
+ * on the way out of the mode and on unmount, so leaving — by finishing, by
+ * collapsing the section, by navigating away — writes what you did.
+ */
+function useDeferredReorder(onReorder?: (items: Item[], emptySections: string[] | undefined) => void) {
+    type Pending = { items: Item[]; emptySections: string[] | undefined }
+    const [draft, setDraft] = useState<Pending | null>(null)
+    const pendingRef = useRef<Pending | null>(null)
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // Read through a ref so `flush` keeps one identity for the life of the
+    // component — an unmount flush that depended on the handler would fire on
+    // every re-render that changed it.
+    const onReorderRef = useRef(onReorder)
+    onReorderRef.current = onReorder
+
+    const flush = useCallback(() => {
+        if (timerRef.current !== null) {
+            clearTimeout(timerRef.current)
+            timerRef.current = null
+        }
+        const pending = pendingRef.current
+        pendingRef.current = null
+        if (pending) onReorderRef.current?.(pending.items, pending.emptySections)
+    }, [])
+
+    const onChange = useCallback((items: Item[], emptySections: string[] | undefined) => {
+        const next = { items, emptySections }
+        setDraft(next)
+        pendingRef.current = next
+        if (timerRef.current !== null) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(flush, REORDER_SAVE_DELAY_MS)
+    }, [flush])
+
+    // Unmounting mid-reorganisation — a collapsed section, a route change — must
+    // not be how the reorder gets lost.
+    useEffect(() => flush, [flush])
+
+    const stop = useCallback(() => {
+        flush()
+        setDraft(null)
+    }, [flush])
+
+    return { draft, onChange, flush: stop }
+}
+
 const FOOT_BUTTON = 'py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors'
 
 /**
@@ -269,6 +331,9 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     const closeComposer = useCallback(() => setOpenComposer(null), [])
     const [addingSection, setAddingSection] = useState(false)
     const [organising, setOrganising] = useState(false)
+    const organiseScrollRef = useRef<HTMLDivElement>(null)
+    const { draft: organiseDraft, onChange: onOrganiseChange, flush: flushOrganise } =
+        useDeferredReorder(onReorder)
 
     const groups = useMemo(
         () => buildSectionGroups(items, defaultLabel, emptySections),
@@ -406,7 +471,12 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         <div className="flex justify-end mb-2">
             <button
                 type="button"
-                onClick={() => setOrganising(o => !o)}
+                onClick={() => {
+                    // Leaving the mode writes whatever is still in hand, so
+                    // "Finish organising" means finished, not merely hidden.
+                    if (organising) flushOrganise()
+                    setOrganising(o => !o)
+                }}
                 aria-pressed={organising}
                 className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 transition-colors ${organising ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
             >
@@ -422,15 +492,33 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     // an item or a section mid-reorganisation doesn't mean leaving the mode you
     // are reorganising in.
     if (organising && onReorder) {
+        // Rendered from the draft while one is in hand: the props behind it are
+        // a save cycle behind, and the list must not flicker back to the old
+        // order between the drop and the write.
+        const organiseItems = organiseDraft?.items ?? items
+        const organiseSections = organiseDraft
+            ? organiseDraft.emptySections
+            : (emptySections.length > 0 ? emptySections : undefined)
         return (
             <div>
                 {organiseToggle}
-                <SectionedItemReorder
-                    items={items}
-                    defaultLabel={defaultLabel}
-                    emptySections={emptySections.length > 0 ? emptySections : undefined}
-                    onChange={onReorder}
-                />
+                {/* The drag needs somewhere of its own to scroll. Given none,
+                    dnd-kit scrolls the window instead, which on a phone shows
+                    and hides the URL bar — resizing the viewport underneath a
+                    gesture that has already measured it. Bounded only when the
+                    list is long enough to need it. */}
+                <div
+                    ref={organiseScrollRef}
+                    className="max-h-[60vh] overflow-y-auto overscroll-contain"
+                >
+                    <SectionedItemReorder
+                        items={organiseItems}
+                        defaultLabel={defaultLabel}
+                        emptySections={organiseSections}
+                        scrollRef={organiseScrollRef}
+                        onChange={onOrganiseChange}
+                    />
+                </div>
                 {listFooter}
             </div>
         )

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import React from 'react'
 import { OptionSection } from './questions-page'
 import { DEFAULT_SECTION_ACCENT, sectionAccent } from '../edit-questions/section-accent'
@@ -664,7 +664,7 @@ describe('OptionSection: organising in place', () => {
     const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
 
     function renderOrganisable(option: Option, onReorder = vi.fn()) {
-        render(
+        const view = render(
             <OptionSection
                 option={option}
                 people={people}
@@ -679,7 +679,7 @@ describe('OptionSection: organising in place', () => {
             />
         )
         fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
-        return { onReorder }
+        return { onReorder, unmount: view.unmount }
     }
 
     it('offers organising without opening anything', () => {
@@ -714,14 +714,72 @@ describe('OptionSection: organising in place', () => {
         expect(screen.getByRole('button', { name: '+ Add item' })).toBeTruthy()
     })
 
-    it('saves a move as it happens, with no Save to press', () => {
-        const { onReorder } = renderOrganisable(withItems())
-        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+    function moveTowelToTop() {
         fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Towel' }), { button: 0 })
         fireEvent.click(within(screen.getByRole('menu')).getByText('Move to top of section'))
+    }
+
+    it('shows the move at once, without waiting for it to be written', () => {
+        const { onReorder } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        // On screen immediately...
+        const rows = [...document.querySelectorAll('[data-reorder-row]')]
+        expect(rows.map(r => r.textContent)).toEqual([
+            expect.stringContaining('Towel'),
+            expect.stringContaining('Socks'),
+        ])
+        // ...and not yet written, so a run of drags costs one save, not one each.
+        expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('writes the move once the dragging stops', async () => {
+        vi.useFakeTimers()
+        try {
+            const { onReorder } = renderOrganisable(withItems())
+            fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+            moveTowelToTop()
+            await act(async () => { vi.advanceTimersByTime(1000) })
+            expect(onReorder).toHaveBeenCalledWith('q1', 'o1', [
+                expect.objectContaining({ text: 'Towel' }),
+                expect.objectContaining({ text: 'Socks' }),
+            ], undefined)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('writes what is still in hand when organising finishes', () => {
+        const { onReorder } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        fireEvent.click(screen.getByRole('button', { name: 'Finish organising' }))
         expect(onReorder).toHaveBeenCalledWith('q1', 'o1', [
             expect.objectContaining({ text: 'Towel' }),
             expect.objectContaining({ text: 'Socks' }),
         ], undefined)
+    })
+
+    it('writes what is still in hand when the list goes away underneath it', () => {
+        const { onReorder, unmount } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        unmount()
+        expect(onReorder).toHaveBeenCalledTimes(1)
+    })
+
+    it('collapses a run of moves into a single write', async () => {
+        vi.useFakeTimers()
+        try {
+            const { onReorder } = renderOrganisable(withItems())
+            fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+            moveTowelToTop()
+            fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Socks' }), { button: 0 })
+            fireEvent.click(within(screen.getByRole('menu')).getByText('Move to top of section'))
+            await act(async () => { vi.advanceTimersByTime(1000) })
+            expect(onReorder).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
