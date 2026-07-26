@@ -21,10 +21,19 @@ async function openPeopleModal(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: 'Edit People' })).toBeVisible({ timeout: 3_000 })
 }
 
-/** Open the Always Needed Items editing modal via the pencil icon in the section header. */
-async function openAlwaysNeededModal(page: import('@playwright/test').Page) {
-  await page.locator('button[title="Edit always needed items"]').click()
-  await expect(page.getByRole('heading', { name: 'Always Needed Items' })).toBeVisible({ timeout: 3_000 })
+/**
+ * Expand the Always Needed Items list. There is no modal behind it any more —
+ * the list on the page is the editor, and every change saves as it is made.
+ */
+async function openAlwaysNeeded(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+  await expect(page.getByTestId('item-row').first()).toBeVisible({ timeout: 5_000 })
+}
+
+/** The item names as the read-only list shows them, top to bottom. */
+async function itemNames(page: import('@playwright/test').Page): Promise<string[]> {
+  const rows = await page.getByTestId('item-row').allInnerTexts()
+  return rows.map(t => t.split('\n')[0].trim())
 }
 
 test.describe('B – Editing Questions', () => {
@@ -36,8 +45,8 @@ test.describe('B – Editing Questions', () => {
     await expect(page.locator('button[title="Edit people"]')).toBeVisible()
     // Always Needed Items section is visible
     await expect(page.getByText(/Always Needed Items/i).first()).toBeVisible()
-    // Always Needed Items pencil button is visible
-    await expect(page.locator('button[title="Edit always needed items"]')).toBeVisible()
+    // Its items are edited in place, so there is no pencil into a modal.
+    await expect(page.locator('button[title="Edit always needed items"]')).toHaveCount(0)
   })
 
   test('B2: add a person to the question set', async ({ freshPage: page }) => {
@@ -103,71 +112,56 @@ test.describe('B – Editing Questions', () => {
 
   test('B4: add an always-needed item', async ({ freshPage: page }) => {
     await setupWizardAndGoToQuestions(page)
-    // Open Always Needed Items modal
-    await openAlwaysNeededModal(page)
-    // Click "+ Add Item" to append a new empty item row
-    await page.getByRole('button', { name: '+ Add Item' }).click()
-    // The new item uses CustomCreatableSelect in inactive mode (.cursor-text).
-    // Clicking it transitions to the full react-select (ActiveSelect with autoFocus).
-    await page.locator('.cursor-text').last().click()
-    // Wait for the react-select control to mount (ActiveSelect renders after activation).
-    const reactSelectControl = page.locator('.react-select__control').last()
-    await expect(reactSelectControl).toBeVisible({ timeout: 3_000 })
-    // Click the control — this is the canonical react-select interaction that reliably
-    // opens the dropdown (fires onControlMouseDown → onMenuOpen → setMenuIsOpen(true)).
-    await reactSelectControl.click()
-    await page.keyboard.type('WaterBottleTest')
-    // Click the first dropdown option — should be 'Create "WaterBottleTest"' since this name
-    // is not in any wizard-generated suggestion. Menu is portaled to document.body.
-    const newItemOption = page.locator('.react-select__option').filter({ hasText: /WaterBottleTest/i }).first()
-    await expect(newItemOption).toBeVisible({ timeout: 5_000 })
-    await newItemOption.click()
-    // Save changes
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
-    // Expand the Always Needed Items section to verify the item appears
-    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+    await openAlwaysNeeded(page)
+
+    // One field at the foot of the list, rather than a modal, a blank row and a
+    // Save button.
+    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    const field = page.getByLabel(/^New item in /)
+    await expect(field).toBeVisible({ timeout: 3_000 })
+    await field.fill('WaterBottleTest')
+    await field.press('Enter')
+    await expect(page.getByText('WaterBottleTest')).toBeVisible({ timeout: 5_000 })
+
+    // Saved as it was typed — a reload is the only confirmation needed.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
     await expect(page.getByText('WaterBottleTest')).toBeVisible({ timeout: 5_000 })
   })
 
   test('B6: reorder always-needed items via the move menu', async ({ freshPage: page }) => {
     await setupWizardAndGoToQuestions(page)
-    await openAlwaysNeededModal(page)
+    await openAlwaysNeeded(page)
 
-    // Item names render in inactive CustomCreatableSelect mode (.cursor-text)
-    const itemTexts = page.locator('.cursor-text')
-    // First line only — the row also renders a "×" clear glyph on its own line
-    const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
-    const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
+    const [first, second] = await itemNames(page)
     expect(first).not.toEqual(second)
 
-    // Enter organise mode — rows collapse to name + drag handle + move menu
+    // Organising is a toggle on the list itself now — no modal to open first.
     await page.getByRole('button', { name: 'Organise items' }).click()
-    await expect(page.locator('.cursor-text')).toHaveCount(0)
+    await expect(page.getByTestId('item-row')).toHaveCount(0)
 
     // Send the second item to the top of the section, swapping the two.
     // The menu is portaled to document.body.
     await page.locator('[data-reorder-row]').nth(1).getByTitle('Move item').click()
     await page.getByRole('menuitem', { name: 'Move to top of section' }).click()
     await page.getByRole('button', { name: 'Finish organising' }).click()
-    await expect(itemTexts.first()).toContainText(second)
-    await expect(itemTexts.nth(1)).toContainText(first)
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
+    expect(await itemNames(page)).toEqual([second, first, ...(await itemNames(page)).slice(2)])
 
-    // Reopen the modal — the swapped order must have persisted
-    await openAlwaysNeededModal(page)
-    await expect(itemTexts.first()).toContainText(second)
-    await expect(itemTexts.nth(1)).toContainText(first)
+    // The move saved as it happened, so a reload is the whole verification.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
+    const afterReload = await itemNames(page)
+    expect(afterReload[0]).toEqual(second)
+    expect(afterReload[1]).toEqual(first)
   })
 
   test('B7: reorder always-needed items by dragging the handle', async ({ freshPage: page }) => {
     await setupWizardAndGoToQuestions(page)
-    await openAlwaysNeededModal(page)
+    await openAlwaysNeeded(page)
 
-    const itemTexts = page.locator('.cursor-text')
-    const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
-    const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
+    const [first, second] = await itemNames(page)
     expect(first).not.toEqual(second)
 
     await page.getByRole('button', { name: 'Organise items' }).click()
@@ -198,24 +192,21 @@ test.describe('B – Editing Questions', () => {
       await page.getByRole('button', { name: 'Finish organising' }).click()
       await expect(page.getByRole('button', { name: 'Organise items' })).toBeVisible({ timeout: 1_000 })
     }).toPass()
-    await expect(itemTexts.first()).toContainText(second)
-    await expect(itemTexts.nth(1)).toContainText(first)
 
-    // Persist and reopen — the dragged order must survive a save round-trip
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
-    await openAlwaysNeededModal(page)
-    await expect(itemTexts.first()).toContainText(second)
-    await expect(itemTexts.nth(1)).toContainText(first)
+    // Persist and reload — the dragged order must survive the round-trip
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
+    const afterReload = await itemNames(page)
+    expect(afterReload[0]).toEqual(second)
+    expect(afterReload[1]).toEqual(first)
   })
 
   test('B8: reorder always-needed items from the keyboard', async ({ freshPage: page }) => {
     await setupWizardAndGoToQuestions(page)
-    await openAlwaysNeededModal(page)
+    await openAlwaysNeeded(page)
 
-    const itemTexts = page.locator('.cursor-text')
-    const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
-    const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
+    const [first, second] = await itemNames(page)
     expect(first).not.toEqual(second)
 
     await page.getByRole('button', { name: 'Organise items' }).click()
@@ -238,13 +229,14 @@ test.describe('B – Editing Questions', () => {
     await expect(rows.first()).toContainText(second)
     await expect(rows.nth(1)).toContainText(first)
 
-    // Persist and reopen — the keyboard move must survive a save round-trip
+    // Persist and reload — the keyboard move must survive the round-trip
     await page.getByRole('button', { name: 'Finish organising' }).click()
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
-    await openAlwaysNeededModal(page)
-    await expect(itemTexts.first()).toContainText(second)
-    await expect(itemTexts.nth(1)).toContainText(first)
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
+    const afterReload = await itemNames(page)
+    expect(afterReload[0]).toEqual(second)
+    expect(afterReload[1]).toEqual(first)
   })
 
   test('B5: JSON editor mode toggle is not available (editor is always visual)', async ({ freshPage: page }) => {
@@ -356,6 +348,70 @@ test.describe('B – Editing Questions', () => {
     await field.press('Enter')
     const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
     await expect(toiletries.getByText('Sunscreen')).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('B13: delete an item from the row you are editing', async ({ freshPage: page }) => {
+    // Deleting used to mean opening the option's modal and finding the row
+    // again; the editor you are already in can do it.
+    await setupWizardAndGoToQuestions(page)
+    await openAlwaysNeeded(page)
+
+    const before = await itemNames(page)
+    const doomed = before[0]
+    await page.getByTestId('item-row').first().click()
+    const editor = page.getByTestId('item-inline-editor')
+    await expect(editor).toBeVisible({ timeout: 3_000 })
+    await editor.getByRole('button', { name: `Delete ${doomed}` }).click()
+    await expect(editor).not.toBeVisible({ timeout: 3_000 })
+
+    // Tombstoned rather than dropped, so it stays gone across a reload.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
+    const after = await itemNames(page)
+    expect(after).not.toContain(doomed)
+    expect(after).toHaveLength(before.length - 1)
+  })
+
+  test('B14: create a section, then fill it', async ({ freshPage: page }) => {
+    // The section exists as soon as it is named — before anything is in it, and
+    // across a reload. It used to live only in the reorder view's own state.
+    await setupWizardAndGoToQuestions(page)
+    await openAlwaysNeeded(page)
+
+    await page.getByRole('button', { name: '+ Add section' }).first().click()
+    const nameField = page.getByLabel('New section name')
+    await expect(nameField).toBeVisible({ timeout: 3_000 })
+    await nameField.fill('Paperwork')
+    await nameField.press('Enter')
+
+    const paperwork = page.getByTestId('item-section').filter({ hasText: 'Paperwork' }).first()
+    await expect(paperwork).toBeVisible({ timeout: 5_000 })
+    await expect(paperwork.getByText(/Nothing here yet/)).toBeVisible()
+
+    // Empty, and still there after a reload — the point of storing the name.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await openAlwaysNeeded(page)
+    const afterReload = page.getByTestId('item-section').filter({ hasText: 'Paperwork' }).first()
+    await expect(afterReload).toBeVisible({ timeout: 5_000 })
+
+    // Its own ＋ files the first item straight into it.
+    await afterReload.getByTestId('add-to-section').click()
+    const field = page.getByLabel('New item in Paperwork')
+    await field.fill('BoardingPassTest')
+    await field.press('Enter')
+    await expect(afterReload.getByText('BoardingPassTest')).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('B15: editing an option asks for its name and nothing else', async ({ freshPage: page }) => {
+    // The modal used to carry a whole second item editor.
+    await setupWizardAndGoToQuestions(page)
+    await page.getByTitle('Edit option').first().click()
+    await expect(page.getByRole('heading', { name: 'Edit Option' })).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByLabel('Answer text')).toBeVisible()
+    await expect(page.getByRole('button', { name: '+ Add Item' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Organise items' })).toHaveCount(0)
   })
 
   test('B12: an answer with no items can take its first one', async ({ freshPage: page }) => {

@@ -1065,6 +1065,7 @@ function OptionEditModal({ option, onSave, onClose }: {
     onClose: () => void
 }) {
     const [text, setText] = useState(option?.text ?? '')
+    const fieldId = useId()
 
     const handleSave = () => {
         if (!text.trim()) return
@@ -1090,8 +1091,9 @@ function OptionEditModal({ option, onSave, onClose }: {
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">
                         {option ? 'Edit Option' : 'Add Option'}
                     </h2>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Answer text</label>
+                    <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1">Answer text</label>
                     <input
+                        id={fieldId}
                         autoFocus
                         type="text"
                         value={text}

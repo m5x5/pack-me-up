@@ -34,19 +34,18 @@ test.describe('C – Packing Lists', () => {
 
     // Reorder the always-needed items: send the second one to the top
     await page.goto('/#/manage-questions')
-    await page.locator('button[title="Edit always needed items"]').click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).toBeVisible({ timeout: 3_000 })
-    const itemTexts = page.locator('.cursor-text')
-    // First line only — the row also renders a "×" clear glyph on its own line
-    const first = (await itemTexts.first().innerText()).split('\n')[0].trim()
-    const second = (await itemTexts.nth(1).innerText()).split('\n')[0].trim()
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+    const rows = page.getByTestId('item-row')
+    await expect(rows.first()).toBeVisible({ timeout: 5_000 })
+    const names = (await rows.allInnerTexts()).map(t => t.split('\n')[0].trim())
+    const [first, second] = names
     await page.getByRole('button', { name: 'Organise items' }).click()
     // The move menu is portaled to document.body
     await page.locator('[data-reorder-row]').nth(1).getByTitle('Move item').click()
     await page.getByRole('menuitem', { name: 'Move to top of section' }).click()
     await page.getByRole('button', { name: 'Finish organising' }).click()
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
+    // The move saved as it happened; give the IndexedDB write time to commit.
+    await page.waitForTimeout(800)
 
     // Create a list and check the view page shows the swapped order
     await page.goto('/#/create-packing-list')
@@ -129,19 +128,14 @@ test.describe('C – Packing Lists', () => {
   async function addAlwaysNeededItem(page: import('@playwright/test').Page, itemName: string) {
     await page.goto('/#/manage-questions')
     await expect(page.getByRole('heading', { name: 'My Questions & Items' })).toBeVisible({ timeout: 8_000 })
-    await page.locator('button[title="Edit always needed items"]').click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).toBeVisible({ timeout: 3_000 })
-    await page.getByRole('button', { name: '+ Add Item' }).click()
-    await page.locator('.cursor-text').last().click()
-    const control = page.locator('.react-select__control').last()
-    await expect(control).toBeVisible({ timeout: 3_000 })
-    await control.click()
-    await page.keyboard.type(itemName)
-    const option = page.locator('.react-select__option').filter({ hasText: new RegExp(itemName, 'i') }).first()
-    await expect(option).toBeVisible({ timeout: 5_000 })
-    await option.click()
-    await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByRole('heading', { name: 'Always Needed Items' })).not.toBeVisible({ timeout: 3_000 })
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+    await expect(page.getByTestId('item-row').first()).toBeVisible({ timeout: 5_000 })
+    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    const field = page.getByLabel(/^New item in /)
+    await expect(field).toBeVisible({ timeout: 3_000 })
+    await field.fill(itemName)
+    await field.press('Enter')
+    await expect(page.getByText(itemName)).toBeVisible({ timeout: 5_000 })
     // Give the async IndexedDB write time to commit
     await page.waitForTimeout(800)
   }
