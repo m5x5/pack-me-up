@@ -21,8 +21,13 @@ export interface CategoryAccessors<T> {
 export interface CategoryGroupingOptions {
     /** Label for items carrying no category of their own. */
     uncategorisedLabel: string
-    /** Label always sorted to the front, whatever its items' order. */
-    pinFirst?: string
+    /**
+     * Labels to place in this exact order, ahead of everything else. Labels not
+     * listed keep the default behaviour — ordered by their earliest item — and
+     * sort after the listed ones. Use this when a section spans several
+     * questions, so its position can't be inferred from item order.
+     */
+    order?: readonly string[]
     /** Label always sorted to the back, whatever its items' order. */
     pinLast?: string
 }
@@ -49,7 +54,7 @@ export function groupItemsByCategory<T>(
     accessors: CategoryAccessors<T>,
     options: CategoryGroupingOptions,
 ): CategoryGroup<T>[] {
-    const { uncategorisedLabel, pinFirst, pinLast } = options
+    const { uncategorisedLabel, order, pinLast } = options
 
     const map = new Map<string, T[]>()
     for (const item of items) {
@@ -61,16 +66,21 @@ export function groupItemsByCategory<T>(
     const minOrder = (groupItems: T[]) =>
         Math.min(...groupItems.map(i => accessors.order(i) ?? Infinity))
 
+    // Listed labels rank by position; unlisted ones share a rank after them and
+    // fall back to item order, so a partly-categorised list still reads sensibly.
+    const rank = (label: string) => {
+        const index = order?.indexOf(label) ?? -1
+        return index === -1 ? Infinity : index
+    }
+
     return [...map.entries()]
         .sort(([a, aItems], [b, bItems]) => {
-            if (pinFirst !== undefined) {
-                if (a === pinFirst) return -1
-                if (b === pinFirst) return 1
-            }
             if (pinLast !== undefined) {
                 if (a === pinLast) return 1
                 if (b === pinLast) return -1
             }
+            const byRank = rank(a) - rank(b)
+            if (byRank !== 0 && !Number.isNaN(byRank)) return byRank
             return (minOrder(aItems) - minOrder(bItems)) || a.localeCompare(b)
         })
         .map(([label, groupItems]) => ({

@@ -8,11 +8,11 @@ Every line reference and every number below was derived against the code as it
 stood *before* any of this was acted on, so they describe the starting point,
 not the current file.
 
-**Status:** Tiers A and B (§5) have been implemented — the content fixes and the
-new transport/accommodation coverage. Tier C has not: explicit categories, the
-gender rework, and conditional questions all need schema, generator or UI
-changes and are tracked as follow-up work. Two deliberate departures from the
-recommendations below are recorded in §6.
+**Status:** Tiers A and B (§5) are implemented — the content fixes and the new
+transport/accommodation coverage — as is §4's explicit category scheme, with the
+ordering mechanism it needed and a consented backfill for existing users (§7).
+Still outstanding from Tier C: the gender rework and conditional questions.
+Deliberate departures from the recommendations below are recorded in §6.
 
 ---
 
@@ -702,11 +702,70 @@ Only "Warm" → "Mild" was renamed, because there the wrong label is the defect
 being fixed and the duplicate is worth it. Anchoring the rest needs an option
 migration story first.
 
-### Known regression this PR does not fix
+### Both weather-option renames stayed minimal for the same reason
 
-Adding items to the overnight question makes the worst section heading worse:
-for a family of five on a week abroad, "Will you be staying overnight?" now
-generates around 70 rows, up from 54. Nothing about the *derivation* changed —
-the section is still named after a question and still mixes wardrobe, washbag
-and nursery — there is simply more in it. The fix is §4's explicit category
-scheme, which is exactly why that work should come next rather than later.
+Only "Warm" → "Mild" was renamed. See above.
+
+---
+
+## 7. Categories, as implemented
+
+§4's functional scheme now ships. Three things it needed beyond stamping labels
+on items:
+
+**An explicit order.** `CATEGORY_ORDER` in `item-sections.ts` replaces the
+`pinFirst: 'Essentials'` hack, and `groupItemsByCategory` takes an `order`
+option. Listed labels rank by position; unlisted ones — question and option text
+for uncategorised items, plus any name the user invents — keep the old
+lowest-item-order behaviour and sort after them, so a partly-categorised list
+still reads sensibly. `ALWAYS_NEEDED_CATEGORY` leads the list so sets written
+before categories existed are displayed exactly as before.
+
+**A delivery route for existing users.** Constraint 1 above still holds — a
+category-only change produces no `addItem` suggestions, so bumping the version
+alone would reach nobody. Rather than migrate silently, there is a new
+`setCategories` suggestion in the same review card: *"Sort 41 items into 9
+sections"*, ticked by default, declinable independently of the additive
+suggestions. It is only offered when `sectionNamesIn(qs)` is empty — once the
+user has made a section of their own, an absent category means "back in the main
+pile" and there is no way to tell that from legacy data, so we don't ask. Applying
+it only ever fills a gap: an item that already carries a category keeps it.
+
+**A fix to "+ Add Item".** Once every template item carries a category, a new
+item — which has none — falls into the default section, and
+`buildSectionSequence` puts that first. So the new row appeared at the *top* of
+the editor, nowhere near the button that created it. New items now inherit the
+last item's section. This is what broke E2E C8, which drove the editor by
+`.last()` selectors.
+
+### What the family now sees
+
+Same worked example as §4 (5 people, week abroad, self-catering plus a night at
+grandparents, flying and driving, swimming, beach and hiking) — 272 rows
+generated, 6 removed by dedup across options, 266 shown:
+
+| Section | Rows |
+|---|---|
+| Documents & Money | 19 |
+| Medicines & First Aid | 16 |
+| Tech & Chargers | 14 |
+| Toiletries | 24 |
+| Clothes | 56 |
+| Sleep & Comfort | 18 |
+| Nappies & Changing | 7 |
+| Toys & Games | 1 |
+| Food & Kitchen | 13 |
+| Kit & Gear | 30 |
+
+No heading is a question any more. The largest is Clothes at 56 — bigger than
+the old overnight blob's 54, and that is fine: 56 clothing rows are one trip to
+the wardrobe, where the blob mixed wardrobe, washbag, document drawer and
+nursery under a question mark.
+
+### Still open
+
+The cross-list rename hazard (constraint 4) is **not** fixed.
+`renameSection`/`removeSection` still restamp one item list, and these categories
+span five to eight. Renaming `Clothes` inside one option leaves the others alone,
+so the generated list would show both names. Nothing is lost and the user can
+rename in each place, but it should be scoped across the question set.

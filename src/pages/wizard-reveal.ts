@@ -72,13 +72,17 @@ function joinWithAnd(parts: string[]): string {
 
 /**
  * The items that say the most about this person: the ones fewest others share,
- * which is exactly what the age/species filters produce (nappies for the baby,
- * a lead for the dog). Ties keep template order, so the headline items in
- * `alwaysNeededItems` come first.
+ * which is exactly what the age/species filters produce (teething gel for the
+ * baby, a lead for the dog). Ties keep template order.
+ *
+ * Communal items are skipped: the line claims these were added *for* this
+ * person, and a communal item is packed once for the whole group — its
+ * selections are only a trigger for whether the group needs it at all.
  */
 function distinctiveItemsFor(personId: string, items: Item[]): string[] {
     const scored = items
         .map((item, index) => ({ item, index }))
+        .filter(({ item }) => !item.communal)
         .filter(({ item }) => item.personSelections.some(ps => ps.personId === personId && ps.selected))
         .map(({ item, index }) => ({
             text: readableItemText(item.text),
@@ -101,7 +105,7 @@ function distinctiveItemsFor(personId: string, items: Item[]): string[] {
 
 /**
  * One line per person naming what the wizard just built for them, e.g.
- * "Thinking about Ellie (4)… adding nappies and baby wipes". Capped at
+ * "Thinking about Ellie (4)… adding teething gel and spare clothes". Capped at
  * MAX_REVEAL_STEPS so the reveal never becomes a wait.
  */
 export function buildRevealSteps(

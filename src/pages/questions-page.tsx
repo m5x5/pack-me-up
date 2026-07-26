@@ -645,9 +645,16 @@ function useItemListState(initialItems: Item[], people: Person[]) {
             return next
         }), [])
 
+    // The new row inherits the last item's section so it appears at the bottom,
+    // next to the button that made it. Without this an uncategorised item falls
+    // into the default section, which `buildSectionSequence` puts first — so in
+    // a fully sectioned list the row would appear at the very top instead.
     const addItem = useCallback(() =>
         setItems(prev => [...prev, {
             text: '',
+            ...(prev.length > 0 && prev[prev.length - 1].category !== undefined
+                ? { category: prev[prev.length - 1].category }
+                : {}),
             personSelections: people.map(p => ({ personId: p.id, selected: true })),
         }]), [people])
 

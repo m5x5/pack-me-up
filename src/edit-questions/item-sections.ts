@@ -17,6 +17,63 @@ import type { Item, Option, PackingListQuestionSet, Question } from './types'
 export const ALWAYS_NEEDED_CATEGORY = 'Essentials'
 
 /**
+ * The sections the built-in template sorts its items into. Functional rather
+ * than by-person or by-bag: a functional name is stable across every trip type,
+ * derivable from the item alone, and maps onto a place in the house — so the
+ * family walks from bathroom to bedroom to kitchen once. By-person is already
+ * the list's other axis, and by-bag would depend on how you're travelling.
+ *
+ * These are plain labels, not an enum: a user can rename or delete any of them,
+ * and items they add carry no category at all. Nothing here is load-bearing for
+ * correctness — it only decides headings and their order.
+ */
+export const CATEGORIES = {
+    documents: 'Documents & Money',
+    medical: 'Medicines & First Aid',
+    tech: 'Tech & Chargers',
+    toiletries: 'Toiletries',
+    clothes: 'Clothes',
+    sleep: 'Sleep & Comfort',
+    nappies: 'Nappies & Changing',
+    toys: 'Toys & Games',
+    food: 'Food & Kitchen',
+    kit: 'Kit & Gear',
+    pet: 'Pet Care',
+} as const
+
+/**
+ * Display order for the sections above: irreplaceability descending, bulk
+ * ascending. A forgotten passport ends the trip and there are only a handful of
+ * them, so documents lead and the tent is loaded last.
+ *
+ * Without this, a section's position came from the lowest `order` among its
+ * items (see `groupItemsByCategory`), which was coherent while a section *was*
+ * a question — one question, one contiguous block. Now that a section spans
+ * several questions, that would make its position arbitrary, and reordering a
+ * single item in the editor could reshuffle whole cards on the packing list.
+ *
+ * `ALWAYS_NEEDED_CATEGORY` leads because sets written before the template
+ * carried categories put every always-needed item there, and those lists should
+ * keep opening with it. Labels absent from this list — question and option text
+ * for uncategorised items, plus anything the user named — sort after these, by
+ * item order, exactly as before.
+ */
+export const CATEGORY_ORDER: readonly string[] = [
+    ALWAYS_NEEDED_CATEGORY,
+    CATEGORIES.documents,
+    CATEGORIES.medical,
+    CATEGORIES.tech,
+    CATEGORIES.toiletries,
+    CATEGORIES.clothes,
+    CATEGORIES.sleep,
+    CATEGORIES.nappies,
+    CATEGORIES.toys,
+    CATEGORIES.food,
+    CATEGORIES.kit,
+    CATEGORIES.pet,
+]
+
+/**
  * The section an item falls into when it carries no category of its own:
  * the option text for multiple-choice questions (each option is already its
  * own group), the question text otherwise.

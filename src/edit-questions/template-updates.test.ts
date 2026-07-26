@@ -178,3 +178,83 @@ describe('applyTemplateUpdates', () => {
         expect(abroad.options.flatMap(o => o.items).every(i => i.id)).toBe(true)
     })
 })
+
+describe('buildTemplateUpdateSuggestions - filing an uncategorised set into sections', () => {
+    /** A set as it looked before the template carried categories. */
+    function uncategorisedSet(people: Person[] = [adult]): PackingListQuestionSet {
+        const set = baseSet(people)
+        for (const item of set.alwaysNeededItems) delete item.category
+        for (const q of set.questions) {
+            for (const o of q.options) for (const i of o.items) delete i.category
+        }
+        return set
+    }
+
+    const setCategoriesFrom = (set: PackingListQuestionSet) =>
+        buildTemplateUpdateSuggestions(set).find(s => s.kind === 'setCategories')
+
+    it('offers to file a set that has no categories anywhere', () => {
+        const suggestion = setCategoriesFrom(uncategorisedSet())
+        expect(suggestion).toBeTruthy()
+        expect(suggestion).toMatchObject({ kind: 'setCategories', contextLabel: 'Organise your list' })
+        expect(suggestion!.kind === 'setCategories' && suggestion.itemCount).toBeGreaterThan(20)
+    })
+
+    it('does not offer it for a set already generated from the current template', () => {
+        expect(setCategoriesFrom(baseSet())).toBeUndefined()
+    })
+
+    // An absent category is how "back in the main pile" is stored, so once the
+    // user has arranged sections we cannot tell that apart from legacy data.
+    it('stays silent once the user has made a section of their own', () => {
+        const set = uncategorisedSet()
+        set.alwaysNeededItems[0].category = 'My own section'
+        expect(setCategoriesFrom(set)).toBeUndefined()
+    })
+
+    it('files matching items and leaves unknown ones alone', () => {
+        const set = uncategorisedSet()
+        set.alwaysNeededItems.push({
+            text: 'Something I invented',
+            personSelections: [{ personId: adult.id, selected: true }],
+        })
+
+        const updated = applyTemplateUpdates(set, buildTemplateUpdateSuggestions(set))
+
+        const charger = updated.alwaysNeededItems.find(i => i.text === 'Phone charger')!
+        expect(charger.category).toBe('Tech & Chargers')
+        expect(charger.lastModified).toBeTruthy()
+
+        const overnightYes = updated.questions
+            .find(q => q.id === TEMPLATE_QUESTION_IDS.overnight)!
+            .options.find(o => o.text === 'Yes')!
+        expect(overnightYes.items.find(i => i.text === 'Toothbrush')!.category).toBe('Toiletries')
+        expect(overnightYes.items.find(i => i.text === 'Underwear')!.category).toBe('Clothes')
+
+        expect(updated.alwaysNeededItems.find(i => i.text === 'Something I invented')!.category).toBeUndefined()
+    })
+
+    it('never moves an item the user has already filed', () => {
+        const set = uncategorisedSet()
+        const charger = set.alwaysNeededItems.find(i => i.text === 'Phone charger')!
+        charger.category = 'Hand luggage'
+
+        // Gated off entirely once a section exists, so nothing is offered — and
+        // applying the rest must still leave their choice untouched.
+        expect(setCategoriesFrom(set)).toBeUndefined()
+        const updated = applyTemplateUpdates(set, buildTemplateUpdateSuggestions(set))
+        expect(updated.alwaysNeededItems.find(i => i.text === 'Phone charger')!.category).toBe('Hand luggage')
+    })
+
+    it('is declined independently of the additive suggestions', () => {
+        const set = uncategorisedSet()
+        set.alwaysNeededItems = set.alwaysNeededItems.filter(i => i.text !== 'Snacks')
+
+        const suggestions = buildTemplateUpdateSuggestions(set)
+        const withoutFiling = suggestions.filter(s => s.kind !== 'setCategories')
+        const updated = applyTemplateUpdates(set, withoutFiling)
+
+        expect(updated.alwaysNeededItems.find(i => i.text === 'Snacks')).toBeTruthy()
+        expect(updated.alwaysNeededItems.find(i => i.text === 'Phone charger')!.category).toBeUndefined()
+    })
+})

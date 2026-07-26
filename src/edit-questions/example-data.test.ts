@@ -508,7 +508,7 @@ describe('createExampleData - items shared across options', () => {
      * with it. So wherever the same text can reach the same person from two
      * options, the copies have to agree, or the survivor is arbitrary.
      */
-    it('gives identically-named items the same rate and communal flag wherever they can collide', () => {
+    it('gives identically-named items the same rate, flag and category wherever they can collide', () => {
         const all = everyItem(createExampleData(family))
         const byText = new Map<string, typeof all>()
         for (const i of all) {
@@ -528,6 +528,9 @@ describe('createExampleData - items shared across options', () => {
                     if (!collides) continue
                     expect(x.communal ?? false, `"${text}" communal flag differs between copies`)
                         .toBe(y.communal ?? false)
+                    // The surviving copy takes its category with it, so a
+                    // mismatch files the row under whichever option sorts first.
+                    expect(x.category, `"${text}" category differs between copies`).toBe(y.category)
                     expect(
                         { perNight: x.perNight, perNights: x.perNights, maxQuantity: x.maxQuantity },
                         `"${text}" quantity rate differs between copies`,

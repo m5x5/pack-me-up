@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
     ALWAYS_NEEDED_CATEGORY,
+    CATEGORIES,
+    CATEGORY_ORDER,
     defaultCategoryFor,
     groupItemsIntoSections,
     assignItemsToSection,
@@ -383,5 +385,28 @@ describe('sequence moves', () => {
                 ['Snacks', 'Baby'],
             ])
         })
+    })
+})
+
+describe('CATEGORY_ORDER', () => {
+    it('lists every category the template uses', () => {
+        for (const name of Object.values(CATEGORIES)) {
+            expect(CATEGORY_ORDER, `"${name}" is missing from CATEGORY_ORDER`).toContain(name)
+        }
+    })
+
+    // Sets written before the template carried categories put every
+    // always-needed item here, and those lists should still open with it.
+    it('leads with the always-needed default so legacy lists are unchanged', () => {
+        expect(CATEGORY_ORDER[0]).toBe(ALWAYS_NEEDED_CATEGORY)
+    })
+
+    it('puts the hardest-to-replace things first and the bulkiest last', () => {
+        const at = (name: string) => CATEGORY_ORDER.indexOf(name)
+        expect(at(CATEGORIES.documents)).toBeLessThan(at(CATEGORIES.clothes))
+        expect(at(CATEGORIES.medical)).toBeLessThan(at(CATEGORIES.clothes))
+        expect(at(CATEGORIES.clothes)).toBeLessThan(at(CATEGORIES.kit))
+        expect(at(CATEGORIES.kit)).toBe(CATEGORY_ORDER.length - 2)
+        expect(at(CATEGORIES.pet)).toBe(CATEGORY_ORDER.length - 1)
     })
 })

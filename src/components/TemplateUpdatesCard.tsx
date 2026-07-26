@@ -16,6 +16,7 @@ const KIND_HINT: Record<TemplateUpdateSuggestion['kind'], string | null> = {
     addItem: null,
     addOption: 'new option',
     addQuestion: 'new question',
+    setCategories: 'organises existing items',
 }
 
 /**

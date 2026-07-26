@@ -2,6 +2,7 @@ import { PackingListQuestionSet, Item, Question, Option, SavedQuestion } from '.
 import { createExampleData, WIZARD_TEMPLATE_VERSION } from './example-data'
 import { generateUUID } from '../utils/uuid'
 import { ItemLocation, locationKey, normalize } from './item-locations'
+import { sectionNamesIn } from './item-sections'
 
 /**
  * A single additive change the current wizard template offers over what the
@@ -38,15 +39,95 @@ export type TemplateUpdateSuggestion =
         contextLabel: string
         question: Question
     }
+    | {
+        kind: 'setCategories'
+        key: string
+        label: string
+        contextLabel: string
+        /** Normalised item text → the section the template puts it in. */
+        categories: Record<string, string>
+        /** How many of the user's items this would file, for the label. */
+        itemCount: number
+    }
 
 type AddItemSuggestion = Extract<TemplateUpdateSuggestion, { kind: 'addItem' }>
 type AddOptionSuggestion = Extract<TemplateUpdateSuggestion, { kind: 'addOption' }>
 type AddQuestionSuggestion = Extract<TemplateUpdateSuggestion, { kind: 'addQuestion' }>
+type SetCategoriesSuggestion = Extract<TemplateUpdateSuggestion, { kind: 'setCategories' }>
 
 function isRelevant(item: Item): boolean {
     // Template items are already filtered to those selecting at least one
     // person; this is a defensive backstop.
     return item.personSelections.some(ps => ps.selected)
+}
+
+function everyItemIn(qs: PackingListQuestionSet): Item[] {
+    return [
+        ...(qs.alwaysNeededItems ?? []),
+        ...qs.questions.flatMap(q => q.options.flatMap(o => o.items)),
+    ]
+}
+
+/**
+ * Which section the template puts each item in, keyed by normalised text.
+ * A text the template files in two different sections is dropped rather than
+ * guessed at — there is no basis for picking one.
+ */
+function templateCategoryByText(template: PackingListQuestionSet): Map<string, string> {
+    const byText = new Map<string, string>()
+    const ambiguous = new Set<string>()
+    for (const item of everyItemIn(template)) {
+        if (!item.category) continue
+        const key = normalize(item.text)
+        const seen = byText.get(key)
+        if (seen !== undefined && seen !== item.category) ambiguous.add(key)
+        else byText.set(key, item.category)
+    }
+    for (const key of ambiguous) byText.delete(key)
+    return byText
+}
+
+/**
+ * Offer to file a set written before the template carried sections. Sections are
+ * the one template change `addItem` can't deliver: matching is by item text, so
+ * an item the user already has is never revisited, and a category-only change
+ * would otherwise be invisible to every existing user.
+ *
+ * Only offered when the user has never used sections themselves
+ * (`sectionNamesIn` is empty). Once they have, an absent category means "I put
+ * this back in the main pile" — `applySectionLayout` stores exactly that — and
+ * there is no way to tell that apart from "this predates sections". Guessing
+ * would silently undo their arrangement, so we don't ask.
+ */
+function buildSetCategoriesSuggestion(
+    qs: PackingListQuestionSet,
+    template: PackingListQuestionSet,
+): SetCategoriesSuggestion | undefined {
+    if (sectionNamesIn(qs).length > 0) return undefined
+
+    const byText = templateCategoryByText(template)
+    if (byText.size === 0) return undefined
+
+    const categories: Record<string, string> = {}
+    let itemCount = 0
+    for (const item of everyItemIn(qs)) {
+        if (item.category || item.deletedAt) continue
+        const category = byText.get(normalize(item.text))
+        if (category === undefined) continue
+        categories[normalize(item.text)] = category
+        itemCount++
+    }
+    if (itemCount === 0) return undefined
+
+    const sections = new Set(Object.values(categories))
+    return {
+        kind: 'setCategories',
+        key: 'setCategories',
+        label: `Sort ${itemCount} item${itemCount === 1 ? '' : 's'} into ${sections.size} sections (Clothes, Toiletries, Documents & Money…)`,
+        contextLabel: 'Organise your list',
+        categories,
+        itemCount,
+    }
 }
 
 /**
@@ -152,6 +233,9 @@ export function buildTemplateUpdateSuggestions(qs: PackingListQuestionSet): Temp
         })
     }
 
+    const setCategories = buildSetCategoriesSuggestion(qs, template)
+    if (setCategories) suggestions.push(setCategories)
+
     return suggestions
 }
 
@@ -170,14 +254,24 @@ export function applyTemplateUpdates(
     const addItems = accepted.filter((s): s is AddItemSuggestion => s.kind === 'addItem')
     const addOptions = accepted.filter((s): s is AddOptionSuggestion => s.kind === 'addOption')
     const addQuestions = accepted.filter((s): s is AddQuestionSuggestion => s.kind === 'addQuestion')
+    const setCategories = accepted.find((s): s is SetCategoriesSuggestion => s.kind === 'setCategories')
 
     const stampItem = (i: Item): Item => ({ ...i, id: generateUUID(), lastModified: now })
+
+    // Only fills a gap: an item that already carries a category keeps it, so
+    // this can never move something the user has filed themselves, and items
+    // inserted above already carry the template's own category.
+    const fileItem = (i: Item): Item => {
+        if (!setCategories || i.category) return i
+        const category = setCategories.categories[normalize(i.text)]
+        if (category === undefined) return i
+        return { ...i, category, lastModified: now }
+    }
 
     const addItemsToLocation = (location: ItemLocation, items: Item[]): Item[] => {
         const key = locationKey(location)
         const here = addItems.filter(s => locationKey(s.location) === key)
-        if (here.length === 0) return items
-        return [...items, ...here.map(s => stampItem(s.item))]
+        return [...items.map(fileItem), ...here.map(s => stampItem(s.item))]
     }
 
     let questions: Question[] = qs.questions.map(question => {
