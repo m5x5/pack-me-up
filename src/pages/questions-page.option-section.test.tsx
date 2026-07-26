@@ -132,15 +132,24 @@ describe('OptionSection inline item editing', () => {
         expect(screen.queryByTitle('Edit Socks')).toBeNull()
     })
 
-    it('says the rows can be edited, since they still look read-only', () => {
+    it('marks every row with an edit icon, since a bare row reads as read-only', () => {
         renderEditable(withItems())
-        expect(screen.getByText('Tap an item to edit it')).toBeTruthy()
+        expect(screen.getAllByTestId('item-edit-icon')).toHaveLength(2)
     })
 
-    it('makes no such offer on a read-only list', () => {
+    it('keeps the icon decorative — the whole row stays the only target', () => {
+        // A nested button would carve a second hit area out of the row and make
+        // the real one harder to hit.
+        renderEditable(withItems())
+        const row = screen.getAllByTestId('item-row')[0]
+        expect(within(row).queryByRole('button')).toBeNull()
+        expect(within(row).getByTestId('item-edit-icon').getAttribute('aria-hidden')).toBe('true')
+    })
+
+    it('shows no edit icon on a read-only list', () => {
         renderOption(makeOption({ items: [makeItem('Socks')] }))
         fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
-        expect(screen.queryByText('Tap an item to edit it')).toBeNull()
+        expect(screen.queryByTestId('item-edit-icon')).toBeNull()
     })
 
     it('opens the editor for the row that was tapped', () => {

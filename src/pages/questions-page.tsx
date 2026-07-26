@@ -136,9 +136,21 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
             onClick={() => onOpen(index)}
             aria-expanded={isOpen ?? false}
             title={`Edit ${item.text || 'item'}`}
-            className={`w-full flex items-center gap-2 py-1 px-2 text-sm rounded transition-colors ${isOpen ? 'bg-primary-50' : 'hover:bg-gray-100'}`}
+            className={`group w-full flex items-center gap-2 py-1 px-2 text-sm rounded transition-colors ${isOpen ? 'bg-primary-50' : 'hover:bg-gray-100'}`}
         >
             {content}
+            {/* Decorative, not a button of its own: the whole row is the target,
+                and a second hit area inside it would only make the real one
+                harder to hit. Sits last so it lines up down the right edge —
+                a column of pencils is what says the rows are editable. */}
+            <svg
+                data-testid="item-edit-icon"
+                aria-hidden="true"
+                className={`w-3.5 h-3.5 shrink-0 transition-colors ${isOpen ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-700'}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
         </button>
     )
 })
@@ -199,11 +211,6 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
 
     return (
         <>
-            {/* Rows look exactly as read-only as they used to, so say once per
-                list that they now do something. One node per list, not per row. */}
-            {onItemChange && items.length > 0 && (
-                <p className="px-2 pb-0.5 text-[11px] text-gray-300">Tap an item to edit it</p>
-            )}
             {sequence.map(entry => entry.kind === 'header' ? (
                 hasSections && (
                     <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-2 pb-0.5 px-2">
