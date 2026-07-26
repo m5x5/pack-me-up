@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef, useMemo, memo, Fragment } from 'react'
+import { useState, useEffect, useCallback, useId, useRef, useMemo, memo, Fragment } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
-import { ALWAYS_NEEDED_CATEGORY, buildSectionGroups, defaultCategoryFor, reconcileEmptySections, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
+import { ALWAYS_NEEDED_CATEGORY, addEmptySection, buildSectionGroups, defaultCategoryFor, reconcileEmptySections, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
 import { sectionAccent } from '../edit-questions/section-accent'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
@@ -162,6 +162,58 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
 /** Composer key for the one at the foot of a list, which picks its own section. */
 const LIST_COMPOSER = '__list__'
 
+const FOOT_BUTTON = 'py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors'
+
+/**
+ * Name a new section. Offers the names already used elsewhere in the set, so
+ * one section doesn't end up spelled two ways and split into two groups on the
+ * generated list.
+ */
+function AddSection({ suggestions, onAdd, onClose }: {
+    suggestions: readonly string[]
+    onAdd: (label: string) => void
+    onClose: () => void
+}) {
+    const [name, setName] = useState('')
+    const listId = useId()
+    const commit = () => {
+        const trimmed = name.trim()
+        if (trimmed) onAdd(trimmed)
+        else onClose()
+    }
+    return (
+        <div
+            data-testid="add-section"
+            className="flex gap-2"
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget) && !name.trim()) onClose() }}
+        >
+            <input
+                autoFocus
+                list={listId}
+                value={name}
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => {
+                    if (e.key === 'Enter') commit()
+                    if (e.key === 'Escape') onClose()
+                }}
+                aria-label="New section name"
+                placeholder="Section name (e.g. Toiletries)"
+                className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <datalist id={listId}>
+                {suggestions.map(label => <option key={label} value={label} />)}
+            </datalist>
+            <button
+                type="button"
+                onClick={commit}
+                className="shrink-0 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            >
+                Add
+            </button>
+        </div>
+    )
+}
+
 /**
  * Everything one item list needs to add to itself. Passed as a single object so
  * a list that can't be added to (a foreign pod's, say) is `undefined` rather
@@ -193,7 +245,7 @@ export interface ItemAdding {
  * of every section on the page, which is the cost the read-only rows exist to
  * avoid.
  */
-const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, emptySections = NO_NAMES, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange, onItemDelete }: {
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, emptySections = NO_NAMES, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange, onItemDelete, onSectionAdd }: {
     items: Item[]
     people: Person[]
     defaultLabel: string
@@ -207,6 +259,8 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     onItemChange?: (index: number, edited: Item) => void
     /** Omit to leave items undeletable. */
     onItemDelete?: (index: number) => void
+    /** Omit to leave the list unable to grow a section. */
+    onSectionAdd?: (label: string) => void
 }) {
     // Which row is expanded, by its position in `items` — the same flat index
     // every edit is addressed by. At most one is open, so a long list never
@@ -216,6 +270,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     // the foot). Same one-at-a-time rule, for the same reason.
     const [openComposer, setOpenComposer] = useState<string | null>(null)
     const closeComposer = useCallback(() => setOpenComposer(null), [])
+    const [addingSection, setAddingSection] = useState(false)
 
     const groups = useMemo(
         () => buildSectionGroups(items, defaultLabel, emptySections),
@@ -306,18 +361,44 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     // The foot of every list: one tap to a composer that asks where the item
     // goes. It replaces itself with the composer rather than sitting above it,
     // so the list never grows two add affordances at once.
+    //
+    // Beside it, the only place a section is made. It is deliberately a button
+    // and not a typed name in some other field: a section is a thing you create,
+    // and the moment that stopped being true was the moment "type a new name at
+    // an item" had to double as both moving that item and renaming its section.
     const listFooter = adding && (
         openComposer === LIST_COMPOSER
             ? <div className="mt-2">{renderComposer(defaultLabel, false)}</div>
-            : (
-                <button
-                    type="button"
-                    onClick={() => setOpenComposer(LIST_COMPOSER)}
-                    className="mt-2 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                >
-                    + Add item
-                </button>
-            )
+            : addingSection
+                ? (
+                    <div className="mt-2">
+                        <AddSection
+                            suggestions={sectionOptions}
+                            onAdd={label => { onSectionAdd?.(label); setAddingSection(false) }}
+                            onClose={() => setAddingSection(false)}
+                        />
+                    </div>
+                )
+                : (
+                    <div className="mt-2 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setOpenComposer(LIST_COMPOSER)}
+                            className={`${FOOT_BUTTON} flex-1`}
+                        >
+                            + Add item
+                        </button>
+                        {onSectionAdd && (
+                            <button
+                                type="button"
+                                onClick={() => setAddingSection(true)}
+                                className={`${FOOT_BUTTON} shrink-0 px-3`}
+                            >
+                                + Add section
+                            </button>
+                        )}
+                    </div>
+                )
     )
 
     if (!hasSections) {
@@ -448,7 +529,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd, onItemDelete }: {
+export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
     option: Option
     people: Person[]
     /** What the packing list will call items here that carry no category. */
@@ -465,6 +546,8 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     onItemAdd?: (questionId: string, optionId: string, text: string, category: string | undefined) => void
     /** Omit to leave items undeletable. */
     onItemDelete?: (questionId: string, optionId: string, index: number) => void
+    /** Omit to leave the option unable to grow a section. */
+    onSectionAdd?: (questionId: string, optionId: string, label: string) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     // Bound to this option's ids once, so the memoized row list isn't handed a
@@ -480,6 +563,11 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
             ? (index: number) => onItemDelete(questionId, optionId, index)
             : undefined,
         [onItemDelete, questionId, optionId])
+    const handleSectionAdd = useMemo(
+        () => onSectionAdd && questionId
+            ? (label: string) => onSectionAdd(questionId, optionId, label)
+            : undefined,
+        [onSectionAdd, questionId, optionId])
     const adding = useMemo<ItemAdding | undefined>(
         () => onItemAdd && questionId && suggestions
             ? {
@@ -587,6 +675,7 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                         adding={adding}
                         onItemChange={handleItemChange}
                         onItemDelete={handleItemDelete}
+                        onSectionAdd={handleSectionAdd}
                     />
                 </div>
             )}
@@ -705,7 +794,7 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
 
 // Memoized with id-based handlers whose identity survives page re-renders, so
 // opening a modal (or a background sync tick) doesn't re-render every question.
-const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd, onItemDelete }: {
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
     question: Question
     people: Person[]
     canMoveUp: boolean
@@ -722,6 +811,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     onItemChange: (questionId: string, optionId: string, index: number, edited: Item) => void
     onItemAdd: (questionId: string, optionId: string, text: string, category: string | undefined) => void
     onItemDelete: (questionId: string, optionId: string, index: number) => void
+    onSectionAdd: (questionId: string, optionId: string, label: string) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -825,6 +915,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             onItemChange={onItemChange}
                             onItemAdd={onItemAdd}
                             onItemDelete={onItemDelete}
+                            onSectionAdd={onSectionAdd}
                         />
                     ))}
                     <button
@@ -846,7 +937,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     )
 })
 
-const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd, onItemDelete }: {
+const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
     items: Item[]
     people: Person[]
     emptySections?: string[]
@@ -857,6 +948,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
     onItemChange: (index: number, edited: Item) => void
     onItemAdd: (text: string, category: string | undefined) => void
     onItemDelete: (index: number) => void
+    onSectionAdd: (label: string) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     const adding = useMemo<ItemAdding>(
@@ -907,6 +999,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
                         adding={adding}
                         onItemChange={onItemChange}
                         onItemDelete={onItemDelete}
+                        onSectionAdd={onSectionAdd}
                     />
                 </div>
             )}
@@ -1814,6 +1907,36 @@ export function QuestionsPage() {
         })
     }, [saveData])
 
+    // Creating a section stores nothing but its name — there is nothing else to
+    // store until something is in it, and `addEmptySection` refuses a name that
+    // already exists rather than making a second section wearing it.
+    const handleOptionSectionAdd = useCallback(async (questionId: string, optionId: string, label: string) => {
+        const data = dataRef.current
+        if (!data) return
+        const question = data.questions.find(q => q.id === questionId)
+        const option = question?.options.find(o => o.id === optionId)
+        if (!question || !option) return
+        const now = new Date().toISOString()
+        const emptySections = addEmptySection(
+            option.emptySections, option.items, label, defaultCategoryFor(question, option))
+        if (emptySections === option.emptySections) return
+        await saveData({
+            ...data,
+            questions: withQuestionOptions(data.questions, questionId, options =>
+                options.map(o => o.id === optionId ? withEmptySections(o, emptySections) : o), now),
+        })
+    }, [saveData])
+
+    const handleAlwaysSectionAdd = useCallback(async (label: string) => {
+        const data = dataRef.current
+        if (!data) return
+        const active = (data.alwaysNeededItems ?? []).filter(i => !i.deletedAt)
+        const emptySections = addEmptySection(
+            data.alwaysNeededEmptySections, active, label, ALWAYS_NEEDED_CATEGORY)
+        if (emptySections === data.alwaysNeededEmptySections) return
+        await saveData({ ...data, alwaysNeededEmptySections: emptySections })
+    }, [saveData])
+
     const handleAlwaysItemDelete = useCallback(async (index: number) => {
         const data = dataRef.current
         if (!data) return
@@ -1982,6 +2105,7 @@ export function QuestionsPage() {
                     onItemChange={handleAlwaysItemChange}
                     onItemAdd={handleAlwaysItemAdd}
                     onItemDelete={handleAlwaysItemDelete}
+                    onSectionAdd={handleAlwaysSectionAdd}
                 />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
@@ -2002,6 +2126,7 @@ export function QuestionsPage() {
                         onItemChange={handleOptionItemChange}
                         onItemAdd={handleOptionItemAdd}
                         onItemDelete={handleOptionItemDelete}
+                        onSectionAdd={handleOptionSectionAdd}
                     />
                 ))}
                 <button

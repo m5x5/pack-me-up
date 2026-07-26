@@ -62,7 +62,13 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
     // The default section is offered by name, so "back to the main pile" is a
     // choice rather than the absence of one. Storing it clears the category —
     // see the note on applySectionLayout for why the default is never stamped.
-    const sectionOptions = [sectionDefaultLabel, ...sectionNames.filter(name => name !== sectionDefaultLabel)]
+    // The item's own section is included even if it is not among the offered
+    // names, so an unrecognised one is never silently swapped for another.
+    const sectionOptions = [...new Set([
+        sectionDefaultLabel,
+        ...(item.category ? [item.category] : []),
+        ...sectionNames,
+    ])]
     const setSection = useCallback((value: string) => {
         const category = value === '' || value === sectionDefaultLabel ? undefined : value
         onChange({ ...item, category })
@@ -113,13 +119,22 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
 
             <div data-testid="item-section-field">
                 <span className={FIELD_LABEL}>Section</span>
-                <CustomCreatableSelect
+                {/* A choice among sections that exist, never a place to make a
+                    new one. Free text here used to create a section, which is
+                    the same gesture that renames one in the organise view — so
+                    the identical action meant "move this item" in one place and
+                    "rename this whole section" in the other. Creating is its own
+                    button now, at the foot of the list. */}
+                <select
+                    aria-label="Section"
                     value={item.category ?? sectionDefaultLabel}
-                    onChange={setSection}
-                    options={sectionOptions}
-                    placeholder="Section"
-                    menuPortalTarget={document.body}
-                />
+                    onChange={e => setSection(e.target.value)}
+                    className="w-full border border-gray-200 rounded px-3 py-2.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                    {sectionOptions.map(label => (
+                        <option key={label} value={label}>{label}</option>
+                    ))}
+                </select>
             </div>
 
             {/* Delete sits opposite Done, at the far end of the panel: it is the

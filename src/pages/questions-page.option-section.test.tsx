@@ -267,11 +267,7 @@ describe('OptionSection inline item editing', () => {
         // the item being edited — and the row has visibly gone somewhere else.
         const { onItemChange } = renderEditable(withItems(), ['Toiletries'])
         fireEvent.click(screen.getByTitle('Edit Socks'))
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Yes'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Toiletries' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Toiletries' } })
         expect(onItemChange).toHaveBeenCalledWith('q1', 'o1', 0, expect.objectContaining({
             category: 'Toiletries',
         }))
@@ -593,5 +589,73 @@ describe('OptionSection: a section with nothing in it yet', () => {
         renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
         fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
         expect(screen.getByRole('button', { name: 'Add an item to Toiletries' })).toBeTruthy()
+    })
+})
+
+describe('OptionSection: creating a section', () => {
+    function renderAddable(option: Option, onSectionAdd = vi.fn()) {
+        render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                sectionNames={['Toiletries']}
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+                onSectionAdd={onSectionAdd}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onSectionAdd }
+    }
+
+    it('offers no "+ Add section" when the page supplies no handler', () => {
+        renderEditable(makeOption({ items: [makeItem('Socks')] }))
+        expect(screen.queryByRole('button', { name: '+ Add section' })).toBeNull()
+    })
+
+    it('names the new section and creates it', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.change(screen.getByLabelText('New section name'), { target: { value: 'Beach kit' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+        expect(onSectionAdd).toHaveBeenCalledWith('q1', 'o1', 'Beach kit')
+    })
+
+    it('creates on Enter, so naming several in a row needs no mouse', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        const input = screen.getByLabelText('New section name')
+        fireEvent.change(input, { target: { value: 'Beach kit' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onSectionAdd).toHaveBeenCalledWith('q1', 'o1', 'Beach kit')
+    })
+
+    it('creates nothing on an empty name', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+        expect(onSectionAdd).not.toHaveBeenCalled()
+        expect(screen.queryByTestId('add-section')).toBeNull()
+    })
+
+    it('abandons the name on Escape', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.keyDown(screen.getByLabelText('New section name'), { key: 'Escape' })
+        expect(screen.queryByTestId('add-section')).toBeNull()
+        expect(onSectionAdd).not.toHaveBeenCalled()
+    })
+
+    it('suggests names already used elsewhere, so one section is not spelled two ways', () => {
+        renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        const listId = screen.getByLabelText('New section name').getAttribute('list')
+        const options = [...document.querySelectorAll(`#${CSS.escape(listId!)} option`)].map(o => o.getAttribute('value'))
+        expect(options).toContain('Toiletries')
     })
 })

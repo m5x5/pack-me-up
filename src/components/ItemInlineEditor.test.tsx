@@ -132,32 +132,37 @@ describe('ItemInlineEditor: quantity', () => {
 describe('ItemInlineEditor: section', () => {
     it('shows the default section when the item carries no category', () => {
         renderEditor(makeItem())
-        expect(within(screen.getByTestId('item-section-field')).getByText('Yes')).toBeTruthy()
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Yes')
     })
 
     it('shows the item’s own section when it has one', () => {
         renderEditor(makeItem({ category: 'Toiletries' }))
-        expect(within(screen.getByTestId('item-section-field')).getByText('Toiletries')).toBeTruthy()
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Toiletries')
     })
 
     it('moves the item into another section', () => {
         const { onChange } = renderEditor(makeItem())
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Yes'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Toiletries' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Toiletries' } })
         expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ category: 'Toiletries' }))
     })
 
     it('clears the category when moved back to the default section', () => {
         const { onChange } = renderEditor(makeItem({ category: 'Toiletries' }))
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Toiletries'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Yes' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Yes' } })
         expect(onChange.mock.calls[0][0].category).toBeUndefined()
+    })
+
+    it('offers only sections that exist — creating one is not a typing gesture', () => {
+        renderEditor(makeItem())
+        const labels = [...screen.getByLabelText('Section').querySelectorAll('option')].map(o => o.textContent)
+        expect(labels).toEqual(['Yes', 'Toiletries', 'Clothes'])
+    })
+
+    it('keeps the item’s own section on offer even when it is not a known name', () => {
+        // Otherwise the select would show — and on the next change commit — some
+        // other section entirely, silently moving the item.
+        renderEditor(makeItem({ category: 'Retired name' }))
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Retired name')
     })
 })
 
