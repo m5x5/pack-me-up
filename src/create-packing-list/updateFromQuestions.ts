@@ -1,6 +1,10 @@
 import { PackingListQuestionSet } from '../edit-questions/types'
 import { PackingList, PackingListItem } from './types'
 import { generateQuestionBasedItems, generateAlwaysNeededItems } from './generatePackingListItems'
+// Identity and collapsing are shared with the creation flow, so an item arriving
+// from two answers behaves the same whether the list is being created or
+// updated — including taking the larger of the two suggested quantities.
+import { deduplicateItems, itemIdentityKey as itemKey } from './deduplicate'
 
 // The sentinel questionId used for always-needed items; such items carry no real
 // question/option ids to reconstruct answers from.
@@ -11,12 +15,6 @@ interface GenerationInputs {
     selectedPeopleIds: string[]
 }
 
-// The same identity key the creation flow uses for deduplication:
-// `${personId}::${normalised text}`. Communal items have personId '', so a
-// communal item and a per-person item with the same text never collide.
-function itemKey(personId: string, itemText: string): string {
-    return `${personId}::${itemText.trim().toLowerCase()}`
-}
 
 // Legacy lists (created before generation inputs were persisted) have neither
 // `questionAnswers` nor `selectedPeopleIds`. Rebuild what we can from the items
@@ -95,12 +93,9 @@ export function computeQuestionSetAdditions(
     for (const item of (list.deletedItems ?? [])) existingKeys.add(itemKey(item.personId, item.itemText))
 
     const additions: PackingListItem[] = []
-    const seen = new Set<string>()
     const now = new Date().toISOString()
-    for (const item of regenerated) {
-        const key = itemKey(item.personId, item.itemText)
-        if (existingKeys.has(key) || seen.has(key)) continue
-        seen.add(key)
+    for (const item of deduplicateItems(regenerated)) {
+        if (existingKeys.has(itemKey(item.personId, item.itemText))) continue
         additions.push({ ...item, id: crypto.randomUUID(), packed: false, lastModified: now })
     }
     return additions

@@ -49,15 +49,35 @@ describe('buildRevealSteps', () => {
         expect(step.text).toContain('Rex (dog)')
     })
 
-    it('names the items that are specific to that person', () => {
-        const steps = buildRevealSteps(setFor([
+    // Asserted as a property rather than by naming an item: which baby-only
+    // item leads depends on template order, and that is free to change.
+    it('names items that belong to that person and nobody else', () => {
+        const set = setFor([
             person({ id: '1', name: 'Sam' }),
             person({ id: '2', name: 'Ellie', ageRange: 'Baby' }),
-        ]))
+        ])
+        const steps = buildRevealSteps(set)
 
+        const everyItem = [
+            ...set.alwaysNeededItems,
+            ...set.questions.flatMap(q => q.options.flatMap(o => o.items)),
+        ]
         const ellie = steps.find(s => s.name === 'Ellie')!
-        expect(ellie.items.join(' ').toLowerCase()).toContain('nappies')
-        expect(ellie.text).toMatch(/adding .*nappies/i)
+
+        expect(ellie.items.length).toBeGreaterThan(0)
+        expect(ellie.text).toMatch(new RegExp(`adding .*${ellie.items[0]}`, 'i'))
+
+        for (const named of ellie.items) {
+            const matches = everyItem.filter(i =>
+                i.text.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase() === named.toLowerCase()
+            )
+            expect(matches.length, `"${named}" should exist in the set`).toBeGreaterThan(0)
+            for (const match of matches) {
+                expect(match.communal ?? false, `"${named}" is communal, so it isn't packed for Ellie`).toBe(false)
+                expect(match.personSelections.find(ps => ps.personId === '2')?.selected).toBe(true)
+                expect(match.personSelections.find(ps => ps.personId === '1')?.selected).toBe(false)
+            }
+        }
     })
 
     it('picks different items for people in different age brackets', () => {

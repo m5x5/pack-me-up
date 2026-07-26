@@ -108,6 +108,7 @@ const fullyPopulatedQuestionSetItem: Required<Item> = {
     // longer list would make the pod round-trip assertion order-dependent.
     ageRanges: ['Adult'],
     order: 1,
+    category: 'Toiletries',
     perNight: 2,
     perNights: 3,
     maxQuantity: 7,

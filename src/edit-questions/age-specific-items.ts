@@ -32,6 +32,8 @@ export const getBabies = ageRangeFilter(['Baby'])
 export const getTeenagersAndAdults = ageRangeFilter(['Teenager', 'Adult'])
 export const getChildrenAndOlder = ageRangeFilter(['Child', 'Teenager', 'Adult'])
 export const getToddlersAndOlder = ageRangeFilter(['Toddler', 'Child', 'Teenager', 'Adult'])
+export const getBabiesAndToddlers = ageRangeFilter(['Baby', 'Toddler'])
+export const getUnderTeenagers = ageRangeFilter(['Baby', 'Toddler', 'Child'])
 
 /**
  * Helper to filter people by gender

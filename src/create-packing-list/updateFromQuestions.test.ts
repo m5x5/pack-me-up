@@ -381,3 +381,30 @@ describe('after a save/load round-trip through the local database', () => {
         expect(computeQuestionSetAdditions(withoutStoredInputs, questionSet)).toEqual([])
     })
 })
+
+describe('an item reaching one person from two answers', () => {
+    // Same collapsing as list creation, so updating never suggests the same
+    // thing twice — nor the smaller of two suggested amounts.
+    const twoOptions = makeQuestion({
+        options: [
+            { id: 'o1', text: 'Self-catering', order: 0, items: [makeItem('Towels', ['p1'])] },
+            { id: 'o2', text: 'Camping', order: 1, items: [makeItem('Towels', ['p1'], { perNight: 1, perNights: 2 })] },
+        ],
+    })
+    const questionSet = makeQuestionSet({ questions: [twoOptions] })
+    const list = makeList({
+        nights: 6,
+        selectedPeopleIds: ['p1'],
+        questionAnswers: [{ questionId: 'q-activities', selectedOptionIds: ['o1', 'o2'] }],
+    })
+
+    it('offers it once, not once per answer', () => {
+        const additions = computeQuestionSetAdditions(list, questionSet)
+        expect(additions.filter(i => i.itemText === 'Towels')).toHaveLength(1)
+    })
+
+    it('offers the larger of the two suggested quantities', () => {
+        const [towels] = computeQuestionSetAdditions(list, questionSet)
+        expect(towels.quantity).toBe(3)
+    })
+})

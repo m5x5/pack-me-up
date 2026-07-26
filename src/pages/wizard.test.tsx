@@ -414,7 +414,7 @@ describe('Wizard', () => {
             renderAfterGeneration()
 
             await waitFor(
-                () => expect(screen.getByText(/thinking about Ellie.*adding .*nappies/i)).toBeTruthy(),
+                () => expect(screen.getByText(/thinking about Ellie.*adding \w+/i)).toBeTruthy(),
                 { timeout: 3000 }
             )
         })

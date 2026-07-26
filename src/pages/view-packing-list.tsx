@@ -26,6 +26,7 @@ import { formatTripDates } from '../create-packing-list/tripDetails'
 import { tapFeedback } from '../utils/haptics'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
+import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 
 type FormData = {
     items: Record<string, boolean>
@@ -88,7 +89,7 @@ function sortByItemOrder(items: PackingListItem[]): PackingListItem[] {
 export function groupByCategory(items: PackingListItem[]) {
     return groupItemsByCategory(items, PACKING_ITEM_ACCESSORS, {
         uncategorisedLabel: 'Other',
-        pinFirst: 'Essentials',
+        order: CATEGORY_ORDER,
         pinLast: 'Other',
     })
 }
