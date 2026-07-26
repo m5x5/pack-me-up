@@ -659,3 +659,69 @@ describe('OptionSection: creating a section', () => {
         expect(options).toContain('Toiletries')
     })
 })
+
+describe('OptionSection: organising in place', () => {
+    const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
+
+    function renderOrganisable(option: Option, onReorder = vi.fn()) {
+        render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+                onReorder={onReorder}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onReorder }
+    }
+
+    it('offers organising without opening anything', () => {
+        renderOrganisable(withItems())
+        expect(screen.getByRole('button', { name: 'Organise items' })).toBeTruthy()
+    })
+
+    it('offers nothing to organise with a single item', () => {
+        renderOrganisable(makeOption({ items: [makeItem('Socks')] }))
+        expect(screen.queryByRole('button', { name: 'Organise items' })).toBeNull()
+    })
+
+    it('offers no organising when the page cannot save the result', () => {
+        renderEditable(withItems())
+        expect(screen.queryByRole('button', { name: 'Organise items' })).toBeNull()
+    })
+
+    it('swaps the rows for drag handles and back again', () => {
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        expect(screen.getAllByRole('button', { name: /^Drag / })).toHaveLength(2)
+        expect(screen.queryByTestId('item-row')).toBeNull()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Finish organising' }))
+        expect(screen.queryByRole('button', { name: /^Drag / })).toBeNull()
+        expect(screen.getAllByTestId('item-row')).toHaveLength(2)
+    })
+
+    it('keeps the footer, so a section can still be added mid-reorganisation', () => {
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        expect(screen.getByRole('button', { name: '+ Add item' })).toBeTruthy()
+    })
+
+    it('saves a move as it happens, with no Save to press', () => {
+        const { onReorder } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Towel' }), { button: 0 })
+        fireEvent.click(within(screen.getByRole('menu')).getByText('Move to top of section'))
+        expect(onReorder).toHaveBeenCalledWith('q1', 'o1', [
+            expect.objectContaining({ text: 'Towel' }),
+            expect.objectContaining({ text: 'Socks' }),
+        ], undefined)
+    })
+})

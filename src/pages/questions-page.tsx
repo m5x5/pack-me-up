@@ -14,12 +14,10 @@ import { POD_CONTAINERS } from '../services/solidPod'
 import { questionSetToDataset, datasetToQuestionSet } from '../services/rdfSerialization'
 import { useSolidPod } from '../components/SolidPodContext'
 import { useForeignPod } from '../components/ForeignPodContext'
-import { CustomCreatableSelect } from '../components/CreatableSelect'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { LoadingState } from '../components/LoadingState'
 import { AgeTransition } from '../edit-questions/age-derivation'
-import { useIsDesktop } from '../hooks/useIsDesktop'
 import { appendItemToSection, applyItemEdit, tombstoneRemovedItems, withQuestionOptions } from '../edit-questions/item-edits'
 import { ItemInlineEditor } from '../components/ItemInlineEditor'
 import { AddQuestionItem } from '../components/AddQuestionItem'
@@ -28,9 +26,6 @@ import { buildIndexOf, type SuggestionIndex } from '../utils/itemSuggestions'
 import {
     AVATAR_ON,
     AVATAR_OFF,
-    PersonToggles,
-    QuantityPanel,
-    rateBadge,
     rateLabel,
     quantityTitle,
 } from '../components/ItemEditorControls'
@@ -245,7 +240,7 @@ export interface ItemAdding {
  * of every section on the page, which is the cost the read-only rows exist to
  * avoid.
  */
-const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, emptySections = NO_NAMES, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange, onItemDelete, onSectionAdd }: {
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, emptySections = NO_NAMES, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange, onItemDelete, onSectionAdd, onReorder }: {
     items: Item[]
     people: Person[]
     defaultLabel: string
@@ -261,6 +256,8 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     onItemDelete?: (index: number) => void
     /** Omit to leave the list unable to grow a section. */
     onSectionAdd?: (label: string) => void
+    /** Omit to leave the list unorganisable — no reorder toggle appears. */
+    onReorder?: (items: Item[], emptySections: string[] | undefined) => void
 }) {
     // Which row is expanded, by its position in `items` — the same flat index
     // every edit is addressed by. At most one is open, so a long list never
@@ -271,6 +268,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     const [openComposer, setOpenComposer] = useState<string | null>(null)
     const closeComposer = useCallback(() => setOpenComposer(null), [])
     const [addingSection, setAddingSection] = useState(false)
+    const [organising, setOrganising] = useState(false)
 
     const groups = useMemo(
         () => buildSectionGroups(items, defaultLabel, emptySections),
@@ -401,9 +399,47 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                 )
     )
 
+    // Reordering needs at least two items to have anything to say, and the
+    // toggle only makes sense where the page can actually save the result.
+    const canOrganise = onReorder !== undefined && items.length > 1
+    const organiseToggle = canOrganise && (
+        <div className="flex justify-end mb-2">
+            <button
+                type="button"
+                onClick={() => setOrganising(o => !o)}
+                aria-pressed={organising}
+                className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 transition-colors ${organising ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+            >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                </svg>
+                {organising ? 'Finish organising' : 'Organise items'}
+            </button>
+        </div>
+    )
+
+    // Organising replaces the rows and nothing else: the footer stays, so adding
+    // an item or a section mid-reorganisation doesn't mean leaving the mode you
+    // are reorganising in.
+    if (organising && onReorder) {
+        return (
+            <div>
+                {organiseToggle}
+                <SectionedItemReorder
+                    items={items}
+                    defaultLabel={defaultLabel}
+                    emptySections={emptySections.length > 0 ? emptySections : undefined}
+                    onChange={onReorder}
+                />
+                {listFooter}
+            </div>
+        )
+    }
+
     if (!hasSections) {
         return (
             <div>
+                {organiseToggle}
                 <div className="space-y-0.5">{groups.flatMap(group => group.entries).map(renderRow)}</div>
                 {listFooter}
             </div>
@@ -412,6 +448,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
 
     return (
         <div>
+            {organiseToggle}
             <div className="space-y-2">
                 {groups.map(group => {
                     const accent = sectionAccent(group.label, group.label === defaultLabel)
@@ -529,7 +566,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
+export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd, onItemDelete, onSectionAdd, onReorder }: {
     option: Option
     people: Person[]
     /** What the packing list will call items here that carry no category. */
@@ -548,6 +585,8 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     onItemDelete?: (questionId: string, optionId: string, index: number) => void
     /** Omit to leave the option unable to grow a section. */
     onSectionAdd?: (questionId: string, optionId: string, label: string) => void
+    /** Omit to leave the items unorganisable. */
+    onReorder?: (questionId: string, optionId: string, items: Item[], emptySections: string[] | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     // Bound to this option's ids once, so the memoized row list isn't handed a
@@ -568,6 +607,11 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
             ? (label: string) => onSectionAdd(questionId, optionId, label)
             : undefined,
         [onSectionAdd, questionId, optionId])
+    const handleReorder = useMemo(
+        () => onReorder && questionId
+            ? (reordered: Item[], sections: string[] | undefined) => onReorder(questionId, optionId, reordered, sections)
+            : undefined,
+        [onReorder, questionId, optionId])
     const adding = useMemo<ItemAdding | undefined>(
         () => onItemAdd && questionId && suggestions
             ? {
@@ -676,6 +720,7 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                         onItemChange={handleItemChange}
                         onItemDelete={handleItemDelete}
                         onSectionAdd={handleSectionAdd}
+                        onReorder={handleReorder}
                     />
                 </div>
             )}
@@ -794,7 +839,7 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
 
 // Memoized with id-based handlers whose identity survives page re-renders, so
 // opening a modal (or a background sync tick) doesn't re-render every question.
-const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd, onItemDelete, onSectionAdd, onReorder }: {
     question: Question
     people: Person[]
     canMoveUp: boolean
@@ -812,6 +857,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     onItemAdd: (questionId: string, optionId: string, text: string, category: string | undefined) => void
     onItemDelete: (questionId: string, optionId: string, index: number) => void
     onSectionAdd: (questionId: string, optionId: string, label: string) => void
+    onReorder: (questionId: string, optionId: string, items: Item[], emptySections: string[] | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -916,6 +962,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             onItemAdd={onItemAdd}
                             onItemDelete={onItemDelete}
                             onSectionAdd={onSectionAdd}
+                            onReorder={onReorder}
                         />
                     ))}
                     <button
@@ -937,18 +984,18 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     )
 })
 
-const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd, onItemDelete, onSectionAdd }: {
+const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections, allItemNames, sectionNames, suggestions, onItemChange, onItemAdd, onItemDelete, onSectionAdd, onReorder }: {
     items: Item[]
     people: Person[]
     emptySections?: string[]
     allItemNames: string[]
     sectionNames: string[]
     suggestions: SuggestionIndex
-    onEdit: () => void
     onItemChange: (index: number, edited: Item) => void
     onItemAdd: (text: string, category: string | undefined) => void
     onItemDelete: (index: number) => void
     onSectionAdd: (label: string) => void
+    onReorder: (items: Item[], emptySections: string[] | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     const adding = useMemo<ItemAdding>(
@@ -976,16 +1023,6 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
                         <span className="hidden sm:inline text-sm font-normal text-gray-500">{items.length} items</span>
                     </span>
                 </button>
-                <button
-                    type="button"
-                    onClick={onEdit}
-                    className="p-4 -m-2 text-gray-300 hover:text-gray-600 rounded flex-shrink-0"
-                    title="Edit always needed items"
-                >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                </button>
             </div>
             {hasExpandedRef.current && (
                 <div className={`mt-3${isExpanded ? '' : ' hidden'}`}>
@@ -1000,6 +1037,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
                         onItemChange={onItemChange}
                         onItemDelete={onItemDelete}
                         onSectionAdd={onSectionAdd}
+                        onReorder={onReorder}
                     />
                 </div>
             )}
@@ -1007,377 +1045,39 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
     )
 })
 
-function useItemListState(initialItems: Item[], people: Person[]) {
-    const [items, setItems] = useState<Item[]>(initialItems)
-    const scrollRef = useRef<HTMLDivElement>(null)
-    const prevCountRef = useRef(initialItems.length)
-
-    useEffect(() => {
-        if (items.length > prevCountRef.current) {
-            requestAnimationFrame(() => {
-                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-            })
-        }
-        prevCountRef.current = items.length
-    }, [items.length])
-
-    // All handlers are useCallback'd so the memoized per-item rows only
-    // re-render when their own item changes, not on every keystroke or toggle.
-    const updateItemText = useCallback((idx: number, text: string) =>
-        setItems(prev => prev.map((item, i) => i === idx ? { ...item, text } : item)), [])
-
-    const togglePerson = useCallback((itemIdx: number, personIdx: number) =>
-        setItems(prev => prev.map((item, i) => {
-            if (i !== itemIdx) return item
-            const selections = people.map((p, pi) => ({
-                personId: p.id,
-                selected: item.personSelections?.[pi]?.selected ?? false,
-            }))
-            selections[personIdx] = { ...selections[personIdx], selected: !selections[personIdx].selected }
-            return { ...item, personSelections: selections }
-        })), [people])
-
-    const toggleCommunal = useCallback((itemIdx: number) =>
-        setItems(prev => prev.map((item, i) =>
-            i === itemIdx ? { ...item, communal: item.communal ? undefined : true } : item
-        )), [])
-
-    const updatePerNight = useCallback((itemIdx: number, perNight: number | undefined) =>
-        setItems(prev => prev.map((item, i) =>
-            i === itemIdx ? { ...item, perNight } : item
-        )), [])
-
-    const updatePerNights = useCallback((itemIdx: number, perNights: number | undefined) =>
-        setItems(prev => prev.map((item, i) =>
-            i === itemIdx ? { ...item, perNights } : item
-        )), [])
-
-    const updateMaxQuantity = useCallback((itemIdx: number, maxQuantity: number | undefined) =>
-        setItems(prev => prev.map((item, i) =>
-            i === itemIdx ? { ...item, maxQuantity } : item
-        )), [])
-
-    const removeItem = useCallback((idx: number) =>
-        setItems(prev => prev.filter((_, i) => i !== idx)), [])
-
-    const moveItem = useCallback((idx: number, direction: 'up' | 'down') =>
-        setItems(prev => {
-            const swapIdx = direction === 'up' ? idx - 1 : idx + 1
-            if (swapIdx < 0 || swapIdx >= prev.length) return prev
-            const next = [...prev]
-            ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
-            return next
-        }), [])
-
-    // Pull the item at `from` out and reinsert it at `to` — used by drag to
-    // reorder; up/down buttons stay as the discrete, keyboard-friendly path.
-    const reorderItem = useCallback((from: number, to: number) =>
-        setItems(prev => {
-            if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev
-            const next = [...prev]
-            const [moved] = next.splice(from, 1)
-            next.splice(to, 0, moved)
-            return next
-        }), [])
-
-    // The new row inherits the last item's section so it appears at the bottom,
-    // next to the button that made it. Without this an uncategorised item falls
-    // into the default section, which `buildSectionSequence` puts first — so in
-    // a fully sectioned list the row would appear at the very top instead.
-    const addItem = useCallback(() =>
-        setItems(prev => [...prev, {
-            text: '',
-            ...(prev.length > 0 && prev[prev.length - 1].category !== undefined
-                ? { category: prev[prev.length - 1].category }
-                : {}),
-            personSelections: people.map(p => ({ personId: p.id, selected: true })),
-        }]), [people])
-
-    // Whole-list replacement, used when a sectioned drag re-stamps categories
-    // and reorders in one go (see applySectionLayout).
-    const replaceItems = useCallback((next: Item[]) => setItems(next), [])
-
-    return { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, moveItem, reorderItem, addItem, replaceItems }
-}
-
-// One editable item row. Memoized (with stable handlers from useItemListState)
-// so toggling a person or typing in one row doesn't re-render every other row —
-// with dozens of items and a large family that re-render is what made the
-// editor modals feel sluggish on phones. Renders only the variant for the
-// current form factor instead of both (CSS-hidden DOM is still DOM).
-const ItemEditorRow = memo(function ItemEditorRow({ item, itemIdx, people, allItemNames, isDesktop, quantityOpen, onToggleQuantity, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem }: {
-    item: Item
-    itemIdx: number
-    people: Person[]
-    allItemNames: string[]
-    isDesktop: boolean
-    quantityOpen: boolean
-    onToggleQuantity: (idx: number) => void
-    updateItemText: (idx: number, text: string) => void
-    togglePerson: (itemIdx: number, personIdx: number) => void
-    toggleCommunal: (itemIdx: number) => void
-    updatePerNight: (itemIdx: number, perNight: number | undefined) => void
-    updatePerNights: (itemIdx: number, perNights: number | undefined) => void
-    updateMaxQuantity: (itemIdx: number, maxQuantity: number | undefined) => void
-    removeItem: (idx: number) => void
-}) {
-    const isCommunal = item.communal === true
-    const hasRate = item.perNight !== undefined
-    return (
-        // content-visibility lets the browser skip layout/paint for rows that
-        // are scrolled out of view — noticeable when a list has dozens of items.
-        <div
-            className="sm:flex sm:flex-wrap sm:items-center sm:gap-2 rounded-lg border border-gray-200 sm:border-transparent p-2 sm:p-0"
-            style={{ contentVisibility: 'auto', containIntrinsicSize: isDesktop ? 'auto 44px' : 'auto 132px' }}
-        >
-            {/* Item name + desktop people + remove */}
-            <div className="flex items-center gap-2 sm:flex-1 sm:min-w-0">
-                <div className="flex-1 min-w-0">
-                    <CustomCreatableSelect
-                        value={item.text}
-                        onChange={val => updateItemText(itemIdx, val)}
-                        options={allItemNames}
-                        placeholder="Item name"
-                        menuPortalTarget={document.body}
-                    />
-                </div>
-                {/* Desktop: shared toggle + inline avatars */}
-                {isDesktop && (
-                    <PersonToggles
-                        item={item}
-                        people={people}
-                        layout="avatars"
-                        onTogglePerson={personIdx => togglePerson(itemIdx, personIdx)}
-                        onToggleCommunal={() => toggleCommunal(itemIdx)}
-                    />
-                )}
-                <button
-                    type="button"
-                    onClick={() => onToggleQuantity(itemIdx)}
-                    title={quantityTitle(item)}
-                    aria-label={`Set suggested quantity for ${item.text || 'item'}`}
-                    aria-expanded={quantityOpen}
-                    className={`inline-flex items-center justify-center h-5 rounded-full px-1.5 text-[10px] font-medium shrink-0 transition-colors ${hasRate ? 'bg-emerald-600 text-white' : AVATAR_OFF}`}
-                >
-                    {hasRate ? rateBadge(item) : '×n'}
-                </button>
-                <button
-                    type="button"
-                    onClick={() => removeItem(itemIdx)}
-                    className="shrink-0 text-gray-300 hover:text-red-400 text-xl leading-none"
-                    title="Remove item"
-                >
-                    ×
-                </button>
-            </div>
-            {/* Mobile: shared toggle + people on their own row as large labelled tiles */}
-            {!isDesktop && (
-                <div className="mt-2">
-                    <PersonToggles
-                        item={item}
-                        people={people}
-                        layout="tiles"
-                        onTogglePerson={personIdx => togglePerson(itemIdx, personIdx)}
-                        onToggleCommunal={() => toggleCommunal(itemIdx)}
-                    />
-                </div>
-            )}
-            {!isDesktop && isCommunal && people.length > 1 && (
-                <div className="mt-1 text-[11px] text-blue-600 px-1">
-                    Packed once for the group — included when a highlighted person is going
-                </div>
-            )}
-            {quantityOpen && (
-                <div className="mt-2 sm:mt-0 w-full">
-                    <QuantityPanel
-                        item={item}
-                        onPerNight={value => updatePerNight(itemIdx, value)}
-                        onPerNights={value => updatePerNights(itemIdx, value)}
-                        onMaxQuantity={value => updateMaxQuantity(itemIdx, value)}
-                    />
-                </div>
-            )}
-        </div>
-    )
-})
-
-function ItemListEditor({ items, people, allItemNames, scrollRef, sectionDefaultLabel, suggestedSectionNames, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems }: {
-    items: Item[]
-    people: Person[]
-    allItemNames: string[]
-    scrollRef: React.RefObject<HTMLDivElement | null>
-    /** What the packing list will call items that carry no category of their own. */
-    sectionDefaultLabel: string
-    suggestedSectionNames: string[]
-    updateItemText: (idx: number, text: string) => void
-    togglePerson: (itemIdx: number, personIdx: number) => void
-    toggleCommunal: (itemIdx: number) => void
-    updatePerNight: (itemIdx: number, perNight: number | undefined) => void
-    updatePerNights: (itemIdx: number, perNights: number | undefined) => void
-    updateMaxQuantity: (itemIdx: number, maxQuantity: number | undefined) => void
-    removeItem: (idx: number) => void
-    addItem: () => void
-    replaceItems: (items: Item[]) => void
-}) {
-    const [openQuantityIdx, setOpenQuantityIdx] = useState<number | null>(null)
-    const [reorderMode, setReorderMode] = useState(false)
-    const isDesktop = useIsDesktop()
-    const toggleQuantity = useCallback((idx: number) =>
-        setOpenQuantityIdx(prev => prev === idx ? null : idx), [])
-    // Reorder mode only makes sense with something to reorder; if there aren't
-    // at least two items the toggle is hidden and we render the normal editor.
-    const canReorder = items.length > 1
-    const inReorder = reorderMode && canReorder
-
-    // Normal editing mode shows the same section cards as the read-only list on
-    // the page behind, so the editor always previews how the packing list will
-    // group these items — and the same section is the same colour in both.
-    const groups = useMemo(() => buildSectionGroups(items, sectionDefaultLabel), [items, sectionDefaultLabel])
-
-    // Only worth drawing the cards once the list is actually split.
-    const hasSections = groups.length > 1
-
-    const renderRow = (entry: PositionedItem) => (
-        <ItemEditorRow
-            key={`item-${entry.index}`}
-            item={entry.item}
-            itemIdx={entry.index}
-            people={people}
-            allItemNames={allItemNames}
-            isDesktop={isDesktop}
-            quantityOpen={openQuantityIdx === entry.index}
-            onToggleQuantity={toggleQuantity}
-            updateItemText={updateItemText}
-            togglePerson={togglePerson}
-            toggleCommunal={toggleCommunal}
-            updatePerNight={updatePerNight}
-            updatePerNights={updatePerNights}
-            updateMaxQuantity={updateMaxQuantity}
-            removeItem={removeItem}
-        />
-    )
-
-    return (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
-            {items.length > 0 && (
-                <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Items</div>
-                    {canReorder && (
-                        <button
-                            type="button"
-                            onClick={() => setReorderMode(m => !m)}
-                            aria-pressed={reorderMode}
-                            className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 transition-colors ${reorderMode ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
-                        >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                            </svg>
-                            {reorderMode ? 'Finish organising' : 'Organise items'}
-                        </button>
-                    )}
-                </div>
-            )}
-            {inReorder && (
-                <div className="space-y-2">
-                    <SectionedItemReorder
-                        items={items}
-                        defaultLabel={sectionDefaultLabel}
-                        suggestedSectionNames={suggestedSectionNames}
-                        scrollRef={scrollRef}
-                        onChange={replaceItems}
-                    />
-                </div>
-            )}
-            {!inReorder && !hasSections && (
-                <div className="space-y-2">
-                    {groups.flatMap(group => group.entries).map(renderRow)}
-                </div>
-            )}
-            {!inReorder && hasSections && (
-                <div className="space-y-3">
-                    {groups.map(group => {
-                        const accent = sectionAccent(group.label, group.label === sectionDefaultLabel)
-                        return (
-                            <div
-                                key={`section-${group.label}`}
-                                data-testid="editor-item-section"
-                                className={`rounded-lg border ${accent.border} overflow-hidden`}
-                            >
-                                <div className={`flex items-center gap-2 px-3 py-2 ${accent.header}`}>
-                                    <span className={`text-sm font-semibold ${accent.text} truncate`}>
-                                        {group.label}
-                                    </span>
-                                    <span className={`ml-auto shrink-0 text-[11px] font-medium ${accent.muted}`}>
-                                        {group.entries.length} item{group.entries.length === 1 ? '' : 's'}
-                                    </span>
-                                </div>
-                                <div className="p-2 space-y-2">{group.entries.map(renderRow)}</div>
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
-            {!inReorder && (
-                <button
-                    type="button"
-                    onClick={addItem}
-                    className="mt-3 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                >
-                    + Add Item
-                </button>
-            )}
-        </div>
-    )
-}
-
-// Lock background page scroll while a modal is open. Besides being correct
-// modal behaviour, on mobile it keeps the page — and the browser's URL bar —
-// from moving while a drag is happening inside the modal, which was the source
-// of the touch-drag jank (dnd-kit's own auto-scroll is already confined to the
-// item list; this stops the window scrolling underneath it).
-function useBodyScrollLock() {
-    useEffect(() => {
-        const body = document.body
-        const html = document.documentElement
-        const prev = { body: body.style.overflow, html: html.style.overflow, overscroll: body.style.overscrollBehavior }
-        // Lock both — the scrolling element is <body> on some browsers and
-        // <html> on others (notably mobile) — and stop scroll chaining.
-        body.style.overflow = 'hidden'
-        html.style.overflow = 'hidden'
-        body.style.overscrollBehavior = 'none'
-        return () => {
-            body.style.overflow = prev.body
-            html.style.overflow = prev.html
-            body.style.overscrollBehavior = prev.overscroll
-        }
-    }, [])
-}
-
-function OptionEditModal({ option, question, people, allItemNames, suggestedSectionNames, onSave, onClose }: {
+/**
+ * Naming an option — and nothing else.
+ *
+ * This modal used to carry a full item editor: every item's name, who it was
+ * for, how many, drag-reordering, section renames. All of that now happens on
+ * the page itself, in the list you are already looking at, so keeping a second
+ * copy here meant two ways to do each job with different save semantics — the
+ * page saves as you go, the modal only on Save — and no way to tell from the
+ * controls which one you were in.
+ *
+ * What is left is the one thing the page cannot do in place: the option's own
+ * name. Adding an option is the same act, so it is the same modal; its items
+ * are then added where it now sits.
+ */
+function OptionEditModal({ option, onSave, onClose }: {
     option: Option | null
-    question: Question | undefined
-    people: Person[]
-    allItemNames: string[]
-    suggestedSectionNames: string[]
     onSave: (updated: Option) => void
     onClose: () => void
 }) {
-    useBodyScrollLock()
     const [text, setText] = useState(option?.text ?? '')
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems } = useItemListState(option?.items ?? [], people)
 
-    // Tracks the option text as it's typed, so the default section heading shows
-    // the name the generated list will actually use.
-    const sectionDefaultLabel = question
-        ? defaultCategoryFor(question, { id: option?.id ?? '', text, order: option?.order ?? 0, items: [] })
-        : text
-
-    const handleSave = () => onSave({
-        id: option?.id ?? crypto.randomUUID(),
-        order: option?.order ?? 0,
-        text: text.trim(),
-        items: renumberItemOrder(items, new Date().toISOString()),
-    })
+    const handleSave = () => {
+        if (!text.trim()) return
+        onSave({
+            id: option?.id ?? crypto.randomUUID(),
+            order: option?.order ?? 0,
+            text: text.trim(),
+            // Untouched: this modal has no opinion about items any more, and a
+            // new option starts empty for the composer on the page to fill.
+            items: option?.items ?? [],
+            ...(option?.emptySections ? { emptySections: option.emptySections } : {}),
+        })
+    }
 
     return (
         <div
@@ -1385,108 +1085,34 @@ function OptionEditModal({ option, question, people, allItemNames, suggestedSect
             onClick={onClose}
             onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         >
-            <div
-                className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[85vh]"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="p-5 border-b border-gray-100 flex-shrink-0">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-3">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="p-5">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4">
                         {option ? 'Edit Option' : 'Add Option'}
                     </h2>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Answer text</label>
                     <input
                         autoFocus
                         type="text"
                         value={text}
                         onChange={e => setText(e.target.value)}
-                        placeholder="Option text (e.g. Yes)"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        onKeyDown={e => { if (e.key === 'Enter') addItem() }}
+                        placeholder="e.g. Yes"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-5"
+                        onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
                     />
-                    {people.length > 1 && (
-                        <div className="flex items-center gap-3 flex-wrap mt-3">
-                            {people.map((person, i) => (
-                                <span key={person.id} className="flex items-center gap-1 text-xs text-gray-400">
-                                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${AVATAR_ON[i % AVATAR_ON.length]}`}>
-                                        {person.name.charAt(0).toUpperCase()}
-                                    </span>
-                                    {person.name}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <ItemListEditor
-                    items={items} people={people} allItemNames={allItemNames}
-                    scrollRef={scrollRef} updateItemText={updateItemText}
-                    sectionDefaultLabel={sectionDefaultLabel} suggestedSectionNames={suggestedSectionNames}
-                    togglePerson={togglePerson} toggleCommunal={toggleCommunal}
-                    updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} addItem={addItem} replaceItems={replaceItems}
-                />
-                <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
-                    <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
-                        Cancel
-                    </button>
-                    <button type="button" onClick={handleSave} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                        {option ? 'Save changes' : 'Add option'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-function AlwaysNeededModal({ initialItems, people, allItemNames, suggestedSectionNames, onSave, onClose }: {
-    initialItems: Item[]
-    people: Person[]
-    allItemNames: string[]
-    suggestedSectionNames: string[]
-    onSave: (items: Item[]) => void
-    onClose: () => void
-}) {
-    useBodyScrollLock()
-    const { items, scrollRef, updateItemText, togglePerson, toggleCommunal, updatePerNight, updatePerNights, updateMaxQuantity, removeItem, addItem, replaceItems } = useItemListState(initialItems, people)
-
-    return (
-        <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-            onClick={onClose}
-            onKeyDown={e => { if (e.key === 'Escape') onClose() }}
-        >
-            <div
-                className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[85vh]"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="p-5 border-b border-gray-100 flex-shrink-0">
-                    <h2 className="text-lg font-semibold text-gray-900">Always Needed Items</h2>
-                    {people.length > 1 && (
-                        <div className="flex items-center gap-3 flex-wrap mt-2">
-                            {people.map((person, i) => (
-                                <span key={person.id} className="flex items-center gap-1 text-xs text-gray-400">
-                                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${AVATAR_ON[i % AVATAR_ON.length]}`}>
-                                        {person.name.charAt(0).toUpperCase()}
-                                    </span>
-                                    {person.name}
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <ItemListEditor
-                    items={items} people={people} allItemNames={allItemNames}
-                    scrollRef={scrollRef} updateItemText={updateItemText}
-                    sectionDefaultLabel={ALWAYS_NEEDED_CATEGORY} suggestedSectionNames={suggestedSectionNames}
-                    togglePerson={togglePerson} toggleCommunal={toggleCommunal}
-                    updatePerNight={updatePerNight} updatePerNights={updatePerNights} updateMaxQuantity={updateMaxQuantity}
-                    removeItem={removeItem} addItem={addItem} replaceItems={replaceItems}
-                />
-                <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2 justify-end">
-                    <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
-                        Cancel
-                    </button>
-                    <button type="button" onClick={() => onSave(renumberItemOrder(items, new Date().toISOString()))} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
-                        Save changes
-                    </button>
+                    <div className="flex gap-2 justify-end">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleSave}
+                            disabled={!text.trim()}
+                            className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {option ? 'Save changes' : 'Add option'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1699,7 +1325,6 @@ export function QuestionsPage() {
     const [questionModal, setQuestionModal] = useState<{ question: Question | null } | null>(null)
     const [optionModal, setOptionModal] = useState<{ questionId: string; option: Option | null } | null>(null)
     const [peopleModal, setPeopleModal] = useState(false)
-    const [alwaysModal, setAlwaysModal] = useState(false)
     // Bracket changes made by hand in the people modal; offered the same
     // item-review flow as birthday-driven transitions, then cleared.
     const [manualPromotions, setManualPromotions] = useState<AgeTransition[]>([])
@@ -1937,6 +1562,36 @@ export function QuestionsPage() {
         await saveData({ ...data, alwaysNeededEmptySections: emptySections })
     }, [saveData])
 
+    // A drag reports the whole list back, already stamped with each item's new
+    // section by `applySectionLayout`, so this only has to renumber and save.
+    const handleOptionReorder = useCallback(async (questionId: string, optionId: string, reordered: Item[], emptySections: string[] | undefined) => {
+        const data = dataRef.current
+        if (!data) return
+        const now = new Date().toISOString()
+        const items = renumberItemOrder(reordered, now)
+        await saveData({
+            ...data,
+            questions: withQuestionOptions(data.questions, questionId, options =>
+                options.map(o => o.id === optionId
+                    ? withEmptySections({ ...o, items }, emptySections)
+                    : o), now),
+        })
+    }, [saveData])
+
+    const handleAlwaysReorder = useCallback(async (reordered: Item[], emptySections: string[] | undefined) => {
+        const data = dataRef.current
+        if (!data) return
+        const now = new Date().toISOString()
+        // The reorder view is given the active items, so the tombstones it never
+        // saw are carried through rather than dropped.
+        const deleted = (data.alwaysNeededItems ?? []).filter(i => i.deletedAt)
+        await saveData({
+            ...data,
+            alwaysNeededItems: [...renumberItemOrder(reordered, now), ...deleted],
+            alwaysNeededEmptySections: emptySections,
+        })
+    }, [saveData])
+
     const handleAlwaysItemDelete = useCallback(async (index: number) => {
         const data = dataRef.current
         if (!data) return
@@ -1972,19 +1627,6 @@ export function QuestionsPage() {
             alwaysNeededEmptySections: reconcileEmptySections(active, items, data.alwaysNeededEmptySections),
         })
     }, [saveData])
-
-    // The modal is handed the active items only, so anything it hands back
-    // missing was deleted in it — and the tombstones it never saw have to be put
-    // back. Saving its list verbatim did neither, which meant a delete made here
-    // came straight back on the next pod merge; see `tombstoneRemovedItems`.
-    const handleAlwaysSave = useCallback(async (newItems: Item[]) => {
-        if (!data) return
-        setAlwaysModal(false)
-        await saveData({
-            ...data,
-            alwaysNeededItems: tombstoneRemovedItems(data.alwaysNeededItems ?? [], newItems, new Date().toISOString()),
-        })
-    }, [data, saveData])
 
     const handlePeopleSave = useCallback(async (newPeople: Person[]) => {
         if (!data) return
@@ -2046,7 +1688,6 @@ export function QuestionsPage() {
     const openAddOption = useCallback((questionId: string) => setOptionModal({ questionId, option: null }), [])
     const openEditOption = useCallback((questionId: string, option: Option) => setOptionModal({ questionId, option }), [])
     const openPeopleModal = useCallback(() => setPeopleModal(true), [])
-    const openAlwaysModal = useCallback(() => setAlwaysModal(true), [])
 
     // The set as a dictionary of its own item names: what the add composers
     // offer as you type, and what the name fields offer as existing options.
@@ -2101,11 +1742,11 @@ export function QuestionsPage() {
                     allItemNames={allItemNames}
                     sectionNames={suggestedSectionNames}
                     suggestions={suggestions}
-                    onEdit={openAlwaysModal}
                     onItemChange={handleAlwaysItemChange}
                     onItemAdd={handleAlwaysItemAdd}
                     onItemDelete={handleAlwaysItemDelete}
                     onSectionAdd={handleAlwaysSectionAdd}
+                    onReorder={handleAlwaysReorder}
                 />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
@@ -2127,6 +1768,7 @@ export function QuestionsPage() {
                         onItemAdd={handleOptionItemAdd}
                         onItemDelete={handleOptionItemDelete}
                         onSectionAdd={handleOptionSectionAdd}
+                        onReorder={handleOptionReorder}
                     />
                 ))}
                 <button
@@ -2147,22 +1789,8 @@ export function QuestionsPage() {
             {optionModal !== null && (
                 <OptionEditModal
                     option={optionModal.option}
-                    question={data?.questions.find(q => q.id === optionModal.questionId)}
-                    people={people}
-                    allItemNames={allItemNames}
-                    suggestedSectionNames={suggestedSectionNames}
                     onSave={handleOptionModalSave}
                     onClose={() => setOptionModal(null)}
-                />
-            )}
-            {alwaysModal && (
-                <AlwaysNeededModal
-                    initialItems={activeAlwaysNeededItems}
-                    people={people}
-                    allItemNames={allItemNames}
-                    suggestedSectionNames={suggestedSectionNames}
-                    onSave={handleAlwaysSave}
-                    onClose={() => setAlwaysModal(false)}
                 />
             )}
             {peopleModal && (

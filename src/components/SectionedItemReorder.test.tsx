@@ -8,13 +8,13 @@ function item(text: string, category?: string): Item {
     return { id: text, text, personSelections: [], ...(category ? { category } : {}) }
 }
 
-function renderReorder(items: Item[]) {
-    const onChange = vi.fn<(items: Item[]) => void>()
+function renderReorder(items: Item[], emptySections?: string[]) {
+    const onChange = vi.fn<(items: Item[], emptySections: string[] | undefined) => void>()
     render(
         <SectionedItemReorder
             items={items}
             defaultLabel="Essentials"
-            suggestedSectionNames={[]}
+            emptySections={emptySections}
             scrollRef={createRef<HTMLDivElement>()}
             onChange={onChange}
         />
@@ -118,15 +118,46 @@ describe('SectionedItemReorder move menu', () => {
         expect(within(openMenuFor('Crisps')).queryByText(/^Move to (?!top|bottom)/)).toBeNull()
     })
 
-    it('offers a section the user just added but has not filled yet', () => {
-        const onChange = renderReorder(unsectioned())
-        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
-        fireEvent.change(screen.getByLabelText('New section name'), { target: { value: 'First aid' } })
-        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-
+    it('offers a section that has been created but not filled yet', () => {
+        // Created at the foot of the list, and handed here as a prop — the view
+        // no longer keeps sections of its own that vanish when it closes.
+        const onChange = renderReorder(unsectioned(), ['First aid'])
         fireEvent.click(within(openMenuFor('Crisps')).getByText('Move to First aid'))
         expect(layout(onChange.mock.calls[0][0])).toEqual([
             ['Snacks', undefined], ['Water', undefined], ['Crisps', 'First aid'],
         ])
+    })
+
+    it('stops recording a section once something lands in it', () => {
+        const onChange = renderReorder(unsectioned(), ['First aid'])
+        fireEvent.click(within(openMenuFor('Crisps')).getByText('Move to First aid'))
+        expect(onChange.mock.calls[0][1]).toBeUndefined()
+    })
+
+    it('records a section whose last item has just been dragged out', () => {
+        // Dragging a section empty must not destroy it mid-reorganisation.
+        const onChange = renderReorder([item('Snacks'), item('Plasters', 'First aid')])
+        fireEvent.click(within(openMenuFor('Plasters')).getByText('Move to Essentials'))
+        expect(onChange.mock.calls[0][1]).toEqual(['First aid'])
+    })
+
+    it('drops a section that was deliberately removed', () => {
+        const onChange = renderReorder([item('Snacks'), item('Plasters', 'First aid')], ['Spare'])
+        fireEvent.click(screen.getByRole('button', { name: 'Remove section First aid' }))
+        expect(onChange.mock.calls[0][1]).toEqual(['Spare'])
+    })
+
+    it('renames a recorded section along with its items', () => {
+        const onChange = renderReorder([item('Snacks')], ['First aid'])
+        fireEvent.click(screen.getByRole('button', { name: 'Rename section First aid' }))
+        const input = screen.getByLabelText('Rename section First aid')
+        fireEvent.change(input, { target: { value: 'Medical' } })
+        fireEvent.blur(input)
+        expect(onChange.mock.calls[0][1]).toEqual(['Medical'])
+    })
+
+    it('no longer creates sections of its own', () => {
+        renderReorder(unsectioned())
+        expect(screen.queryByRole('button', { name: '+ Add section' })).toBeNull()
     })
 })
