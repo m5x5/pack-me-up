@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDebouncedCallback } from 'use-debounce'
 import { PackingList, PackingListItem } from '../create-packing-list/types'
@@ -30,6 +30,7 @@ import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
 import { useIsDesktop } from '../hooks/useIsDesktop'
+import { loadListViewPreferences, saveListViewPreferences, type ListViewMode } from '../utils/listViewPreferences'
 
 type FormData = {
     items: Record<string, boolean>
@@ -50,6 +51,16 @@ const SECTIONS_EXIT_MS = 550
 // "hide packed items" filter takes it — long enough to see, short enough that
 // the next item is never waiting on it.
 const ITEM_FLOURISH_MS = 450
+
+// A section that finishes in front of the user gets long enough to be seen
+// finishing — the item flourish, plus a beat to read the "All packed!" badge —
+// before it folds itself away.
+const SECTION_FOLD_DELAY_MS = 900
+
+// Joins section keys into a single comparable value. Section keys are people's
+// names and category labels, so the separator has to be something neither can
+// contain — a space or a comma would make "Ann Lee" and "Ann, Lee" the same set.
+const KEY_SEPARATOR = '\u001f'
 
 // Spread across the viewport with staggered starts so the confetti doesn't fall
 // as one rank. Fixed rather than random so the effect is identical every run.
@@ -102,6 +113,13 @@ function categoryFromLabel(label: string): string | undefined {
     return label === UNCATEGORISED_LABEL ? undefined : label
 }
 
+interface SectionStats { packed: number; total: number }
+
+/** A section is worth celebrating — and worth folding away — once every item in it is packed. */
+function isSectionComplete(stats?: SectionStats): boolean {
+    return stats !== undefined && stats.total > 0 && stats.packed === stats.total
+}
+
 export function groupByPerson(items: PackingListItem[]) {
     const map = new Map<string, PackingListItem[]>()
     for (const item of items) {
@@ -141,8 +159,12 @@ export function ViewPackingList() {
     // Used to surface a real error to the user instead of hanging on "Loading…"
     // when a foreign-pod fetch fails.
     const hasLoadedRef = useRef(false)
-    const [showPacked, setShowPacked] = useState(false)
-    const [viewMode, setViewMode] = useState<'person' | 'question'>('person')
+    // How this list was last left — folded sections, view mode, whether packed
+    // items were showing. Read once, synchronously, so a list opens folded the
+    // way it was closed rather than flashing its full self first.
+    const storedPreferences = useRef(loadListViewPreferences(id)).current
+    const [showPacked, setShowPacked] = useState(storedPreferences.showPacked)
+    const [viewMode, setViewMode] = useState<ListViewMode>(storedPreferences.viewMode)
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     // Which section has an add-item composer open inside it. Only one is mounted
     // at a time: a composer per group would put an input in front of every
@@ -152,8 +174,17 @@ export function ViewPackingList() {
     const [editingItemId, setEditingItemId] = useState<string | null>(null)
     const [editingItemText, setEditingItemText] = useState<string>('')
     const [editingItemQuantity, setEditingItemQuantity] = useState<string>('')
-    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
-    const [collapsedPersons, setCollapsedPersons] = useState<Set<string>>(new Set())
+    // Groups within a section, keyed `sectionKey::groupLabel`
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set(storedPreferences.collapsedGroups))
+    // Top-level sections: a person, a category, or the shared section
+    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set(storedPreferences.collapsedSections))
+    // Sections this page folded away on the user's behalf once everything in
+    // them was packed. Tracked apart from the folded set so a section is only
+    // ever auto-folded once: reopen it and it stays open.
+    const autoFoldedRef = useRef<Set<string>>(new Set())
+    // Sections finished before the user arrived fold without ceremony; after the
+    // first pass, folding waits for the celebration to be seen.
+    const hasFoldedOnOpenRef = useRef(false)
     const [showAddGuest, setShowAddGuest] = useState(false)
     // Reveals an empty Shared Items section on lists that have no communal
     // items yet; once an item is added the section persists from the data.
@@ -198,18 +229,30 @@ export function ViewPackingList() {
         return () => clearTimeout(timer)
     }, [flourish])
 
+    // Remember how the list was left. Cheap enough to write on every change —
+    // four scalars and two key lists — and writing eagerly means a list closed
+    // by killing the tab is remembered just as well as one navigated away from.
+    useEffect(() => {
+        saveListViewPreferences(id, {
+            viewMode,
+            showPacked,
+            collapsedSections: [...collapsedSections],
+            collapsedGroups: [...collapsedGroups],
+        })
+    }, [id, viewMode, showPacked, collapsedSections, collapsedGroups])
 
-    const toggleCategory = (key: string) =>
-        setCollapsedCategories(prev => {
+
+    const toggleGroup = (key: string) =>
+        setCollapsedGroups(prev => {
             const next = new Set(prev)
             if (next.has(key)) { next.delete(key) } else { next.add(key) }
             return next
         })
 
-    const togglePerson = (personName: string) =>
-        setCollapsedPersons(prev => {
+    const toggleSection = (sectionKey: string) =>
+        setCollapsedSections(prev => {
             const next = new Set(prev)
-            if (next.has(personName)) { next.delete(personName) } else { next.add(personName) }
+            if (next.has(sectionKey)) { next.delete(sectionKey) } else { next.add(sectionKey) }
             return next
         })
 
@@ -742,14 +785,14 @@ export function ViewPackingList() {
             // views key the same group the opposite way round.
             const sectionKey = target.communal ? SHARED_SECTION_KEY : target.personName
             const categoryLabel = target.category ?? UNCATEGORISED_LABEL
-            setCollapsedCategories(prev => {
+            setCollapsedGroups(prev => {
                 const keysToExpand = [`${sectionKey}::${categoryLabel}`, `${categoryLabel}::${target.personName}`]
                 if (!keysToExpand.some(k => prev.has(k))) return prev
                 const next = new Set(prev)
                 for (const k of keysToExpand) next.delete(k)
                 return next
             })
-            setCollapsedPersons(prev => {
+            setCollapsedSections(prev => {
                 if (!prev.has(sectionKey) && !prev.has(categoryLabel)) return prev
                 const next = new Set(prev)
                 next.delete(sectionKey)
@@ -818,6 +861,142 @@ export function ViewPackingList() {
         })
     }
 
+    const listItems = packingList?.items
+    const totalCount = listItems?.length ?? 0
+    const packedCount = useMemo(
+        () => listItems?.filter(item => watchedItems[item.id]).length ?? 0,
+        [listItems, watchedItems],
+    )
+    const allPacked = totalCount > 0 && packedCount === totalCount
+    // The form hydrates a beat after the list loads; until it does every item
+    // looks unpacked, and acting on that would fold nothing and celebrate
+    // nothing on a list that is in fact half done.
+    const formHydrated = totalCount === 0 || Object.keys(watchedItems).length > 0
+
+    // Per-section and per-group stats are wanted by the auto-fold effect as well
+    // as by the rendering below, so they're derived here rather than inline in
+    // the JSX — effects can't live after the early returns.
+    const sectionStats = useMemo(() => {
+        const stats: Record<string, SectionStats> = {}
+        for (const item of listItems ?? []) {
+            const key = item.communal ? SHARED_SECTION_KEY : item.personName
+            stats[key] ??= { packed: 0, total: 0 }
+            stats[key].total++
+            if (watchedItems[item.id]) stats[key].packed++
+        }
+        return stats
+    }, [listItems, watchedItems])
+
+    // Stats per category, used by question-centric top-level sections
+    const categoryStats = useMemo(() => {
+        const stats: Record<string, SectionStats> = {}
+        for (const item of listItems ?? []) {
+            if (item.communal) continue
+            const key = item.category ?? UNCATEGORISED_LABEL
+            stats[key] ??= { packed: 0, total: 0 }
+            stats[key].total++
+            if (watchedItems[item.id]) stats[key].packed++
+        }
+        return stats
+    }, [listItems, watchedItems])
+
+    // Stats for the groups *inside* a section. Both views are keyed here because
+    // both are one toggle away: person view groups a person's items by category,
+    // question view groups a category's items by person, and the shared section
+    // groups by category whichever view is on.
+    const groupStats = useMemo(() => {
+        const stats: Record<string, SectionStats> = {}
+        const count = (key: string, packed: boolean) => {
+            stats[key] ??= { packed: 0, total: 0 }
+            stats[key].total++
+            if (packed) stats[key].packed++
+        }
+        for (const item of listItems ?? []) {
+            const category = item.category ?? UNCATEGORISED_LABEL
+            const packed = !!watchedItems[item.id]
+            if (item.communal) {
+                count(`${SHARED_SECTION_KEY}::${category}`, packed)
+                continue
+            }
+            count(`${item.personName}::${category}`, packed)
+            count(`${category}::${item.personName || 'Unassigned'}`, packed)
+        }
+        return stats
+    }, [listItems, watchedItems])
+
+    // Which top-level sections have nothing left to pack, keyed the way the
+    // active view keys them. Sorted so the value is stable enough to compare.
+    const completeSectionKeys = useMemo(() => {
+        const stats = viewMode === 'person'
+            ? sectionStats
+            : { ...categoryStats, [SHARED_SECTION_KEY]: sectionStats[SHARED_SECTION_KEY] }
+        return Object.entries(stats)
+            .filter(([, sectionStat]) => isSectionComplete(sectionStat))
+            .map(([key]) => key)
+            .sort()
+    }, [viewMode, sectionStats, categoryStats])
+    // Depending on the joined form rather than the array keeps the fold timer
+    // below from being cancelled and restarted by every unrelated re-render.
+    const completeSectionSignature = completeSectionKeys.join(KEY_SEPARATOR)
+
+    // Showing packed items is a request to see everything, so it hands back the
+    // sections this page folded away — but not the ones the user folded, which
+    // are none of our business.
+    useEffect(() => {
+        if (!showPacked || autoFoldedRef.current.size === 0) return
+        const unfold = [...autoFoldedRef.current]
+        autoFoldedRef.current.clear()
+        setCollapsedSections(prev => {
+            if (!unfold.some(key => prev.has(key))) return prev
+            const next = new Set(prev)
+            for (const key of unfold) next.delete(key)
+            return next
+        })
+    }, [showPacked])
+
+    // A section with everything packed and packed items hidden is an empty card
+    // taking up a column — on a family list that's most of the page by the end
+    // of the evening. Fold it down to its header, where the count and the
+    // celebration still are, and leave it one tap from opening.
+    //
+    // Laid out before paint rather than after: a list opened with three people
+    // already done would otherwise show their full cards for a frame and then
+    // snatch them away, which reads as a glitch rather than as tidying up.
+    useLayoutEffect(() => {
+        if (!formHydrated || showPacked) return
+        // The whole list finishing has its own choreography; folding sections
+        // out from under it would fight the fold-away and the banner.
+        if (allPacked) return
+
+        const complete = new Set(completeSectionSignature ? completeSectionSignature.split(KEY_SEPARATOR) : [])
+        // Unpacking something makes a section eligible to fold again later
+        for (const key of autoFoldedRef.current) {
+            if (!complete.has(key)) autoFoldedRef.current.delete(key)
+        }
+        const toFold = [...complete].filter(key => !autoFoldedRef.current.has(key))
+        if (toFold.length === 0) return
+
+        const fold = () => {
+            for (const key of toFold) autoFoldedRef.current.add(key)
+            setCollapsedSections(prev => {
+                const next = new Set(prev)
+                for (const key of toFold) next.add(key)
+                return next
+            })
+        }
+
+        // Sections already finished when the list opened have no moment to
+        // watch, so they're folded before the first paint the user sees. One
+        // finished in front of them gets its beat first.
+        if (!hasFoldedOnOpenRef.current) {
+            hasFoldedOnOpenRef.current = true
+            fold()
+            return
+        }
+        const timer = setTimeout(fold, SECTION_FOLD_DELAY_MS)
+        return () => clearTimeout(timer)
+    }, [completeSectionSignature, formHydrated, showPacked, allPacked])
+
     if (isLoading) {
         return (
             <div className="max-w-4xl mx-auto py-8 px-4">
@@ -845,10 +1024,7 @@ export function ViewPackingList() {
         ? packingList.items.filter(item => watchedItems[item.id]).length
         : 0
 
-    const totalCount = packingList.items.length
-    const packedCount = packingList.items.filter(item => watchedItems[item.id]).length
     const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
-    const allPacked = totalCount > 0 && packedCount === totalCount
     // A sliver of fill so the first item packed is visibly worth something, but
     // nothing at all while the list is untouched
     const progressWidth = packedCount === 0 ? 0 : Math.max(percentComplete, 4)
@@ -868,32 +1044,10 @@ export function ViewPackingList() {
     const foldPending = allPacked && wasAllPackedRef.current === false && !showPacked
     const bannerHidden = sectionsExiting || foldPending
 
-    const sectionStats = packingList.items.reduce((acc, item) => {
-        const key = item.communal ? SHARED_SECTION_KEY : item.personName
-        if (!acc[key]) acc[key] = { packed: 0, total: 0 }
-        acc[key].total++
-        if (watchedItems[item.id]) acc[key].packed++
-        return acc
-    }, {} as Record<string, { packed: number; total: number }>)
-
-    // Stats per category, used by question-centric top-level sections
-    const categoryStats = packingList.items.reduce((acc, item) => {
-        if (item.communal) return acc
-        const key = item.category ?? 'Other'
-        if (!acc[key]) acc[key] = { packed: 0, total: 0 }
-        acc[key].total++
-        if (watchedItems[item.id]) acc[key].packed++
-        return acc
-    }, {} as Record<string, { packed: number; total: number }>)
-
     const guestNames = new Set((packingList.guests ?? []).map(g => g.name))
     const personIdByName = new Map(peopleOptions.map(person => [person.name, person.id]))
     // Only worth offering a section picker once the list has sections to pick.
     const sectionChoices = categoryOptions.length > 1 ? categoryOptions : undefined
-
-    // A section is worth celebrating once every item in it is packed
-    const isSectionComplete = (stats?: { packed: number; total: number }) =>
-        stats !== undefined && stats.total > 0 && stats.packed === stats.total
 
     // Build grouped item map, seeding guest names so their sections exist even when empty
     const groupedItems: Record<string, PackingListItem[]> = {}
@@ -960,6 +1114,31 @@ export function ViewPackingList() {
     }
 
     const tripDates = formatTripDates(packingList.startDate, packingList.endDate)
+
+    // One tap between "show me only what I'm packing right now" and the whole
+    // list laid out. Worth a control of its own only once there is more than one
+    // card to fold.
+    const foldableSections = listSections.filter(section => !collapsedSections.has(section.key))
+    const everySectionFolded = listSections.length > 0 && foldableSections.length === 0
+    const showFoldAllControl = listSections.length > 1
+    const toggleAllSections = () => {
+        if (everySectionFolded) {
+            // Expanding by hand settles the matter: sections that are already
+            // finished are marked as dealt with so they don't fold straight back.
+            for (const key of completeSectionKeys) autoFoldedRef.current.add(key)
+            setCollapsedSections(prev => {
+                const next = new Set(prev)
+                for (const section of listSections) next.delete(section.key)
+                return next
+            })
+            return
+        }
+        setCollapsedSections(prev => {
+            const next = new Set(prev)
+            for (const section of listSections) next.add(section.key)
+            return next
+        })
+    }
 
     return (
         <>
@@ -1083,6 +1262,19 @@ export function ViewPackingList() {
                                 )}
                             </div>
                             <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+                                {showFoldAllControl && (
+                                    <button
+                                        type="button"
+                                        onClick={toggleAllSections}
+                                        title={everySectionFolded ? 'Open every section' : 'Fold every section down to its header'}
+                                        className="shrink-0 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                                    >
+                                        <span aria-hidden="true" className="text-xs text-gray-400">{everySectionFolded ? '▼' : '▶'}</span>
+                                        {/* The word "all" is what tips this row onto a second
+                                            line on a phone, and the icon already says it. */}
+                                        {everySectionFolded ? (isDesktop ? 'Expand all' : 'Expand') : (isDesktop ? 'Collapse all' : 'Collapse')}
+                                    </button>
+                                )}
                                 <div className="flex items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
                                     <button
                                         type="button"
@@ -1232,11 +1424,11 @@ export function ViewPackingList() {
                                         ) : (
                                             <button
                                                 type="button"
-                                                aria-label={`${collapsedPersons.has(sectionKey) ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
-                                                onClick={() => togglePerson(sectionKey)}
+                                                aria-label={`${collapsedSections.has(sectionKey) ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
+                                                onClick={() => toggleSection(sectionKey)}
                                                 className="flex items-center gap-2 flex-1 text-left"
                                             >
-                                                <span className="text-sm text-gray-400">{collapsedPersons.has(sectionKey) ? '▶' : '▼'}</span>
+                                                <span className="text-sm text-gray-400">{collapsedSections.has(sectionKey) ? '▶' : '▼'}</span>
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 <span className="ml-1 text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
                                             </button>
@@ -1281,7 +1473,7 @@ export function ViewPackingList() {
                                         )}
                                     </div>
                                 </div>
-                                {!collapsedPersons.has(sectionKey) && <div>
+                                {!collapsedSections.has(sectionKey) && <div>
                                     {/* Every card can be typed into directly. What varies is which
                                         part of the target the card already knows: a person's card
                                         knows who, and asks which section; a section's card knows
@@ -1306,7 +1498,11 @@ export function ViewPackingList() {
                                     )}
                                     {innerGroups.map(({ label, items: catItems }) => {
                                         const categoryKey = `${sectionKey}::${label}`
-                                        const isCollapsed = collapsedCategories.has(categoryKey)
+                                        const isCollapsed = collapsedGroups.has(categoryKey)
+                                        // Counted over every item in the group, not the ones on
+                                        // screen: with packed items hidden, "2" next to a group
+                                        // seven-ninths done reads as a group barely started.
+                                        const groupStat = groupStats[categoryKey] ?? { packed: catItems.length, total: catItems.length }
                                         // Both views end up describing the same place; only which
                                         // half the card supplies changes.
                                         const groupLabel = isCategorySection
@@ -1331,12 +1527,12 @@ export function ViewPackingList() {
                                                     <button
                                                         type="button"
                                                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${label}`}
-                                                        onClick={() => toggleCategory(categoryKey)}
+                                                        onClick={() => toggleGroup(categoryKey)}
                                                         className="flex items-center gap-1 text-left text-sm font-semibold text-gray-600 hover:text-gray-900"
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
                                                         <span>{label}</span>
-                                                        <span className="text-xs font-normal text-gray-400 ml-1">({catItems.length})</span>
+                                                        <span className="text-xs font-normal text-gray-400 ml-1">{groupStat.packed} / {groupStat.total}</span>
                                                     </button>
                                                     {!isCollapsed && (
                                                         <div className="flex shrink-0 items-center gap-2">
