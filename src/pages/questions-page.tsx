@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo, memo, Fragment } fro
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
-import { ALWAYS_NEEDED_CATEGORY, buildSectionSequence, defaultCategoryFor, sectionNamesIn } from '../edit-questions/item-sections'
+import { ALWAYS_NEEDED_CATEGORY, buildSectionGroups, defaultCategoryFor, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
+import { sectionAccent } from '../edit-questions/section-accent'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
 import { Link } from 'react-router-dom'
@@ -158,8 +159,12 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
 /**
  * Read-only item list, split by section the same way the editor and the
  * generated packing list are — so this page shows the grouping a list will
- * actually have without opening a modal. Headings only appear once a list is
- * genuinely split; an unsectioned list renders exactly as it did before.
+ * actually have without opening a modal.
+ *
+ * Each section is a card with a coloured heading strip (see `section-accent`):
+ * a run of items under a line of grey capitals read as one undivided list, and
+ * the grouping is the whole point of the page. Cards only appear once a list is
+ * genuinely split; an unsectioned list renders as plain rows, as it did before.
  */
 const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, allItemNames = NO_NAMES, sectionNames = NO_NAMES, onItemChange }: {
     items: Item[]
@@ -175,18 +180,8 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     // costs more than one mounted editor.
     const [openIndex, setOpenIndex] = useState<number | null>(null)
 
-    // Each entry keeps its flat array index, which is what `applyItemEdit`
-    // addresses. Sections group by category, not by array position, so the two
-    // orders differ and the index has to be carried rather than recomputed.
-    const sequence = useMemo(() => {
-        const indexOf = new Map(items.map((item, i) => [item, i]))
-        return buildSectionSequence(items, defaultLabel, [])
-            .map(entry => entry.kind === 'header'
-                ? { kind: 'header' as const, label: entry.label }
-                : { kind: 'item' as const, item: entry.item, index: indexOf.get(entry.item)! })
-    }, [items, defaultLabel])
-
-    const hasSections = sequence.filter(e => e.kind === 'header').length > 1
+    const groups = useMemo(() => buildSectionGroups(items, defaultLabel), [items, defaultLabel])
+    const hasSections = groups.length > 1
     // A sync or a delete can shrink the list under an open row; treat an index
     // that no longer exists as closed rather than rendering against undefined.
     const openAt = openIndex !== null && openIndex < items.length ? openIndex : null
@@ -209,43 +204,62 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         if ((edited.category ?? null) !== (before.category ?? null)) setOpenIndex(null)
     }, [openAt, items, onItemChange])
 
+    const renderRow = (entry: PositionedItem) => (
+        <Fragment key={`item-${entry.index}`}>
+            <ItemRow
+                item={entry.item}
+                people={people}
+                index={entry.index}
+                isOpen={openAt === entry.index}
+                onOpen={onItemChange ? handleOpen : undefined}
+            />
+            {openAt === entry.index && (
+                <ItemInlineEditor
+                    item={entry.item}
+                    people={people}
+                    allItemNames={allItemNames}
+                    sectionNames={sectionNames}
+                    sectionDefaultLabel={defaultLabel}
+                    onChange={handleChange}
+                    onClose={handleClose}
+                />
+            )}
+        </Fragment>
+    )
+
+    if (!hasSections) {
+        return <div className="space-y-0.5">{groups.flatMap(group => group.entries).map(renderRow)}</div>
+    }
+
     return (
-        <>
-            {sequence.map(entry => entry.kind === 'header' ? (
-                hasSections && (
-                    <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-2 pb-0.5 px-2">
-                        <span
-                            data-testid="item-section-heading"
-                            className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide truncate"
-                        >
-                            {entry.label}
-                        </span>
-                        <span className="flex-1 h-px bg-gray-100" />
+        <div className="space-y-2">
+            {groups.map(group => {
+                const accent = sectionAccent(group.label, group.label === defaultLabel)
+                return (
+                    <div
+                        key={`section-${group.label}`}
+                        data-testid="item-section"
+                        className={`rounded-lg border ${accent.border} bg-white overflow-hidden`}
+                    >
+                        <div className={`flex items-center gap-2 px-2.5 py-1.5 ${accent.header}`}>
+                            <span
+                                data-testid="item-section-heading"
+                                className={`text-sm font-semibold ${accent.text} truncate`}
+                            >
+                                {group.label}
+                            </span>
+                            <span
+                                data-testid="item-section-count"
+                                className={`ml-auto shrink-0 text-[11px] font-medium ${accent.muted}`}
+                            >
+                                {group.entries.length} item{group.entries.length === 1 ? '' : 's'}
+                            </span>
+                        </div>
+                        <div className="p-1 space-y-0.5">{group.entries.map(renderRow)}</div>
                     </div>
                 )
-            ) : (
-                <Fragment key={`item-${entry.index}`}>
-                    <ItemRow
-                        item={entry.item}
-                        people={people}
-                        index={entry.index}
-                        isOpen={openAt === entry.index}
-                        onOpen={onItemChange ? handleOpen : undefined}
-                    />
-                    {openAt === entry.index && (
-                        <ItemInlineEditor
-                            item={entry.item}
-                            people={people}
-                            allItemNames={allItemNames}
-                            sectionNames={sectionNames}
-                            sectionDefaultLabel={defaultLabel}
-                            onChange={handleChange}
-                            onClose={handleClose}
-                        />
-                    )}
-                </Fragment>
-            ))}
-        </>
+            })}
+        </div>
     )
 })
 
@@ -394,7 +408,7 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                 </div>
             </div>
             {hasExpandedRef.current && (
-                <div className={`space-y-0.5${isExpanded ? '' : ' hidden'}`}>
+                <div className={isExpanded ? undefined : 'hidden'}>
                     <SectionedItemRows
                         items={option.items}
                         people={people}
@@ -698,7 +712,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames,
                 </button>
             </div>
             {hasExpandedRef.current && (
-                <div className={`mt-3 space-y-1${isExpanded ? '' : ' hidden'}`}>
+                <div className={`mt-3${isExpanded ? '' : ' hidden'}`}>
                     <SectionedItemRows
                         items={items}
                         people={people}
@@ -935,20 +949,33 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, sectionDefault
     const canReorder = items.length > 1
     const inReorder = reorderMode && canReorder
 
-    // Normal editing mode shows the same section headings as the reorder view,
-    // read-only, so the editor always previews how the packing list will group
-    // these items. Each entry keeps its flat array index, which is what every
-    // per-item handler addresses.
-    const editorSequence = useMemo(() => {
-        const indexOf = new Map(items.map((item, i) => [item, i]))
-        return buildSectionSequence(items, sectionDefaultLabel, [])
-            .map(entry => entry.kind === 'header'
-                ? { kind: 'header' as const, label: entry.label }
-                : { kind: 'item' as const, item: entry.item, index: indexOf.get(entry.item)! })
-    }, [items, sectionDefaultLabel])
+    // Normal editing mode shows the same section cards as the read-only list on
+    // the page behind, so the editor always previews how the packing list will
+    // group these items — and the same section is the same colour in both.
+    const groups = useMemo(() => buildSectionGroups(items, sectionDefaultLabel), [items, sectionDefaultLabel])
 
-    // Only worth showing headings once the list is actually split.
-    const hasSections = editorSequence.filter(e => e.kind === 'header').length > 1
+    // Only worth drawing the cards once the list is actually split.
+    const hasSections = groups.length > 1
+
+    const renderRow = (entry: PositionedItem) => (
+        <ItemEditorRow
+            key={`item-${entry.index}`}
+            item={entry.item}
+            itemIdx={entry.index}
+            people={people}
+            allItemNames={allItemNames}
+            isDesktop={isDesktop}
+            quantityOpen={openQuantityIdx === entry.index}
+            onToggleQuantity={toggleQuantity}
+            updateItemText={updateItemText}
+            togglePerson={togglePerson}
+            toggleCommunal={toggleCommunal}
+            updatePerNight={updatePerNight}
+            updatePerNights={updatePerNights}
+            updateMaxQuantity={updateMaxQuantity}
+            removeItem={removeItem}
+        />
+    )
 
     return (
         <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
@@ -970,8 +997,8 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, sectionDefault
                     )}
                 </div>
             )}
-            <div className="space-y-2">
-                {inReorder && (
+            {inReorder && (
+                <div className="space-y-2">
                     <SectionedItemReorder
                         items={items}
                         defaultLabel={sectionDefaultLabel}
@@ -979,36 +1006,37 @@ function ItemListEditor({ items, people, allItemNames, scrollRef, sectionDefault
                         scrollRef={scrollRef}
                         onChange={replaceItems}
                     />
-                )}
-                {!inReorder && editorSequence.map(entry => entry.kind === 'header' ? (
-                    hasSections && (
-                        <div key={`header-${entry.label}`} className="flex items-center gap-2 pt-3 pb-1">
-                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">
-                                {entry.label}
-                            </span>
-                            <span className="flex-1 h-px bg-gray-200" />
-                        </div>
-                    )
-                ) : (
-                    <ItemEditorRow
-                        key={`item-${entry.index}`}
-                        item={entry.item}
-                        itemIdx={entry.index}
-                        people={people}
-                        allItemNames={allItemNames}
-                        isDesktop={isDesktop}
-                        quantityOpen={openQuantityIdx === entry.index}
-                        onToggleQuantity={toggleQuantity}
-                        updateItemText={updateItemText}
-                        togglePerson={togglePerson}
-                        toggleCommunal={toggleCommunal}
-                        updatePerNight={updatePerNight}
-                        updatePerNights={updatePerNights}
-                        updateMaxQuantity={updateMaxQuantity}
-                        removeItem={removeItem}
-                    />
-                ))}
-            </div>
+                </div>
+            )}
+            {!inReorder && !hasSections && (
+                <div className="space-y-2">
+                    {groups.flatMap(group => group.entries).map(renderRow)}
+                </div>
+            )}
+            {!inReorder && hasSections && (
+                <div className="space-y-3">
+                    {groups.map(group => {
+                        const accent = sectionAccent(group.label, group.label === sectionDefaultLabel)
+                        return (
+                            <div
+                                key={`section-${group.label}`}
+                                data-testid="editor-item-section"
+                                className={`rounded-lg border ${accent.border} overflow-hidden`}
+                            >
+                                <div className={`flex items-center gap-2 px-3 py-2 ${accent.header}`}>
+                                    <span className={`text-sm font-semibold ${accent.text} truncate`}>
+                                        {group.label}
+                                    </span>
+                                    <span className={`ml-auto shrink-0 text-[11px] font-medium ${accent.muted}`}>
+                                        {group.entries.length} item{group.entries.length === 1 ? '' : 's'}
+                                    </span>
+                                </div>
+                                <div className="p-2 space-y-2">{group.entries.map(renderRow)}</div>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
             {!inReorder && (
                 <button
                     type="button"

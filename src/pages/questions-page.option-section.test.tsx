@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import React from 'react'
 import { OptionSection } from './questions-page'
+import { DEFAULT_SECTION_ACCENT, sectionAccent } from '../edit-questions/section-accent'
 import type { Item, Option, Person } from '../edit-questions/types'
 
 vi.mock('../components/DatabaseContext', () => ({ useDatabase: vi.fn() }))
@@ -95,6 +96,14 @@ describe('OptionSection with items', () => {
         // a section heading when the list isn't actually split.
         expect(screen.queryByTestId('item-section-heading')).toBeNull()
     })
+
+    it('wraps nothing in a section card when the list is not split', () => {
+        // A single-section list has no grouping to show, so the cards would be
+        // decoration around the whole thing.
+        renderOption(withItems())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.queryByTestId('item-section')).toBeNull()
+    })
 })
 
 describe('OptionSection with sectioned items', () => {
@@ -118,6 +127,43 @@ describe('OptionSection with sectioned items', () => {
         renderOption(sectioned(), 'Staying overnight?')
         fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
         expect(screen.getAllByTestId('item-section-heading')[0].textContent).toBe('Staying overnight?')
+    })
+
+    it('puts each section in its own card, with its items inside it', () => {
+        // A heading with a hairline beside it left every item looking like it
+        // belonged to the same undifferentiated list; the card is what makes
+        // "these three items are the Toiletries" visible without reading.
+        renderOption(sectioned())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        const cards = screen.getAllByTestId('item-section')
+        expect(cards).toHaveLength(3)
+        expect(within(cards[1]).getByTestId('item-section-heading').textContent).toBe('Toiletries')
+        expect(within(cards[1]).getByText('Toothbrush')).toBeTruthy()
+        expect(within(cards[1]).queryByText('Socks')).toBeNull()
+    })
+
+    it('counts the items in each section', () => {
+        renderOption(makeOption({
+            items: [
+                { text: 'Socks', personSelections: [] },
+                { text: 'Toothbrush', personSelections: [], category: 'Toiletries' },
+                { text: 'Toothpaste', personSelections: [], category: 'Toiletries' },
+            ],
+        }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        const counts = screen.getAllByTestId('item-section-count').map(c => c.textContent)
+        expect(counts).toEqual(['1 item', '2 items'])
+    })
+
+    it('colours named sections and leaves the default one neutral', () => {
+        // Colour is the cue that carries across options: the same section name
+        // looks the same wherever it appears, and the main pile stays quiet.
+        renderOption(sectioned())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        const cards = screen.getAllByTestId('item-section')
+        expect(cards[0].className).toContain(DEFAULT_SECTION_ACCENT.border)
+        expect(cards[1].className).toContain(sectionAccent('Toiletries', false).border)
+        expect(cards[2].className).toContain(sectionAccent('Sleep', false).border)
     })
 })
 
