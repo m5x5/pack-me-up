@@ -20,8 +20,11 @@ import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { LoadingState } from '../components/LoadingState'
 import { AgeTransition } from '../edit-questions/age-derivation'
 import { useIsDesktop } from '../hooks/useIsDesktop'
-import { applyItemEdit, withQuestionOptions } from '../edit-questions/item-edits'
+import { appendItemToSection, applyItemEdit, withQuestionOptions } from '../edit-questions/item-edits'
 import { ItemInlineEditor } from '../components/ItemInlineEditor'
+import { AddQuestionItem } from '../components/AddQuestionItem'
+import { ALWAYS_LIST_KEY, buildQuestionSetSuggestions, listKeyFor } from '../edit-questions/item-suggestions'
+import { buildIndexOf, type SuggestionIndex } from '../utils/itemSuggestions'
 import {
     AVATAR_ON,
     AVATAR_OFF,
@@ -156,6 +159,22 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
     )
 })
 
+/** Composer key for the one at the foot of a list, which picks its own section. */
+const LIST_COMPOSER = '__list__'
+
+/**
+ * Everything one item list needs to add to itself. Passed as a single object so
+ * a list that can't be added to (a foreign pod's, say) is `undefined` rather
+ * than three separate omitted props — and so one `useMemo` keeps the whole lot
+ * stable for the memoized rows below.
+ */
+export interface ItemAdding {
+    suggestions: SuggestionIndex
+    /** Which list this is, so its own names aren't offered back to it. */
+    ownerKey: string
+    onAdd: (text: string, category: string | undefined) => void
+}
+
 /**
  * Read-only item list, split by section the same way the editor and the
  * generated packing list are — so this page shows the grouping a list will
@@ -165,13 +184,23 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
  * a run of items under a line of grey capitals read as one undivided list, and
  * the grouping is the whole point of the page. Cards only appear once a list is
  * genuinely split; an unsectioned list renders as plain rows, as it did before.
+ *
+ * Every heading carries a ＋ that adds to *that* section, which is the shortest
+ * way to say where an item goes: you tap it where you want the item, and it
+ * lands there. The list also ends with one that picks its own section, for a
+ * list with no sections yet and for sections that don't exist yet. Only one
+ * composer is mounted at a time — one per heading would put an input in front
+ * of every section on the page, which is the cost the read-only rows exist to
+ * avoid.
  */
-const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, allItemNames = NO_NAMES, sectionNames = NO_NAMES, onItemChange }: {
+const SectionedItemRows = memo(function SectionedItemRows({ items, people, defaultLabel, allItemNames = NO_NAMES, sectionNames = NO_NAMES, adding, onItemChange }: {
     items: Item[]
     people: Person[]
     defaultLabel: string
     allItemNames?: string[]
     sectionNames?: string[]
+    /** Omit to leave the list read-only — no ＋ buttons, no composer. */
+    adding?: ItemAdding
     /** Omit to keep the list purely read-only — rows then aren't clickable. */
     onItemChange?: (index: number, edited: Item) => void
 }) {
@@ -179,9 +208,38 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
     // every edit is addressed by. At most one is open, so a long list never
     // costs more than one mounted editor.
     const [openIndex, setOpenIndex] = useState<number | null>(null)
+    // Which composer is open, by section label (or LIST_COMPOSER for the one at
+    // the foot). Same one-at-a-time rule, for the same reason.
+    const [openComposer, setOpenComposer] = useState<string | null>(null)
+    const closeComposer = useCallback(() => setOpenComposer(null), [])
 
     const groups = useMemo(() => buildSectionGroups(items, defaultLabel), [items, defaultLabel])
     const hasSections = groups.length > 1
+
+    // Sections the foot composer can file into: the ones this list already has,
+    // plus every name used elsewhere in the set — so filing an item under
+    // Toiletries doesn't depend on this particular answer having used it yet.
+    const sectionOptions = useMemo(
+        () => [...new Set([...groups.map(group => group.label), ...sectionNames])]
+            .filter(label => label !== defaultLabel),
+        [groups, sectionNames, defaultLabel])
+
+    const renderComposer = (label: string, forSection: boolean) => adding && (
+        <AddQuestionItem
+            category={forSection && label !== defaultLabel ? label : undefined}
+            sectionOptions={forSection ? undefined : sectionOptions}
+            defaultLabel={defaultLabel}
+            suggestions={adding.suggestions}
+            ownerKey={adding.ownerKey}
+            targetLabel={label}
+            // Where it is going, restated where the typing happens: the heading
+            // it opened under scrolls off a phone as soon as the keyboard is up.
+            placeholder={forSection ? `Add to ${label}...` : 'Add an item...'}
+            onAdd={adding.onAdd}
+            onClose={closeComposer}
+            autoFocus
+        />
+    )
     // A sync or a delete can shrink the list under an open row; treat an index
     // that no longer exists as closed rather than rendering against undefined.
     const openAt = openIndex !== null && openIndex < items.length ? openIndex : null
@@ -227,38 +285,86 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
         </Fragment>
     )
 
+    // The foot of every list: one tap to a composer that asks where the item
+    // goes. It replaces itself with the composer rather than sitting above it,
+    // so the list never grows two add affordances at once.
+    const listFooter = adding && (
+        openComposer === LIST_COMPOSER
+            ? <div className="mt-2">{renderComposer(defaultLabel, false)}</div>
+            : (
+                <button
+                    type="button"
+                    onClick={() => setOpenComposer(LIST_COMPOSER)}
+                    className="mt-2 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                >
+                    + Add item
+                </button>
+            )
+    )
+
     if (!hasSections) {
-        return <div className="space-y-0.5">{groups.flatMap(group => group.entries).map(renderRow)}</div>
+        return (
+            <div>
+                <div className="space-y-0.5">{groups.flatMap(group => group.entries).map(renderRow)}</div>
+                {listFooter}
+            </div>
+        )
     }
 
     return (
-        <div className="space-y-2">
-            {groups.map(group => {
-                const accent = sectionAccent(group.label, group.label === defaultLabel)
-                return (
-                    <div
-                        key={`section-${group.label}`}
-                        data-testid="item-section"
-                        className={`rounded-lg border ${accent.border} bg-white overflow-hidden`}
-                    >
-                        <div className={`flex items-center gap-2 px-2.5 py-1.5 ${accent.header}`}>
-                            <span
-                                data-testid="item-section-heading"
-                                className={`text-sm font-semibold ${accent.text} truncate`}
-                            >
-                                {group.label}
-                            </span>
-                            <span
-                                data-testid="item-section-count"
-                                className={`ml-auto shrink-0 text-[11px] font-medium ${accent.muted}`}
-                            >
-                                {group.entries.length} item{group.entries.length === 1 ? '' : 's'}
-                            </span>
+        <div>
+            <div className="space-y-2">
+                {groups.map(group => {
+                    const accent = sectionAccent(group.label, group.label === defaultLabel)
+                    return (
+                        <div
+                            key={`section-${group.label}`}
+                            data-testid="item-section"
+                            // Deliberately not `overflow-hidden`: the composer's
+                            // suggestion list hangs below the card and was being
+                            // clipped away to nothing. The heading rounds its own
+                            // top corners instead of relying on the card to crop
+                            // them.
+                            className={`rounded-lg border ${accent.border} bg-white`}
+                        >
+                            <div className={`flex items-center gap-2 rounded-t-lg px-2.5 py-1.5 ${accent.header}`}>
+                                <span
+                                    data-testid="item-section-heading"
+                                    className={`text-sm font-semibold ${accent.text} truncate`}
+                                >
+                                    {group.label}
+                                </span>
+                                <span
+                                    data-testid="item-section-count"
+                                    className={`ml-auto shrink-0 text-[11px] font-medium ${accent.muted}`}
+                                >
+                                    {group.entries.length} item{group.entries.length === 1 ? '' : 's'}
+                                </span>
+                                {adding && (
+                                    <button
+                                        type="button"
+                                        data-testid="add-to-section"
+                                        onClick={() => setOpenComposer(prev => prev === group.label ? null : group.label)}
+                                        aria-expanded={openComposer === group.label}
+                                        aria-label={`Add an item to ${group.label}`}
+                                        title={`Add an item to ${group.label}`}
+                                        className={`shrink-0 -my-1 rounded p-1.5 ${accent.text} hover:bg-white/70 transition-colors`}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+                            <div className="p-1 space-y-0.5">{group.entries.map(renderRow)}</div>
+                            {openComposer === group.label && (
+                                <div className="px-1.5 pb-1.5 pt-0.5">{renderComposer(group.label, true)}</div>
+                            )}
                         </div>
-                        <div className="p-1 space-y-0.5">{group.entries.map(renderRow)}</div>
-                    </div>
-                )
-            })}
+                    )
+                })}
+            </div>
+            {listFooter}
         </div>
     )
 })
@@ -303,7 +409,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
     )
 }
 
-export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, onEdit, onDelete, onItemChange }: {
+export function OptionSection({ option, people, sectionDefaultLabel, allItemNames, sectionNames, questionId, suggestions, onEdit, onDelete, onItemChange, onItemAdd }: {
     option: Option
     people: Person[]
     /** What the packing list will call items here that carry no category. */
@@ -311,10 +417,13 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     allItemNames?: string[]
     sectionNames?: string[]
     questionId?: string
+    suggestions?: SuggestionIndex
     onEdit: () => void
     onDelete: () => void
     /** Omit to leave the item rows read-only. */
     onItemChange?: (questionId: string, optionId: string, index: number, edited: Item) => void
+    /** Omit to leave the list unaddable — no ＋ buttons appear. */
+    onItemAdd?: (questionId: string, optionId: string, text: string, category: string | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
     // Bound to this option's ids once, so the memoized row list isn't handed a
@@ -325,6 +434,15 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
             ? (index: number, edited: Item) => onItemChange(questionId, optionId, index, edited)
             : undefined,
         [onItemChange, questionId, optionId])
+    const adding = useMemo<ItemAdding | undefined>(
+        () => onItemAdd && questionId && suggestions
+            ? {
+                suggestions,
+                ownerKey: listKeyFor(questionId, optionId),
+                onAdd: (text, category) => onItemAdd(questionId, optionId, text, category),
+            }
+            : undefined,
+        [onItemAdd, questionId, optionId, suggestions])
     const [showDeleteModal, setShowDeleteModal] = useState(false)
     // Items aren't mounted until first expand (cheap initial render for large
     // sets), but stay mounted afterwards so re-expanding is instant.
@@ -332,11 +450,14 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
     if (isExpanded) hasExpandedRef.current = true
     // Nothing to reveal when an answer has no items, so drop the chevron and the
     // toggle entirely and say so inline — an expander that opens onto nothing
-    // just reads as broken.
+    // just reads as broken. Once items can be added it no longer opens onto
+    // nothing, and an answer with no items is exactly the one most in need of
+    // somewhere to put the first.
     const isEmpty = option.items.length === 0
+    const canExpand = !isEmpty || adding !== undefined
     const heading = (
         <>
-            {isEmpty ? (
+            {!canExpand ? (
                 // Spacer keeps the text aligned with the chevroned siblings.
                 <span className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
             ) : (
@@ -359,9 +480,9 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
         </>
     )
     return (
-        <div className="bg-gray-50 rounded-lg p-3">
+        <div data-testid="option-section" className="bg-gray-50 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
-                {isEmpty ? (
+                {!canExpand ? (
                     <div className="flex items-center gap-2 flex-1 text-left min-w-0">
                         {heading}
                     </div>
@@ -415,6 +536,7 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                         defaultLabel={sectionDefaultLabel}
                         allItemNames={allItemNames}
                         sectionNames={sectionNames}
+                        adding={adding}
                         onItemChange={handleItemChange}
                     />
                 </div>
@@ -534,13 +656,14 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
 
 // Memoized with id-based handlers whose identity survives page re-renders, so
 // opening a modal (or a background sync tick) doesn't re-render every question.
-const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange }: {
+const QuestionSection = memo(function QuestionSection({ question, people, canMoveUp, canMoveDown, allItemNames, sectionNames, suggestions, onEdit, onDelete, onAddOption, onEditOption, onDeleteOption, onMove, onItemChange, onItemAdd }: {
     question: Question
     people: Person[]
     canMoveUp: boolean
     canMoveDown: boolean
     allItemNames: string[]
     sectionNames: string[]
+    suggestions: SuggestionIndex
     onEdit: (question: Question) => void
     onDelete: (id: string) => void
     onAddOption: (questionId: string) => void
@@ -548,6 +671,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     onDeleteOption: (questionId: string, optionId: string) => void
     onMove: (id: string, direction: 'up' | 'down') => void
     onItemChange: (questionId: string, optionId: string, index: number, edited: Item) => void
+    onItemAdd: (questionId: string, optionId: string, text: string, category: string | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(true)
     const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -645,9 +769,11 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             allItemNames={allItemNames}
                             sectionNames={sectionNames}
                             questionId={question.id}
+                            suggestions={suggestions}
                             onEdit={() => onEditOption(question.id, option)}
                             onDelete={() => onDeleteOption(question.id, option.id)}
                             onItemChange={onItemChange}
+                            onItemAdd={onItemAdd}
                         />
                     ))}
                     <button
@@ -669,15 +795,20 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     )
 })
 
-const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames, sectionNames, onEdit, onItemChange }: {
+const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames, sectionNames, suggestions, onEdit, onItemChange, onItemAdd }: {
     items: Item[]
     people: Person[]
     allItemNames: string[]
     sectionNames: string[]
+    suggestions: SuggestionIndex
     onEdit: () => void
     onItemChange: (index: number, edited: Item) => void
+    onItemAdd: (text: string, category: string | undefined) => void
 }) {
     const [isExpanded, setIsExpanded] = useState(false)
+    const adding = useMemo<ItemAdding>(
+        () => ({ suggestions, ownerKey: ALWAYS_LIST_KEY, onAdd: onItemAdd }),
+        [suggestions, onItemAdd])
     // Same lazy-mount-then-keep pattern as the sections above.
     const hasExpandedRef = useRef(isExpanded)
     if (isExpanded) hasExpandedRef.current = true
@@ -719,6 +850,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, allItemNames,
                         defaultLabel={ALWAYS_NEEDED_CATEGORY}
                         allItemNames={allItemNames}
                         sectionNames={sectionNames}
+                        adding={adding}
                         onItemChange={onItemChange}
                     />
                 </div>
@@ -1560,6 +1692,45 @@ export function QuestionsPage() {
         })
     }, [saveData])
 
+    // A new item goes to everyone on the list, which is what the editor modal's
+    // "+ Add Item" has always done. Who it's for and how many are a tap away in
+    // the row it just landed in, so the composer doesn't have to ask.
+    const newItem = useCallback((text: string): Item => ({
+        id: crypto.randomUUID(),
+        text,
+        personSelections: (dataRef.current?.people ?? [])
+            .filter(person => !person.deletedAt)
+            .map(person => ({ personId: person.id, selected: true })),
+    }), [])
+
+    const handleOptionItemAdd = useCallback(async (questionId: string, optionId: string, text: string, category: string | undefined) => {
+        const data = dataRef.current
+        if (!data) return
+        const question = data.questions.find(q => q.id === questionId)
+        const option = question?.options.find(o => o.id === optionId)
+        if (!question || !option) return
+        const now = new Date().toISOString()
+        const items = appendItemToSection(option.items, newItem(text), category, defaultCategoryFor(question, option), now)
+        await saveData({
+            ...data,
+            questions: withQuestionOptions(data.questions, questionId, options =>
+                options.map(o => o.id === optionId ? { ...o, items } : o), now),
+        })
+    }, [saveData, newItem])
+
+    const handleAlwaysItemAdd = useCallback(async (text: string, category: string | undefined) => {
+        const data = dataRef.current
+        if (!data) return
+        const stored = data.alwaysNeededItems ?? []
+        // Same split as handleAlwaysItemChange: the rows show the active items, so
+        // that is the list being added to, and the tombstones ride along untouched.
+        const active = stored.filter(i => !i.deletedAt)
+        const deleted = stored.filter(i => i.deletedAt)
+        const now = new Date().toISOString()
+        const items = appendItemToSection(active, newItem(text), category, ALWAYS_NEEDED_CATEGORY, now)
+        await saveData({ ...data, alwaysNeededItems: [...items, ...deleted] })
+    }, [saveData, newItem])
+
     const handleAlwaysItemChange = useCallback(async (index: number, edited: Item) => {
         const data = dataRef.current
         if (!data) return
@@ -1642,14 +1813,13 @@ export function QuestionsPage() {
     const openPeopleModal = useCallback(() => setPeopleModal(true), [])
     const openAlwaysModal = useCallback(() => setAlwaysModal(true), [])
 
-    const allItemNames = useMemo(() => {
-        if (!data) return []
-        const names = [
-            ...(data.alwaysNeededItems ?? []).filter(i => !i.deletedAt).map(i => i.text),
-            ...data.questions.filter(q => !q.deletedAt).flatMap(q => q.options.flatMap(o => o.items.filter(i => !i.deletedAt).map(i => i.text))),
-        ].filter(Boolean)
-        return [...new Set(names)]
-    }, [data])
+    // The set as a dictionary of its own item names: what the add composers
+    // offer as you type, and what the name fields offer as existing options.
+    // One scan serves both, and the names arrive deduped and alphabetical.
+    const suggestions = useMemo(
+        () => data ? buildQuestionSetSuggestions(data) : buildIndexOf([]),
+        [data])
+    const allItemNames = useMemo(() => suggestions.all.map(s => s.text), [suggestions])
 
     // Section names already in use anywhere in the question set, offered as
     // suggestions so the same section spelled two ways doesn't split into two
@@ -1694,8 +1864,10 @@ export function QuestionsPage() {
                     people={people}
                     allItemNames={allItemNames}
                     sectionNames={suggestedSectionNames}
+                    suggestions={suggestions}
                     onEdit={openAlwaysModal}
                     onItemChange={handleAlwaysItemChange}
+                    onItemAdd={handleAlwaysItemAdd}
                 />
                 {activeQuestions.map((q, qi) => (
                     <QuestionSection
@@ -1706,6 +1878,7 @@ export function QuestionsPage() {
                         canMoveDown={qi < activeQuestions.length - 1}
                         allItemNames={allItemNames}
                         sectionNames={suggestedSectionNames}
+                        suggestions={suggestions}
                         onEdit={openEditQuestion}
                         onDelete={handleDeleteQuestion}
                         onAddOption={openAddOption}
@@ -1713,6 +1886,7 @@ export function QuestionsPage() {
                         onDeleteOption={handleDeleteOption}
                         onMove={handleMoveQuestion}
                         onItemChange={handleOptionItemChange}
+                        onItemAdd={handleOptionItemAdd}
                     />
                 ))}
                 <button
