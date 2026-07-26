@@ -70,7 +70,9 @@ list it generates:
    neither of which exists today.
 2. **"Where will you be staying?"** — **`questionType: 'multiple-choice'`**.
    Options: *Hotel or B&B / Self-catering (cottage, apartment, villa) /
-   Someone else's home / Camping or caravan / Cruise ship*. **Replaces** the
+   Someone else's home / Camping / Caravan or motorhome / Cruise ship*. Camping
+   and caravanning are separate trips — a tent needs pegs and a stove, a caravan
+   needs a hook-up cable and toilet chemicals. **Replaces** the
    current self-catering question. Same information, four more archetypes
    unlocked.
    Both of these questions must be multi-select — see §2, which is where the
@@ -235,7 +237,8 @@ option.
 | Hotel or B&B | `Booking confirmation`, `Room key card holder` — deliberately tiny; the hotel supplies the rest |
 | Self-catering (cottage, apartment, villa) | `Dish soap and sponge`, `Dishwasher tablets`, `Tea towels`, `Shopping bags`, `Bin bags`, `Tea and coffee`, `Sharp knife`, `Foil`, `Corkscrew` — all `communalItem` |
 | Someone else's home | `Host gift`, `Travel cot`, `Travel cot sheet`, `Stair gate`, `Blackout blind`, `Towels` |
-| Camping or caravan | `Tent`, `Sleeping bag`, `Sleeping mat`, `Head torch`, `Camping stove and gas`, `Camp chairs`, `Wellies`, `Towels` |
+| Camping | `Tent`, `Tent pegs and mallet`, `Groundsheet`, `Sleeping bag`, `Sleeping mat`, `Pillow`, `Head torch`, `Camping stove and gas`, `Matches or lighter`, `Camp chairs`, `Washing-up bowl and liquid`, `Cool box`, `Bin bags`, `Wellies`, `Towels` |
+| Caravan or motorhome | `Electric hook-up cable`, `Water hose and container`, `Waste water container`, `Levelling blocks and chocks`, `Spare gas bottle`, `Awning`, `Toilet chemicals`, `Bedding`, `Pillow`, `Camp chairs`, `Washing-up bowl and liquid`, `Cool box`, `Bin bags`, `Wellies`, `Towels`, `Pitch booking confirmation` |
 | Cruise ship | `Lanyard for key card`, `Seasickness remedies`, `Formal outfit`, `Port daypack` |
 | Flying | `Boarding passes`, `Hand luggage liquids bag`, `Travel pillow`, `Downloaded films and music`, `Medication in hand luggage`, `Milk or dummy for take-off and landing` |
 | Driving | `Car seat`, `Booster seat`, `Driving licence`, `Breakdown cover documents`, `Car charger`, `Travel sickness tablets`, `Sick bags`, `Screen wash` |

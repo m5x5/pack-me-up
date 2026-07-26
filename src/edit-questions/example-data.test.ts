@@ -473,6 +473,36 @@ describe('createExampleData - transport and accommodation', () => {
         }
     })
 
+    // Two different trips: a tent needs pegs and a stove, a caravan needs a
+    // hook-up cable and toilet chemicals, and neither list suits the other.
+    it('keeps camping and caravanning as separate options', () => {
+        const accommodation = question(createExampleData(family), TEMPLATE_QUESTION_IDS.accommodation)
+        const optionIds = accommodation.options.map(o => o.id)
+        expect(optionIds).toContain(ACCOMMODATION_OPTION_IDS.camping)
+        expect(optionIds).toContain(ACCOMMODATION_OPTION_IDS.caravan)
+
+        const textOf = (id: string) => accommodation.options.find(o => o.id === id)!.text
+        expect(textOf(ACCOMMODATION_OPTION_IDS.camping)).toBe('Camping')
+        expect(textOf(ACCOMMODATION_OPTION_IDS.caravan)).toBe('Caravan or motorhome')
+    })
+
+    it('puts the tent and its pegs under camping only', () => {
+        const accommodation = question(createExampleData(family), TEMPLATE_QUESTION_IDS.accommodation)
+        const itemsIn = (id: string) =>
+            accommodation.options.find(o => o.id === id)!.items.map(i => i.text)
+
+        expect(itemsIn(ACCOMMODATION_OPTION_IDS.camping)).toEqual(
+            expect.arrayContaining(['Tent', 'Tent pegs and mallet', 'Sleeping bag', 'Camping stove and gas'])
+        )
+        for (const text of ['Tent', 'Tent pegs and mallet', 'Sleeping bag']) {
+            expect(itemsIn(ACCOMMODATION_OPTION_IDS.caravan), `caravan should not carry "${text}"`).not.toContain(text)
+        }
+        expect(itemsIn(ACCOMMODATION_OPTION_IDS.caravan)).toEqual(
+            expect.arrayContaining(['Electric hook-up cable', 'Toilet chemicals', 'Bedding'])
+        )
+        expect(itemsIn(ACCOMMODATION_OPTION_IDS.camping)).not.toContain('Electric hook-up cable')
+    })
+
     it('offers a car seat for under-teens when driving', () => {
         const result = createExampleData(family)
         const driving = question(result, TEMPLATE_QUESTION_IDS.transport)
