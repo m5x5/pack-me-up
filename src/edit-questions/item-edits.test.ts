@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { appendItemToSection, applyItemEdit, withQuestionOptions } from './item-edits'
+import { appendItemToSection, applyItemEdit, tombstoneRemovedItems, withQuestionOptions } from './item-edits'
 import type { Item, Option, Question } from './types'
 
 const NOW = '2024-06-01T12:00:00.000Z'
@@ -244,5 +244,59 @@ describe('appendItemToSection', () => {
         expect(result[0]).toBe(list[0])
         expect(result[1]).toBe(list[1])
         expect(result[2]).toBe(list[2])
+    })
+})
+
+// ── tombstoneRemovedItems ─────────────────────────────────────────────────────
+
+describe('tombstoneRemovedItems', () => {
+    const stored = (): Item[] => [
+        makeItem('Socks', { id: 'i1' }),
+        makeItem('Towel', { id: 'i2' }),
+        makeItem('Old hat', { id: 'i3', deletedAt: '2024-01-01T00:00:00.000Z' }),
+    ]
+
+    it('tombstones an item the editor dropped rather than losing it', () => {
+        const kept = [makeItem('Socks', { id: 'i1' })]
+        const result = tombstoneRemovedItems(stored(), kept, NOW)
+        expect(result.find(i => i.id === 'i2')?.deletedAt).toBe(NOW)
+    })
+
+    it('keeps the dropped item’s payload, so a merge can still identify it', () => {
+        const result = tombstoneRemovedItems(stored(), [makeItem('Socks', { id: 'i1' })], NOW)
+        expect(result.find(i => i.id === 'i2')?.text).toBe('Towel')
+    })
+
+    it('carries existing tombstones through untouched', () => {
+        const result = tombstoneRemovedItems(stored(), [makeItem('Socks', { id: 'i1' })], NOW)
+        const old = result.find(i => i.id === 'i3')
+        expect(old?.deletedAt).toBe('2024-01-01T00:00:00.000Z')
+    })
+
+    it('puts the kept items first, in the order the editor left them', () => {
+        const kept = [makeItem('Towel', { id: 'i2' }), makeItem('Socks', { id: 'i1' })]
+        const result = tombstoneRemovedItems(stored(), kept, NOW)
+        expect(result.slice(0, 2).map(i => i.text)).toEqual(['Towel', 'Socks'])
+    })
+
+    it('adds no tombstone when nothing was removed', () => {
+        const kept = [makeItem('Socks', { id: 'i1' }), makeItem('Towel', { id: 'i2' })]
+        const result = tombstoneRemovedItems(stored(), kept, NOW)
+        expect(result.filter(i => i.deletedAt).map(i => i.id)).toEqual(['i3'])
+    })
+
+    it('lets a brand new item through without matching it to anything', () => {
+        const kept = [makeItem('Socks', { id: 'i1' }), makeItem('Towel', { id: 'i2' }), makeItem('Sun cream', { id: 'i4' })]
+        const result = tombstoneRemovedItems(stored(), kept, NOW)
+        expect(result.filter(i => !i.deletedAt).map(i => i.text)).toEqual(['Socks', 'Towel', 'Sun cream'])
+    })
+
+    it('drops an id-less legacy item outright, as it always did', () => {
+        // mergeItemsById only merges per item when every item on both sides has
+        // an id; without one there is nothing for a tombstone to match on, so a
+        // hard delete is both all we can do and what already happens today.
+        const legacy = [makeItem('Socks'), makeItem('Towel')]
+        const result = tombstoneRemovedItems(legacy, [makeItem('Socks')], NOW)
+        expect(result.map(i => i.text)).toEqual(['Socks'])
     })
 })

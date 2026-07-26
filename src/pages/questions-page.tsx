@@ -20,7 +20,7 @@ import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { LoadingState } from '../components/LoadingState'
 import { AgeTransition } from '../edit-questions/age-derivation'
 import { useIsDesktop } from '../hooks/useIsDesktop'
-import { appendItemToSection, applyItemEdit, withQuestionOptions } from '../edit-questions/item-edits'
+import { appendItemToSection, applyItemEdit, tombstoneRemovedItems, withQuestionOptions } from '../edit-questions/item-edits'
 import { ItemInlineEditor } from '../components/ItemInlineEditor'
 import { AddQuestionItem } from '../components/AddQuestionItem'
 import { ALWAYS_LIST_KEY, buildQuestionSetSuggestions, listKeyFor } from '../edit-questions/item-suggestions'
@@ -1745,10 +1745,17 @@ export function QuestionsPage() {
         await saveData({ ...data, alwaysNeededItems: [...items, ...deleted] })
     }, [saveData])
 
+    // The modal is handed the active items only, so anything it hands back
+    // missing was deleted in it — and the tombstones it never saw have to be put
+    // back. Saving its list verbatim did neither, which meant a delete made here
+    // came straight back on the next pod merge; see `tombstoneRemovedItems`.
     const handleAlwaysSave = useCallback(async (newItems: Item[]) => {
         if (!data) return
         setAlwaysModal(false)
-        await saveData({ ...data, alwaysNeededItems: newItems })
+        await saveData({
+            ...data,
+            alwaysNeededItems: tombstoneRemovedItems(data.alwaysNeededItems ?? [], newItems, new Date().toISOString()),
+        })
     }, [data, saveData])
 
     const handlePeopleSave = useCallback(async (newPeople: Person[]) => {
