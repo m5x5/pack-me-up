@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+Conventions live here. For how the app itself works — how a question set becomes
+a packing list, communal items, quantities, sections, and what a change to the
+built-in content does and doesn't reach existing users — see `AGENTS.md`.
+
 ## Testing
 
 Use TDD (red-green-refactor) when implementing new features.
