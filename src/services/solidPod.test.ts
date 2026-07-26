@@ -19,6 +19,8 @@ import {
     getCollaborators,
     getPodOwnerName,
     friendlyPodName,
+    getPrimaryPodUrl,
+    derivePodUrlFromWebId,
 } from './solidPod'
 import { AuthenticationError } from './solidPod'
 import { PackingAppDatabase } from './database'
@@ -61,8 +63,9 @@ vi.mock('@inrupt/solid-client', async (importOriginal) => {
     }
 })
 
-import { getFile, getSolidDataset, getContainedResourceUrlAll, overwriteFile, createSolidDataset, createContainerAt, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, deleteFile } from '@inrupt/solid-client'
+import { getFile, getSolidDataset, getContainedResourceUrlAll, getPodUrlAll, overwriteFile, createSolidDataset, createContainerAt, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, deleteFile } from '@inrupt/solid-client'
 
+const mockGetPodUrlAll = vi.mocked(getPodUrlAll)
 const mockGetFile = vi.mocked(getFile)
 const mockGetSolidDataset = vi.mocked(getSolidDataset)
 const mockGetContainedResourceUrlAll = vi.mocked(getContainedResourceUrlAll)
@@ -1114,5 +1117,106 @@ describe('friendlyPodName', () => {
 
     it('returns the input unchanged when the URL is invalid', () => {
         expect(friendlyPodName('not-a-url')).toBe('not-a-url')
+    })
+})
+
+// ─── getPrimaryPodUrl ────────────────────────────────────────────────────────
+
+describe('getPrimaryPodUrl', () => {
+    const CSS_WEB_ID = 'http://localhost:4000/testuser/profile/card#me'
+    const ESS_WEB_ID = 'https://id.inrupt.com/hannahwprior'
+    const ESS_POD_URL = 'https://storage.inrupt.com/d8c8c02b-b47c-48e9-b737-619f2958689f/'
+
+    const sessionFor = (webId: string) => ({
+        info: { isLoggedIn: true, webId },
+        fetch: vi.fn(),
+    } as unknown as Session)
+
+    beforeEach(() => {
+        localStorage.clear()
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('returns null when there is no session', async () => {
+        expect(await getPrimaryPodUrl(null)).toBeNull()
+    })
+
+    it('returns null when the session is not logged in', async () => {
+        const session = { info: { isLoggedIn: false, webId: ESS_WEB_ID }, fetch: vi.fn() } as unknown as Session
+
+        expect(await getPrimaryPodUrl(session)).toBeNull()
+        expect(mockGetPodUrlAll).not.toHaveBeenCalled()
+    })
+
+    it('uses the storage location advertised in the profile (pim:storage)', async () => {
+        mockGetPodUrlAll.mockResolvedValueOnce([ESS_POD_URL])
+        const session = sessionFor(ESS_WEB_ID)
+
+        expect(await getPrimaryPodUrl(session)).toBe(ESS_POD_URL)
+        expect(mockGetPodUrlAll).toHaveBeenCalledWith(ESS_WEB_ID, expect.objectContaining({ fetch: session.fetch }))
+    })
+
+    it('derives the Pod root from a CSS-style WebID when the profile has no pim:storage', async () => {
+        mockGetPodUrlAll.mockResolvedValueOnce([])
+
+        expect(await getPrimaryPodUrl(sessionFor(CSS_WEB_ID))).toBe('http://localhost:4000/testuser/')
+    })
+
+    it('returns null rather than guessing when an identity-provider WebID has no pim:storage', async () => {
+        mockGetPodUrlAll.mockResolvedValueOnce([])
+
+        // https://id.inrupt.com/ hosts identities, not storage — writing there 404s
+        expect(await getPrimaryPodUrl(sessionFor(ESS_WEB_ID))).toBeNull()
+    })
+
+    it('returns null rather than guessing when the profile cannot be fetched', async () => {
+        mockGetPodUrlAll.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+        expect(await getPrimaryPodUrl(sessionFor(ESS_WEB_ID))).toBeNull()
+    })
+
+    it('falls back to the last known Pod URL when the profile cannot be fetched', async () => {
+        mockGetPodUrlAll.mockResolvedValueOnce([ESS_POD_URL])
+        const session = sessionFor(ESS_WEB_ID)
+        expect(await getPrimaryPodUrl(session)).toBe(ESS_POD_URL)
+
+        mockGetPodUrlAll.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+        expect(await getPrimaryPodUrl(session)).toBe(ESS_POD_URL)
+    })
+
+    it('does not reuse another user\'s cached Pod URL', async () => {
+        mockGetPodUrlAll.mockResolvedValueOnce([ESS_POD_URL])
+        expect(await getPrimaryPodUrl(sessionFor(ESS_WEB_ID))).toBe(ESS_POD_URL)
+
+        mockGetPodUrlAll.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+        expect(await getPrimaryPodUrl(sessionFor('https://id.inrupt.com/someoneelse'))).toBeNull()
+    })
+})
+
+// ─── derivePodUrlFromWebId ───────────────────────────────────────────────────
+
+describe('derivePodUrlFromWebId', () => {
+    it('strips the profile document path from a WebID stored inside its Pod', () => {
+        expect(derivePodUrlFromWebId('http://localhost:4000/testuser/profile/card#me'))
+            .toBe('http://localhost:4000/testuser/')
+    })
+
+    it('handles a WebID at the root of a per-user host', () => {
+        expect(derivePodUrlFromWebId('https://alice.solidcommunity.net/profile/card#me'))
+            .toBe('https://alice.solidcommunity.net/')
+    })
+
+    it('returns null for an identity-provider WebID that says nothing about storage', () => {
+        expect(derivePodUrlFromWebId('https://id.inrupt.com/hannahwprior')).toBeNull()
+    })
+
+    it('returns null for an invalid URL', () => {
+        expect(derivePodUrlFromWebId('not-a-url')).toBeNull()
     })
 })
