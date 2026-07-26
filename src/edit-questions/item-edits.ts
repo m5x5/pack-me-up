@@ -41,6 +41,51 @@ export function withQuestionOptions(
 }
 
 /**
+ * Add a new item to the bottom of one section.
+ *
+ * `category` names the section — `undefined` for the list's default one, which
+ * is stored as no category at all rather than as the default's name (see the
+ * note on `applySectionLayout`).
+ *
+ * The item is inserted after the last item already in that section rather than
+ * pushed onto the end, because the array position is what the section views
+ * bucket by: appending would put an item typed under Toiletries below whichever
+ * section happens to come last. Renumbering afterwards is what makes the
+ * generated packing list agree, since it sorts by the stamped `order` and would
+ * otherwise sort the new item into its section at a stale position. Items whose
+ * position is unchanged keep their identity and their old timestamp.
+ */
+export function appendItemToSection(
+    items: Item[],
+    newItem: Item,
+    category: string | undefined,
+    defaultLabel: string,
+    now: string,
+): Item[] {
+    const placed: Item = {
+        ...newItem,
+        ...(category !== undefined ? { category } : {}),
+        lastModified: now,
+    }
+    const targetLabel = category ?? defaultLabel
+
+    // A section with nothing in it yet — one just named, or the very first item
+    // of the list — has no run to join, so it starts one at the end.
+    let insertAt = items.length
+    for (let i = items.length - 1; i >= 0; i--) {
+        if ((items[i].category ?? defaultLabel) === targetLabel) {
+            insertAt = i + 1
+            break
+        }
+    }
+
+    return renumberItemOrder(
+        [...items.slice(0, insertAt), placed, ...items.slice(insertAt)],
+        now,
+    )
+}
+
+/**
  * Apply an edit to the item at `index`.
  *
  * When the edit leaves the item in the same section this is a straight

@@ -305,4 +305,81 @@ test.describe('B – Editing Questions', () => {
     await expect(page.getByText('InlineRenameTest')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByText(originalName, { exact: true })).not.toBeVisible()
   })
+
+  test('B10: add an item straight into a named section', async ({ freshPage: page }) => {
+    // Contrast with B4, which is the old way in: open the modal, append a blank
+    // row, fight react-select, save the whole option — and the row still landed
+    // in whichever section came last.
+    await setupWizardAndGoToQuestions(page)
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+
+    const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
+    await expect(toiletries).toBeVisible({ timeout: 5_000 })
+    await toiletries.getByTestId('add-to-section').click()
+
+    const field = page.getByLabel('New item in Toiletries')
+    await expect(field).toBeVisible({ timeout: 3_000 })
+    await field.fill('SectionAddTest')
+    await field.press('Enter')
+
+    // It lands under the heading it was typed into, not at the end of the list.
+    await expect(toiletries.getByText('SectionAddTest')).toBeVisible({ timeout: 5_000 })
+    // And the composer stays, cleared, because items go in in runs.
+    await expect(field).toHaveValue('')
+
+    // Adding saves as it goes — no confirmation step to reach for.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+    const afterReload = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
+    await expect(afterReload.getByText('SectionAddTest')).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('B11: a suggested name brings its section with it', async ({ freshPage: page }) => {
+    await setupWizardAndGoToQuestions(page)
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+
+    // The composer at the foot of the list is the one that asks where the item
+    // goes, so it is the one a suggestion can answer for.
+    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    const field = page.getByLabel(/^New item in /)
+    await expect(field).toBeVisible({ timeout: 3_000 })
+
+    // "Sunscreen" lives under Toiletries in a question elsewhere in the set;
+    // taking the suggestion is what files it there without a second trip.
+    await field.fill('sunscr')
+    const suggestion = page.getByRole('option', { name: /Sunscreen/ }).first()
+    await expect(suggestion).toBeVisible({ timeout: 3_000 })
+    await suggestion.click()
+    await expect(page.getByLabel('Section')).toHaveValue('Toiletries')
+
+    await field.press('Enter')
+    const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
+    await expect(toiletries.getByText('Sunscreen')).toBeVisible({ timeout: 5_000 })
+  })
+
+  test('B12: an answer with no items can take its first one', async ({ freshPage: page }) => {
+    // Before, an empty answer had no expander and no input at all: its only way
+    // in was the option modal.
+    await setupWizardAndGoToQuestions(page)
+    // Pinned by position, not by its "No items" hint: adding the item removes
+    // that hint, and a locator built on it would stop matching the thing it is
+    // meant to be checking.
+    const options = page.getByTestId('option-section')
+    await expect(options.first()).toBeVisible({ timeout: 5_000 })
+    let emptyIndex = -1
+    for (let i = 0; i < await options.count(); i++) {
+      if (await options.nth(i).getByText('No items').count()) { emptyIndex = i; break }
+    }
+    expect(emptyIndex).toBeGreaterThanOrEqual(0)
+    const emptyOption = options.nth(emptyIndex)
+    await emptyOption.getByTestId('option-expand-chevron').click()
+
+    await emptyOption.getByRole('button', { name: '+ Add item' }).click()
+    const field = emptyOption.locator('input[role="combobox"]')
+    await field.fill('FirstItemTest')
+    await field.press('Enter')
+    await expect(emptyOption.getByText('FirstItemTest')).toBeVisible({ timeout: 5_000 })
+    await expect(emptyOption.getByText('No items')).not.toBeVisible()
+  })
 })

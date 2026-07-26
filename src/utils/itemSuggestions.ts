@@ -1,16 +1,22 @@
 /**
- * Suggestions for the "add an item" composer.
+ * Suggestions for the "add an item" composers.
  *
- * A packing list is its own best dictionary: by the time someone is adding
- * things by hand, the list already knows how "Sun cream" is spelled and which
- * section it belongs in — usually because somebody else on the trip has one.
- * So the catalogue is built from the list itself (including items deleted
- * earlier, which are exactly the things people put back), and picking a
- * suggestion carries its category across. That is what turns "add to a
- * particular section" from a chore into a single tap.
+ * A collection of items is its own best dictionary: by the time someone is
+ * adding things by hand, their packing list — or their question set — already
+ * knows how "Sun cream" is spelled and which section it belongs in, usually
+ * because somebody else on the trip has one. So the catalogue is built from
+ * what is already there (including items deleted earlier, which are exactly the
+ * things people put back), and picking a suggestion carries its category
+ * across. That is what turns "add to a particular section" from a chore into a
+ * single tap.
  *
- * The index is built once per list and filtered per keystroke, so the work that
- * happens while someone is typing is a scan of distinct names, not of items.
+ * The index is built once per collection and filtered per keystroke, so the
+ * work that happens while someone is typing is a scan of distinct names, not of
+ * items.
+ *
+ * `buildIndexOf` is the shape-agnostic core: an owner is whatever "already has
+ * this one" means for the page — a person on a packing list, one option's item
+ * list in a question set — and the two pages differ only in how they name it.
  */
 import type { PackingListItem } from '../create-packing-list/types'
 
@@ -51,34 +57,37 @@ const byName = (a: string, b: string) => {
     return x < y ? -1 : x > y ? 1 : 0
 }
 
-export function buildSuggestionIndex(
-    items: readonly PackingListItem[],
-    deletedItems: readonly PackingListItem[] = [],
-): SuggestionIndex {
+/** One name going into the catalogue, reduced to what the index cares about. */
+export interface SuggestionSource {
+    text: string
+    category?: string
+    /**
+     * The list that already holds this name, so it isn't offered back to it.
+     * Omit for names that only stock the catalogue — deleted items, which are
+     * exactly the things people add back.
+     */
+    owner?: string
+}
+
+export function buildIndexOf(sources: Iterable<SuggestionSource>): SuggestionIndex {
     // name (lowercased) -> the name as first seen, and how often each category
     // has been used for it. A name filed two ways takes the majority verdict so
     // one stray uncategorised copy doesn't lose the section.
     const names = new Map<string, { text: string; categories: Map<string | undefined, number> }>()
     const ownedBy = new Map<string, Set<string>>()
 
-    const record = (item: PackingListItem, owned: boolean) => {
-        const text = item.itemText.trim()
-        if (!text) return
+    for (const source of sources) {
+        const text = source.text.trim()
+        if (!text) continue
         const key = text.toLowerCase()
         const entry = names.get(key) ?? { text, categories: new Map() }
-        entry.categories.set(item.category, (entry.categories.get(item.category) ?? 0) + 1)
+        entry.categories.set(source.category, (entry.categories.get(source.category) ?? 0) + 1)
         names.set(key, entry)
-        if (!owned) return
-        const owner = ownerKeyFor(item)
-        const set = ownedBy.get(owner) ?? new Set<string>()
+        if (source.owner === undefined) continue
+        const set = ownedBy.get(source.owner) ?? new Set<string>()
         set.add(key)
-        ownedBy.set(owner, set)
+        ownedBy.set(source.owner, set)
     }
-
-    for (const item of items) record(item, true)
-    // Deleted items stock the catalogue but are not "owned" — the whole point is
-    // that they can be added back.
-    for (const item of deletedItems) record(item, false)
 
     const all = [...names.values()]
         .map(({ text, categories }) => {
@@ -89,6 +98,24 @@ export function buildSuggestionIndex(
         .sort((a, b) => byName(a.text, b.text))
 
     return { all, ownedBy }
+}
+
+/** The catalogue a packing list makes of itself, owned per person. */
+export function buildSuggestionIndex(
+    items: readonly PackingListItem[],
+    deletedItems: readonly PackingListItem[] = [],
+): SuggestionIndex {
+    const source = (item: PackingListItem, owned: boolean): SuggestionSource => ({
+        text: item.itemText,
+        category: item.category,
+        ...(owned ? { owner: ownerKeyFor(item) } : {}),
+    })
+    return buildIndexOf([
+        ...items.map(item => source(item, true)),
+        // Deleted items stock the catalogue but are not "owned" — the whole
+        // point is that they can be added back.
+        ...deletedItems.map(item => source(item, false)),
+    ])
 }
 
 /**

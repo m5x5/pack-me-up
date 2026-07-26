@@ -20,8 +20,9 @@
  * person still selected, because people add items in runs rather than one at a
  * time.
  */
-import { memo, useMemo, useRef, useState } from 'react'
-import { ownerKeyFor, suggestFor, type ItemSuggestion, type SuggestionIndex } from '../utils/itemSuggestions'
+import { memo, useRef, useState } from 'react'
+import { ItemNameField, FIELD } from './ItemNameField'
+import { ownerKeyFor, type ItemSuggestion, type SuggestionIndex } from '../utils/itemSuggestions'
 
 /** What the packing list calls the section for items with no category. */
 export const UNCATEGORISED_LABEL = 'Other'
@@ -60,8 +61,6 @@ interface AddItemComposerProps {
     placeholder?: string
 }
 
-const FIELD = 'px-3 py-2 border border-gray-300 rounded-md bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
-
 export const AddItemComposer = memo(function AddItemComposer({
     personName,
     personId,
@@ -82,8 +81,6 @@ export const AddItemComposer = memo(function AddItemComposer({
     // Held by name, not id: custom items carry no person id, so a name is the
     // only thing that identifies a person on every list.
     const [chosenPersonName, setChosenPersonName] = useState(personName)
-    const [highlighted, setHighlighted] = useState(-1)
-    const [suggestionsOpen, setSuggestionsOpen] = useState(true)
     const inputRef = useRef<HTMLInputElement>(null)
 
     const person: PersonOption = peopleOptions?.find(p => p.name === chosenPersonName)
@@ -100,28 +97,14 @@ export const AddItemComposer = memo(function AddItemComposer({
     }
 
     const ownerKey = ownerKeyFor(target)
-    const matches = useMemo(
-        () => suggestionsOpen ? suggestFor(suggestions, ownerKey, text) : [],
-        [suggestions, ownerKey, text, suggestionsOpen],
-    )
-
-    const setDraft = (value: string) => {
-        setText(value)
-        setHighlighted(-1)
-        setSuggestionsOpen(true)
-    }
 
     const applySuggestion = (suggestion: ItemSuggestion) => {
-        setText(suggestion.text)
-        setSuggestionsOpen(false)
-        setHighlighted(-1)
         // A suggestion knows where it belongs; taking its section is the whole
         // point of offering it. Only meaningful when a section can be chosen —
         // an in-place composer already has one.
         if (categoryOptions && suggestion.category && categoryOptions.includes(suggestion.category)) {
             setChosenCategory(suggestion.category)
         }
-        inputRef.current?.focus()
     }
 
     const submit = () => {
@@ -131,47 +114,13 @@ export const AddItemComposer = memo(function AddItemComposer({
         onAdd(target, trimmed, Number.isFinite(parsed) && parsed > 1 ? parsed : undefined)
         setText('')
         setQuantity('')
-        setHighlighted(-1)
-        setSuggestionsOpen(true)
         inputRef.current?.focus()
-    }
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'ArrowDown' && matches.length > 0) {
-            e.preventDefault()
-            setHighlighted(prev => (prev + 1) % matches.length)
-            return
-        }
-        if (e.key === 'ArrowUp' && matches.length > 0) {
-            e.preventDefault()
-            setHighlighted(prev => (prev <= 0 ? matches.length : prev) - 1)
-            return
-        }
-        if (e.key === 'Enter') {
-            e.preventDefault()
-            const picked = matches[highlighted]
-            if (picked) applySuggestion(picked)
-            else submit()
-            return
-        }
-        if (e.key === 'Escape') {
-            e.preventDefault()
-            // Escape backs out one layer at a time: the suggestions first, then
-            // the composer — so dismissing a dropdown never loses what was typed.
-            if (matches.length > 0) {
-                setSuggestionsOpen(false)
-                setHighlighted(-1)
-                return
-            }
-            onClose?.()
-        }
     }
 
     // An in-place composer that has been left empty has served its purpose; one
     // with half an item in it has not, and must not take the draft with it.
     const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
         if (e.currentTarget.contains(e.relatedTarget)) return
-        setSuggestionsOpen(false)
         if (!text.trim()) onClose?.()
     }
 
@@ -194,52 +143,21 @@ export const AddItemComposer = memo(function AddItemComposer({
                 quantity and pickers are in play the name takes the line to
                 itself and they wrap underneath — three fields abreast is
                 unusable on a phone, and it is where the suggestions drop. */}
-            <div className={`relative min-w-[8rem] ${expanded ? 'basis-full' : 'flex-1 basis-40'}`}>
-                <input
-                    ref={inputRef}
-                    type="text"
-                    role="combobox"
-                    aria-expanded={matches.length > 0}
-                    aria-controls={listboxId}
-                    aria-autocomplete="list"
-                    aria-label={`Add an item to ${targetLabel}`}
-                    autoComplete="off"
-                    enterKeyHint="done"
+            <div className={`min-w-[8rem] ${expanded ? 'basis-full' : 'flex-1 basis-40'}`}>
+                <ItemNameField
                     value={text}
+                    onChange={setText}
+                    suggestions={suggestions}
+                    ownerKey={ownerKey}
+                    onPick={applySuggestion}
+                    onSubmit={submit}
+                    onClose={onClose}
+                    label={`Add an item to ${targetLabel}`}
+                    listboxId={listboxId}
+                    inputRef={inputRef}
                     autoFocus={autoFocus}
-                    onChange={e => setDraft(e.target.value)}
-                    onKeyDown={handleKeyDown}
                     placeholder={placeholder}
-                    className={`w-full ${FIELD}`}
                 />
-                {matches.length > 0 && (
-                    <ul
-                        id={listboxId}
-                        role="listbox"
-                        className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg"
-                    >
-                        {matches.map((suggestion, i) => (
-                            <li key={suggestion.text}>
-                                <button
-                                    type="button"
-                                    role="option"
-                                    aria-selected={i === highlighted}
-                                    // Blur would close the list before the click landed.
-                                    onMouseDown={e => e.preventDefault()}
-                                    onClick={() => applySuggestion(suggestion)}
-                                    className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm ${i === highlighted ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'}`}
-                                >
-                                    <span className="truncate">{suggestion.text}</span>
-                                    {suggestion.category && (
-                                        <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
-                                            {suggestion.category}
-                                        </span>
-                                    )}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
             </div>
 
             {expanded && <input

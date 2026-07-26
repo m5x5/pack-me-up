@@ -4,6 +4,7 @@ import React from 'react'
 import { OptionSection } from './questions-page'
 import { DEFAULT_SECTION_ACCENT, sectionAccent } from '../edit-questions/section-accent'
 import type { Item, Option, Person } from '../edit-questions/types'
+import { buildIndexOf } from '../utils/itemSuggestions'
 
 vi.mock('../components/DatabaseContext', () => ({ useDatabase: vi.fn() }))
 vi.mock('../components/SolidPodContext', () => ({ useSolidPod: vi.fn() }))
@@ -282,5 +283,227 @@ describe('OptionSection inline item editing', () => {
         fireEvent.click(screen.getByTitle('Edit Socks'))
         fireEvent.click(within(screen.getByTestId('item-inline-editor')).getByTitle('Bob'))
         expect(screen.getByTestId('item-inline-editor')).toBeTruthy()
+    })
+})
+
+describe('OptionSection adding items', () => {
+    const suggestions = buildIndexOf([
+        { text: 'Toothpaste', category: 'Toiletries', owner: 'q1:o2' },
+        { text: 'Socks', owner: 'q1:o1' },
+    ])
+
+    /** The same section with adding switched on, expanded. */
+    function renderAddable(option: Option, sectionNames: string[] = []) {
+        const onItemAdd = vi.fn()
+        render(
+            <OptionSection
+                option={option}
+                people={twoPeople}
+                sectionDefaultLabel="Yes"
+                allItemNames={[]}
+                sectionNames={sectionNames}
+                questionId="q1"
+                suggestions={suggestions}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={onItemAdd}
+            />
+        )
+        const toggle = screen.queryByRole('button', { name: /Yes/ })
+        if (toggle) fireEvent.click(toggle)
+        return { onItemAdd }
+    }
+
+    const sectioned = () => makeOption({
+        items: [
+            makeItem('Socks'),
+            makeItem('Toothbrush', { category: 'Toiletries' }),
+            makeItem('Pyjamas', { category: 'Sleep' }),
+        ],
+    })
+
+    it('puts an add button on every section heading', () => {
+        renderAddable(sectioned())
+        expect(screen.getAllByTestId('add-to-section')).toHaveLength(3)
+        expect(screen.getByLabelText('Add an item to Toiletries')).toBeTruthy()
+    })
+
+    it('offers no add buttons on a read-only list', () => {
+        renderOption(sectioned())
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.queryByTestId('add-to-section')).toBeNull()
+        expect(screen.queryByRole('button', { name: '+ Add item' })).toBeNull()
+    })
+
+    it('files an item under the section whose button was tapped', () => {
+        // The whole point: the item lands where it was typed, with no second
+        // trip through the row editor to move it there.
+        const { onItemAdd } = renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Razor' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Razor', 'Toiletries')
+    })
+
+    it('stores no section for an item added to the default one', () => {
+        const { onItemAdd } = renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Yes'))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Hat' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Hat', undefined)
+    })
+
+    it('opens the composer inside the section it belongs to', () => {
+        renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        const cards = screen.getAllByTestId('item-section')
+        expect(within(cards[1]).getByTestId('add-question-item')).toBeTruthy()
+        expect(within(cards[0]).queryByTestId('add-question-item')).toBeNull()
+    })
+
+    it('keeps only one composer open at a time', () => {
+        // One per heading would put an input in front of every section — the
+        // cost the read-only rows exist to avoid.
+        renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        fireEvent.click(screen.getByLabelText('Add an item to Sleep'))
+        expect(screen.getAllByTestId('add-question-item')).toHaveLength(1)
+    })
+
+    it('closes when the same heading is tapped again', () => {
+        renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        expect(screen.queryByTestId('add-question-item')).toBeNull()
+    })
+
+    it('stays open after an add, so items go in in runs', () => {
+        const { onItemAdd } = renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Razor' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        fireEvent.change(input, { target: { value: 'Shampoo' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenLastCalledWith('q1', 'o1', 'Shampoo', 'Toiletries')
+    })
+
+    it('has no section picker on a composer opened from a heading', () => {
+        // The heading already answered that question.
+        renderAddable(sectioned())
+        fireEvent.click(screen.getByLabelText('Add an item to Toiletries'))
+        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Razor' } })
+        expect(screen.queryByLabelText('Section')).toBeNull()
+    })
+})
+
+describe('OptionSection adding from the foot of the list', () => {
+    const suggestions = buildIndexOf([{ text: 'Toothpaste', category: 'Toiletries', owner: 'q1:o2' }])
+
+    function renderAddable(option: Option, sectionNames: string[] = []) {
+        const onItemAdd = vi.fn()
+        render(
+            <OptionSection
+                option={option}
+                people={twoPeople}
+                sectionDefaultLabel="Yes"
+                sectionNames={sectionNames}
+                questionId="q1"
+                suggestions={suggestions}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemAdd={onItemAdd}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onItemAdd }
+    }
+
+    it('offers an add row under an unsectioned list, which has no headings', () => {
+        const { onItemAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Hat' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Hat', undefined)
+    })
+
+    it('asks which section, offering the list’s own and the set’s others', () => {
+        renderAddable(
+            makeOption({ items: [makeItem('Toothbrush', { category: 'Toiletries' })] }),
+            ['Clothes'],
+        )
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'H' } })
+        const options = [...(screen.getByLabelText('Section') as HTMLSelectElement).options].map(o => o.value)
+        expect(options).toEqual(['Yes', 'Toiletries', 'Clothes'])
+    })
+
+    it('files an item into a section this answer has never used', () => {
+        // A section is only ever a name stamped on an item, so an answer can be
+        // given its first Toiletries item without anything being created first.
+        const { onItemAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }), ['Toiletries'])
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Razor' } })
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Toiletries' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Razor', 'Toiletries')
+    })
+
+    it('replaces the add row with the composer rather than showing both', () => {
+        renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        expect(screen.queryByRole('button', { name: '+ Add item' })).toBeNull()
+    })
+
+    it('offers a name used elsewhere in the set, with the section it is filed under', () => {
+        renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tooth' } })
+        fireEvent.click(screen.getByRole('option', { name: /Toothpaste/ }))
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Toiletries')
+    })
+})
+
+describe('OptionSection with no items, once items can be added', () => {
+    function renderEmpty() {
+        const onItemAdd = vi.fn()
+        render(
+            <OptionSection
+                option={makeOption()}
+                people={people}
+                sectionDefaultLabel="Yes"
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemAdd={onItemAdd}
+            />
+        )
+        return { onItemAdd }
+    }
+
+    it('becomes expandable, since it no longer opens onto nothing', () => {
+        renderEmpty()
+        expect(screen.getByTestId('option-expand-chevron')).toBeTruthy()
+    })
+
+    it('still says it has no items', () => {
+        renderEmpty()
+        expect(screen.getByText('No items')).toBeTruthy()
+    })
+
+    it('takes the first item, which it had no way to accept before', () => {
+        const { onItemAdd } = renderEmpty()
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add item' }))
+        const input = screen.getByRole('combobox')
+        fireEvent.change(input, { target: { value: 'Socks' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Socks', undefined)
     })
 })

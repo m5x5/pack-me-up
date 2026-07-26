@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyItemEdit, withQuestionOptions } from './item-edits'
+import { appendItemToSection, applyItemEdit, withQuestionOptions } from './item-edits'
 import type { Item, Option, Question } from './types'
 
 const NOW = '2024-06-01T12:00:00.000Z'
@@ -164,5 +164,85 @@ describe('applyItemEdit across sections', () => {
         const edited = { ...list[0], text: 'Wool socks', category: 'Toiletries' }
         const result = applyItemEdit(list, 0, edited, 'Yes', NOW)
         expect(result.map(i => i.text)).toEqual(['Toothbrush', 'Shampoo', 'Wool socks'])
+    })
+})
+
+// ── appendItemToSection ──────────────────────────────────────────────────────
+
+describe('appendItemToSection', () => {
+    const sectioned = () => [
+        makeItem('Socks', { order: 0 }),
+        makeItem('Toothbrush', { category: 'Toiletries', order: 1 }),
+        makeItem('Shampoo', { category: 'Toiletries', order: 2 }),
+    ]
+
+    it('lands the item at the bottom of the named section', () => {
+        const result = appendItemToSection(sectioned(), makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result.map(i => i.text)).toEqual(['Socks', 'Toothbrush', 'Shampoo', 'Razor'])
+    })
+
+    it('stamps the section on the new item', () => {
+        const result = appendItemToSection(sectioned(), makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result.find(i => i.text === 'Razor')?.category).toBe('Toiletries')
+    })
+
+    it('lands it under the section it was typed into, not at the end of the list', () => {
+        // The whole point of a ＋ on a heading: an item typed under Toiletries
+        // sits in Toiletries, not in whichever section happens to be last.
+        const list = [
+            makeItem('Toothbrush', { category: 'Toiletries', order: 0 }),
+            makeItem('Tent', { category: 'Kit & Gear', order: 1 }),
+        ]
+        const result = appendItemToSection(list, makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result.map(i => i.text)).toEqual(['Toothbrush', 'Razor', 'Tent'])
+    })
+
+    it('renumbers order so the generated packing list picks the position up', () => {
+        // The generated list sorts by `order`, not array position: without this
+        // the new item would sort into its section at whatever position the item
+        // it displaced already had.
+        const list = [
+            makeItem('Toothbrush', { category: 'Toiletries', order: 0 }),
+            makeItem('Tent', { category: 'Kit & Gear', order: 1 }),
+        ]
+        const result = appendItemToSection(list, makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result.map(i => i.order)).toEqual([0, 1, 2])
+    })
+
+    it('stores no category for the list’s default section', () => {
+        // "The main pile" stores nothing rather than the default section's name —
+        // see the note on applySectionLayout.
+        const result = appendItemToSection(sectioned(), makeItem('Hat'), undefined, 'Yes', NOW)
+        expect('category' in result.find(i => i.text === 'Hat')!).toBe(false)
+    })
+
+    it('puts a default-section item after the last one, wherever those sit', () => {
+        const result = appendItemToSection(sectioned(), makeItem('Hat'), undefined, 'Yes', NOW)
+        expect(result.map(i => i.text)).toEqual(['Socks', 'Hat', 'Toothbrush', 'Shampoo'])
+    })
+
+    it('creates a section that has no items yet', () => {
+        const result = appendItemToSection(sectioned(), makeItem('Snorkel'), 'Beach kit', 'Yes', NOW)
+        expect(result.filter(i => i.category === 'Beach kit').map(i => i.text)).toEqual(['Snorkel'])
+        expect(result[result.length - 1].text).toBe('Snorkel')
+    })
+
+    it('appends to an empty list', () => {
+        const result = appendItemToSection([], makeItem('Socks'), undefined, 'Yes', NOW)
+        expect(result.map(i => i.text)).toEqual(['Socks'])
+        expect(result[0].order).toBe(0)
+    })
+
+    it('stamps lastModified on the new item so it survives a sync merge', () => {
+        const result = appendItemToSection(sectioned(), makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result.find(i => i.text === 'Razor')?.lastModified).toBe(NOW)
+    })
+
+    it('leaves untouched items alone, identity included', () => {
+        const list = sectioned()
+        const result = appendItemToSection(list, makeItem('Razor'), 'Toiletries', 'Yes', NOW)
+        expect(result[0]).toBe(list[0])
+        expect(result[1]).toBe(list[1])
+        expect(result[2]).toBe(list[2])
     })
 })
