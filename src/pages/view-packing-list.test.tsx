@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ViewPackingList, groupByCategory, groupByPerson } from './view-packing-list'
@@ -2123,5 +2123,154 @@ describe('ViewPackingList check-off feedback', () => {
         expect(saveWithSyncPrevention).not.toHaveBeenCalled()
         expect(mockTapFeedback).toHaveBeenCalledTimes(1)
         expect(screen.getByTestId('item-tick-a1')).toBeTruthy()
+    })
+})
+
+// ─── Adding items ───────────────────────────────────────────────────────────
+
+describe('ViewPackingList adding items', () => {
+    let db: ReturnType<typeof makeDbMultiCategory>
+
+    beforeEach(() => {
+        db = makeDbMultiCategory()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    async function savedItem(text: string): Promise<PackingListItem> {
+        let found: PackingListItem | undefined
+        await waitFor(() => {
+            const calls = db.savePackingList.mock.calls
+            // Last match, not first: an item added for one person may share its
+            // name with one somebody else already has.
+            found = calls.at(-1)?.[0].items.findLast((i: PackingListItem) => i.itemText === text)
+            expect(found).toBeTruthy()
+        })
+        return found!
+    }
+
+    function composerFor(label: string) {
+        const input = screen.getByLabelText(`Add an item to ${label}`) as HTMLInputElement
+        return { input, fields: within(input.closest('[data-testid="add-item-composer"]') as HTMLElement) }
+    }
+
+    function typeAndAdd(input: HTMLInputElement, text: string) {
+        fireEvent.change(input, { target: { value: text } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+    }
+
+    it('files a new item under the section chosen on the person card', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        const { input, fields } = composerFor("Alice's items")
+        fireEvent.change(input, { target: { value: 'Trail map' } })
+        fireEvent.change(fields.getByLabelText('Section'), { target: { value: 'Hiking' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        const added = await savedItem('Trail map')
+        expect(added.category).toBe('Hiking')
+        expect(added.personName).toBe('Alice')
+    })
+
+    it('still files into the catch-all section when no section is chosen', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        typeAndAdd(composerFor("Alice's items").input, 'Odds and ends')
+
+        expect((await savedItem('Odds and ends')).category).toBeUndefined()
+    })
+
+    it('saves a quantity typed alongside the item', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        const { input, fields } = composerFor("Alice's items")
+        fireEvent.change(input, { target: { value: 'Socks' } })
+        fireEvent.change(fields.getByLabelText('Quantity'), { target: { value: '5' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        expect((await savedItem('Socks')).quantity).toBe(5)
+    })
+
+    it('adds straight into a section from that section’s own + Add button', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Tent')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add item to Hiking for Alice' }))
+        typeAndAdd(composerFor('Hiking for Alice').input, 'Compass')
+
+        const added = await savedItem('Compass')
+        expect(added.category).toBe('Hiking')
+        expect(added.personName).toBe('Alice')
+    })
+
+    it('opens only one in-place composer at a time', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Tent')).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add item to Hiking for Alice' }))
+        expect(screen.getByLabelText('Add an item to Hiking for Alice')).toBeTruthy()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add item to Other for Alice' }))
+        expect(screen.queryByLabelText('Add an item to Hiking for Alice')).toBeNull()
+        expect(screen.getByLabelText('Add an item to Other for Alice')).toBeTruthy()
+    })
+
+    it('adds for someone with nothing in a section yet, from question view', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Tent')).toBeTruthy())
+        fireEvent.click(screen.getByRole('button', { name: 'Question View' }))
+
+        const { input, fields } = composerFor('Hiking')
+        fireEvent.change(input, { target: { value: 'Walking poles' } })
+        fireEvent.change(fields.getByLabelText('Who for'), { target: { value: 'Bob' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        const added = await savedItem('Walking poles')
+        expect(added.category).toBe('Hiking')
+        expect(added.personName).toBe('Bob')
+        expect(added.personId).toBe('p2')
+    })
+
+    it('suggests an item someone else has, and files it in the same section', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Tent')).toBeTruthy())
+
+        const { input } = composerFor("Bob's items")
+        fireEvent.change(input, { target: { value: 'ten' } })
+        fireEvent.click(screen.getByRole('option', { name: /Tent/ }))
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        const added = await savedItem('Tent')
+        expect(added.category).toBe('Hiking')
+        expect(added.personName).toBe('Bob')
+    })
+
+    it('does not suggest what this person already has', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Tent')).toBeTruthy())
+
+        fireEvent.change(composerFor("Alice's items").input, { target: { value: 'ten' } })
+        expect(screen.queryByRole('option', { name: /Tent/ })).toBeNull()
     })
 })
