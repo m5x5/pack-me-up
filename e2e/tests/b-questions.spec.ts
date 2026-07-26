@@ -267,4 +267,42 @@ test.describe('B – Editing Questions', () => {
     await expect(page.getByRole('heading', { name: 'My Questions & Items' })).toBeVisible()
     await expect(page.getByText(/new suggestion/i)).not.toBeVisible()
   })
+
+  test('B9: rename an item in place, without opening the option modal', async ({ freshPage: page }) => {
+    await setupWizardAndGoToQuestions(page)
+    // Expand the read-only list. Tapping a row used to do nothing — the only way
+    // in was the section's pencil, which reopened every item in a modal.
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+
+    const firstRow = page.getByTestId('item-row').first()
+    await expect(firstRow).toBeVisible({ timeout: 5_000 })
+    const originalName = (await firstRow.innerText()).split('\n')[0].trim()
+    expect(originalName).not.toEqual('InlineRenameTest')
+    await firstRow.click()
+
+    const editor = page.getByTestId('item-inline-editor')
+    await expect(editor).toBeVisible({ timeout: 3_000 })
+
+    // Same react-select dance as B4: the name field is a cheap placeholder until
+    // it is clicked, then the full control mounts.
+    await editor.getByTestId('item-name-field').locator('.cursor-text').click()
+    const control = page.locator('.react-select__control').last()
+    await expect(control).toBeVisible({ timeout: 3_000 })
+    await control.click()
+    await page.keyboard.type('InlineRenameTest')
+    const created = page.locator('.react-select__option').filter({ hasText: /InlineRenameTest/i }).first()
+    await expect(created).toBeVisible({ timeout: 5_000 })
+    await created.click()
+
+    await page.getByRole('button', { name: 'Done' }).click()
+    await expect(editor).not.toBeVisible({ timeout: 3_000 })
+
+    // The edit saves as it is made, so it must survive a reload with no
+    // further confirmation step.
+    await page.waitForTimeout(800)
+    await page.reload()
+    await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
+    await expect(page.getByText('InlineRenameTest')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByText(originalName, { exact: true })).not.toBeVisible()
+  })
 })

@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import React from 'react'
 import { OptionSection } from './questions-page'
-import type { Option, Person } from '../edit-questions/types'
+import type { Item, Option, Person } from '../edit-questions/types'
 
 vi.mock('../components/DatabaseContext', () => ({ useDatabase: vi.fn() }))
 vi.mock('../components/SolidPodContext', () => ({ useSolidPod: vi.fn() }))
 vi.mock('../components/ForeignPodContext', () => ({ useForeignPod: vi.fn() }))
 
 const people: Person[] = [{ id: 'p1', name: 'Alice' }]
+const twoPeople: Person[] = [{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob' }]
 
 function makeOption(overrides: Partial<Option> = {}): Option {
     return { id: 'o1', order: 0, text: 'Yes', items: [], ...overrides }
@@ -24,6 +25,30 @@ function renderOption(option: Option, sectionDefaultLabel = 'Yes') {
             onDelete={vi.fn()}
         />
     )
+}
+
+/** The same section, with inline item editing switched on. */
+function renderEditable(option: Option, sectionNames: string[] = []) {
+    const onItemChange = vi.fn()
+    render(
+        <OptionSection
+            option={option}
+            people={twoPeople}
+            sectionDefaultLabel="Yes"
+            allItemNames={['Socks', 'Towel']}
+            sectionNames={sectionNames}
+            questionId="q1"
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onItemChange={onItemChange}
+        />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+    return { onItemChange }
+}
+
+function makeItem(text: string, overrides: Partial<Item> = {}): Item {
+    return { text, personSelections: [{ personId: 'p1', selected: true }], ...overrides }
 }
 
 describe('OptionSection with no items', () => {
@@ -93,5 +118,123 @@ describe('OptionSection with sectioned items', () => {
         renderOption(sectioned(), 'Staying overnight?')
         fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
         expect(screen.getAllByTestId('item-section-heading')[0].textContent).toBe('Staying overnight?')
+    })
+})
+
+describe('OptionSection inline item editing', () => {
+    const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
+
+    it('leaves rows unclickable when no change handler is given', () => {
+        // The read-only list is still the default: a section rendered without a
+        // handler must not offer an editor it cannot save.
+        renderOption(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.queryByTitle('Edit Socks')).toBeNull()
+    })
+
+    it('marks every row with an edit icon, since a bare row reads as read-only', () => {
+        renderEditable(withItems())
+        expect(screen.getAllByTestId('item-edit-icon')).toHaveLength(2)
+    })
+
+    it('keeps the icon decorative — the whole row stays the only target', () => {
+        // A nested button would carve a second hit area out of the row and make
+        // the real one harder to hit.
+        renderEditable(withItems())
+        const row = screen.getAllByTestId('item-row')[0]
+        expect(within(row).queryByRole('button')).toBeNull()
+        expect(within(row).getByTestId('item-edit-icon').getAttribute('aria-hidden')).toBe('true')
+    })
+
+    it('shows no edit icon on a read-only list', () => {
+        renderOption(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.queryByTestId('item-edit-icon')).toBeNull()
+    })
+
+    it('opens the editor for the row that was tapped', () => {
+        renderEditable(withItems())
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        const editor = screen.getByTestId('item-inline-editor')
+        expect(within(editor).getByTestId('item-name-field').textContent).toContain('Socks')
+    })
+
+    it('keeps only one editor open at a time', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(screen.getByTitle('Edit Towel'))
+        expect(screen.getAllByTestId('item-inline-editor')).toHaveLength(1)
+        expect(screen.getByTestId('item-name-field').textContent).toContain('Towel')
+    })
+
+    it('closes when the same row is tapped again', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+    })
+
+    it('closes on Done', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+    })
+
+    it('reports an edit against the option and question it belongs to', () => {
+        const { onItemChange } = renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Towel'))
+        // Scoped to the editor: the read-only rows carry the same person titles.
+        fireEvent.click(within(screen.getByTestId('item-inline-editor')).getByTitle('Bob'))
+        expect(onItemChange).toHaveBeenCalledWith('q1', 'o1', 1, expect.objectContaining({
+            text: 'Towel',
+            personSelections: [
+                { personId: 'p1', selected: true },
+                { personId: 'p2', selected: true },
+            ],
+        }))
+    })
+
+    it('addresses the item by its array index, not its position on screen', () => {
+        // Sections group by category, so the third row down is the second item
+        // in the array. Addressing the row by what the eye sees would edit the
+        // wrong item.
+        const { onItemChange } = renderEditable(makeOption({
+            items: [
+                makeItem('Socks'),
+                makeItem('Toothbrush', { category: 'Toiletries' }),
+                makeItem('Hat'),
+            ],
+        }))
+        fireEvent.click(screen.getByTitle('Edit Toothbrush'))
+        fireEvent.click(screen.getByLabelText(/Toggle shared/))
+        expect(onItemChange).toHaveBeenCalledWith('q1', 'o1', 1, expect.objectContaining({
+            text: 'Toothbrush',
+            communal: true,
+        }))
+    })
+
+    it('closes the editor when the edit moves the item to another section', () => {
+        // The move shifts every index after it, so the open row no longer names
+        // the item being edited — and the row has visibly gone somewhere else.
+        const { onItemChange } = renderEditable(withItems(), ['Toiletries'])
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        const field = screen.getByTestId('item-section-field')
+        fireEvent.click(within(field).getByText('Yes'))
+        const input = field.querySelector('input') as HTMLInputElement
+        fireEvent.change(input, { target: { value: 'Toiletries' } })
+        fireEvent.blur(input)
+        expect(onItemChange).toHaveBeenCalledWith('q1', 'o1', 0, expect.objectContaining({
+            category: 'Toiletries',
+        }))
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+    })
+
+    it('stays open for an edit that leaves the item where it is', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(within(screen.getByTestId('item-inline-editor')).getByTitle('Bob'))
+        expect(screen.getByTestId('item-inline-editor')).toBeTruthy()
     })
 })
