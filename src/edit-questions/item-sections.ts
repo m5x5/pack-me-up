@@ -171,10 +171,14 @@ export interface SectionGroup {
  * screen. Drafts aren't accepted: an empty section only exists inside the
  * reorder view, which works against the sequence directly.
  */
-export function buildSectionGroups(items: Item[], defaultLabel: string): SectionGroup[] {
+export function buildSectionGroups(
+    items: Item[],
+    defaultLabel: string,
+    emptySections: string[] = [],
+): SectionGroup[] {
     const indexOf = new Map(items.map((item, i) => [item, i]))
     const groups: SectionGroup[] = []
-    for (const entry of buildSectionSequence(items, defaultLabel, [])) {
+    for (const entry of buildSectionSequence(items, defaultLabel, emptySections)) {
         if (entry.kind === 'header') groups.push({ label: entry.label, entries: [] })
         // The sequence always opens with a header, so there is a group to put
         // this in — but a stray item is dropped rather than crashing a page.
@@ -318,14 +322,94 @@ export function sectionNamesIn(qs: PackingListQuestionSet): string[] {
     for (const item of qs.alwaysNeededItems ?? []) {
         if (item.category) names.add(item.category)
     }
+    for (const name of qs.alwaysNeededEmptySections ?? []) names.add(name)
     for (const question of qs.questions ?? []) {
         for (const option of question.options) {
             for (const item of option.items) {
                 if (item.category) names.add(item.category)
             }
+            for (const name of option.emptySections ?? []) names.add(name)
         }
     }
     return [...names]
+}
+
+/** The sections an item list describes through its own items. */
+function filledSectionsOf(items: Item[]): Set<string> {
+    const filled = new Set<string>()
+    for (const item of items) {
+        // A soft-deleted item doesn't hold a section open — the section is back
+        // to being empty, and has to stay recorded to survive the next reload.
+        if (item.category && !item.deletedAt) filled.add(item.category)
+    }
+    return filled
+}
+
+/**
+ * Drop the sections that no longer need recording, because their items now
+ * describe them. Run this on every write to an item list: it is what keeps
+ * `emptySections` meaning exactly what it says, so nothing has to remember to
+ * clean up after a drag or an add.
+ *
+ * Returns `undefined` rather than `[]` when nothing is left, so the field
+ * disappears from the document instead of lingering as an empty array.
+ */
+export function pruneFilledSections(
+    emptySections: string[] | undefined,
+    items: Item[],
+): string[] | undefined {
+    if (!emptySections?.length) return undefined
+    const filled = filledSectionsOf(items)
+    const remaining = emptySections.filter(label => !filled.has(label))
+    return remaining.length > 0 ? remaining : undefined
+}
+
+/**
+ * Bring the recorded empty sections up to date after an item list changed.
+ *
+ * Two things happen here, and the second is why this exists rather than
+ * `pruneFilledSections` alone: a section whose last item just left stays, now
+ * recorded as empty. Deleting an item — or dragging it elsewhere — is not a
+ * request to delete the section it was in, and letting the section evaporate
+ * underneath the change is exactly the disappearing-section behaviour the
+ * stored names were added to stop.
+ *
+ * Removing a section is a separate, deliberate action, so that path drops the
+ * name itself rather than going through here.
+ */
+export function reconcileEmptySections(
+    previous: Item[],
+    next: Item[],
+    emptySections: string[] | undefined,
+): string[] | undefined {
+    const before = filledSectionsOf(previous)
+    const after = filledSectionsOf(next)
+    const emptied = [...before].filter(label => !after.has(label))
+    const combined = [...(emptySections ?? [])]
+    for (const label of emptied) {
+        if (!combined.includes(label)) combined.push(label)
+    }
+    return pruneFilledSections(combined, next)
+}
+
+/**
+ * Record a new, empty section — the "+ Add section" action.
+ *
+ * A name that already exists is not an error and not a second section: it is
+ * simply already there, so the list comes back unchanged. The default section
+ * is likewise refused, since every list has one whether or not anything is in it.
+ */
+export function addEmptySection(
+    emptySections: string[] | undefined,
+    items: Item[],
+    label: string,
+    defaultLabel: string,
+): string[] | undefined {
+    const trimmed = label.trim()
+    if (!trimmed || trimmed === defaultLabel) return emptySections?.length ? emptySections : undefined
+    if (emptySections?.includes(trimmed)) return emptySections
+    if (filledSectionsOf(items).has(trimmed)) return emptySections?.length ? emptySections : undefined
+    return [...(emptySections ?? []), trimmed]
 }
 
 /**

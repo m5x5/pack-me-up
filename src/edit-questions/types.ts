@@ -96,11 +96,25 @@ export const ItemSchema = z.object({
 
 export const QuestionTypeSchema = z.enum(['single-choice', 'multiple-choice'])
 
+// `emptySections` is optional and additive: the names of sections here that have
+// no items in them yet.
+//
+// A section is otherwise only its items' `category` stamps, so one with nothing
+// in it cannot be described at all — it existed solely as React state inside the
+// reorder view and evaporated the moment you looked away. That made "make a
+// Toiletries section, then fill it" unbuildable, and pushed section creation
+// into the per-item Section field, where typing a new name is indistinguishable
+// from renaming the section the item is already in.
+//
+// So the names are stored, and only while they are empty: whatever fills a
+// section takes its name off this list, because from then on its items describe
+// it. `sectionsOf` is what puts the two halves back together.
 export const OptionSchema = z.object({
   id: z.string(),
   text: z.string(),
   items: z.array(ItemSchema),
-  order: z.number()
+  order: z.number(),
+  emptySections: z.array(z.string()).optional(),
 })
 
 const CommonQuestionSchema = z.object({
@@ -128,6 +142,9 @@ export const PackingListQuestionSetSchema = z.object({
   _rev: z.string().optional(),
   people: z.array(PersonSchema),
   alwaysNeededItems: z.array(ItemSchema),
+  // The always-needed list's own empty sections — same role as an option's
+  // `emptySections`, for the one item list that doesn't belong to an option.
+  alwaysNeededEmptySections: z.array(z.string()).optional(),
   questions: z.array(QuestionSchema),
   lastModified: z.string().optional(), // ISO timestamp for sync conflict resolution
   // Version of the wizard template this set was generated from / last

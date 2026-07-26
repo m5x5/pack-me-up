@@ -25,6 +25,7 @@ import type { Item } from '../edit-questions/types'
 import {
     applySectionLayout,
     buildSectionSequence,
+    reconcileEmptySections,
     isAtSectionEdge,
     moveItemToSection,
     moveItemWithinSection,
@@ -236,22 +237,22 @@ function SortableSectionItem({ id, item, canMoveToTop, canMoveToBottom, otherSec
     )
 }
 
-export function SectionedItemReorder({ items, defaultLabel, suggestedSectionNames, scrollRef, onChange }: {
+export function SectionedItemReorder({ items, defaultLabel, emptySections, scrollRef, onChange }: {
     items: Item[]
     /** Section name for items carrying no category — what the list will call them. */
     defaultLabel: string
-    suggestedSectionNames: string[]
-    scrollRef: React.RefObject<HTMLDivElement | null>
-    onChange: (items: Item[]) => void
+    /**
+     * Sections of this list with nothing in them yet. They arrive as a prop and
+     * go back through `onChange` rather than living here: an empty section used
+     * to be view state that evaporated when the view closed, which is exactly
+     * what made "create a section, then fill it" impossible to offer anywhere.
+     */
+    emptySections: string[] | undefined
+    /** Confines drag auto-scroll to one element. Omit to let the window scroll. */
+    scrollRef?: React.RefObject<HTMLDivElement | null>
+    onChange: (items: Item[], emptySections: string[] | undefined) => void
 }) {
-    // Sections the user has created but not yet filled. They can't be stored
-    // (a section is only its items' stamps), so they live here until something
-    // lands in them — and are simply forgotten if nothing does.
-    const [draftSections, setDraftSections] = useState<string[]>([])
-    const [addingSection, setAddingSection] = useState(false)
-    const [newSectionName, setNewSectionName] = useState('')
-
-    const sequence = buildSectionSequence(items, defaultLabel, draftSections)
+    const sequence = buildSectionSequence(items, defaultLabel, emptySections ?? [])
 
     // dnd-kit needs a stable id per row across reorders. Items may have no `id`
     // yet (defaults not saved), so map each object to a client-only drag id.
@@ -270,12 +271,10 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
 
     const applySequence = (next: SectionSequenceEntry[]) => {
         const updated = applySectionLayout(next, defaultLabel, new Date().toISOString())
-        // A section that still has a header but no items stays a draft, so the
-        // user can keep dragging into it; one that gained items no longer needs
-        // to be remembered here.
-        const filled = new Set(updated.map(i => i.category).filter(Boolean) as string[])
-        setDraftSections(prev => prev.filter(label => !filled.has(label)))
-        onChange(updated)
+        // A section that gained items no longer needs recording; one whose last
+        // item was just dragged out starts being recorded, so dragging a section
+        // empty doesn't destroy it mid-reorganisation.
+        onChange(updated, reconcileEmptySections(items, updated, emptySections))
     }
 
     const sensors = useSensors(
@@ -319,24 +318,20 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
         return `${describe(activeId)}, position ${position} in ${label}`
     }
 
-    const addSection = () => {
-        const name = newSectionName.trim()
-        setNewSectionName('')
-        setAddingSection(false)
-        if (!name) return
-        const existing = new Set(sequence.filter(e => e.kind === 'header').map(e => e.kind === 'header' && e.label))
-        if (existing.has(name)) return
-        setDraftSections(prev => [...prev, name])
-    }
-
     const renameSectionAt = (from: string, to: string) => {
-        setDraftSections(prev => prev.map(label => label === from ? to : label))
-        onChange(renameSection(items, from, to, new Date().toISOString()))
+        const renamed = emptySections?.map(label => label === from ? to : label)
+        onChange(renameSection(items, from, to, new Date().toISOString()), renamed)
     }
 
+    // Removing a section is the one deliberate way to lose one, so it drops the
+    // name itself rather than going through `reconcileEmptySections` — which
+    // exists to *keep* a section whose items merely left.
     const removeSectionAt = (label: string) => {
-        setDraftSections(prev => prev.filter(l => l !== label))
-        onChange(removeSection(items, label, new Date().toISOString()))
+        const remaining = emptySections?.filter(l => l !== label)
+        onChange(
+            removeSection(items, label, new Date().toISOString()),
+            remaining?.length ? remaining : undefined,
+        )
     }
 
     return (
@@ -352,7 +347,11 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
                 modifiers={[restrictToVerticalAxis]}
                 // Only ever auto-scroll the modal's own scroll area — see the
                 // note on the unsectioned editor for why.
-                autoScroll={{ canScroll: (el) => el === scrollRef.current }}
+                // Only ever the container it was given. `true` would let
+                // dnd-kit scroll every scrollable ancestor, the window
+                // included — which moves the page, and on a phone the URL bar,
+                // underneath a gesture that has already measured it.
+                autoScroll={{ canScroll: (el) => el === scrollRef?.current }}
                 accessibility={{
                     screenReaderInstructions: {
                         draggable: 'Press space to pick up the item, the arrow keys to move it '
@@ -401,43 +400,6 @@ export function SectionedItemReorder({ items, defaultLabel, suggestedSectionName
                     </div>
                 </SortableContext>
             </DndContext>
-            {addingSection ? (
-                <div className="mt-3 flex gap-2">
-                    <input
-                        autoFocus
-                        list="section-name-suggestions"
-                        value={newSectionName}
-                        onChange={e => setNewSectionName(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter') addSection()
-                            if (e.key === 'Escape') { setNewSectionName(''); setAddingSection(false) }
-                        }}
-                        placeholder="Section name (e.g. Toiletries)"
-                        aria-label="New section name"
-                        className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                    {/* Suggest names already in use so the same section spelled two
-                        ways doesn't split into two groups on the list. */}
-                    <datalist id="section-name-suggestions">
-                        {suggestedSectionNames.map(name => <option key={name} value={name} />)}
-                    </datalist>
-                    <button
-                        type="button"
-                        onClick={addSection}
-                        className="px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                    >
-                        Add
-                    </button>
-                </div>
-            ) : (
-                <button
-                    type="button"
-                    onClick={() => setAddingSection(true)}
-                    className="mt-3 w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                >
-                    + Add section
-                </button>
-            )}
         </>
     )
 }

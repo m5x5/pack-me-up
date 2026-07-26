@@ -240,6 +240,10 @@ export function questionSetToDataset(qs: PackingListQuestionSet, datasetUrl: str
         for (const t of extras) ds = setThing(ds, t)
     }
 
+    for (const label of qs.alwaysNeededEmptySections ?? []) {
+        rootBuilder = rootBuilder.addStringNoLocale(PMU.alwaysNeededEmptySection, label)
+    }
+
     for (let i = 0; i < qs.alwaysNeededItems.length; i++) {
         const itemUrl = `${datasetUrl}#always-item-${i}`
         rootBuilder = rootBuilder.addUrl(PMU.hasAlwaysNeededItem, itemUrl)
@@ -280,11 +284,15 @@ export function datasetToQuestionSet(dataset: SolidDataset, datasetUrl: string):
         .map(url => thingToQuestionItem(dataset, url))
         .filter((item): item is Item => item !== null))
 
+    // Sorted for the same reason as an option's — see `thingToOption`.
+    const alwaysNeededEmptySections = getStringNoLocaleAll(rootThing, PMU.alwaysNeededEmptySection).sort()
+
     return {
         _id: '1',
         people,
         questions,
         alwaysNeededItems,
+        ...(alwaysNeededEmptySections.length > 0 ? { alwaysNeededEmptySections } : {}),
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(templateVersion !== undefined ? { templateVersion } : {}),
     }
@@ -402,6 +410,10 @@ function optionToThings(
         .addStringNoLocale(PMU.text, option.text)
         .addInteger(PMU.order, option.order)
 
+    for (const label of option.emptySections ?? []) {
+        optBuilder = optBuilder.addStringNoLocale(PMU.emptySection, label)
+    }
+
     for (let i = 0; i < option.items.length; i++) {
         const itemUrl = `${datasetUrl}#opt-item-${option.id}-${i}`
         optBuilder = optBuilder.addUrl(PMU.hasQuestionItem, itemUrl)
@@ -431,7 +443,18 @@ function thingToOption(dataset: SolidDataset, url: string): Option | null {
         .map(itemUrl => thingToQuestionItem(dataset, itemUrl))
         .filter((item): item is Item => item !== null))
 
-    return { id, text, order, items }
+    // Repeated strings are an unordered set in RDF, so these come back sorted
+    // rather than as written. They name sections with nothing in them, whose
+    // position is decided by where the reader puts them anyway.
+    const emptySections = getStringNoLocaleAll(thing, PMU.emptySection).sort()
+
+    return {
+        id,
+        text,
+        order,
+        items,
+        ...(emptySections.length > 0 ? { emptySections } : {}),
+    }
 }
 
 // Explicit order wins where present; items without one keep their URL-index

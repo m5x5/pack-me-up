@@ -132,32 +132,37 @@ describe('ItemInlineEditor: quantity', () => {
 describe('ItemInlineEditor: section', () => {
     it('shows the default section when the item carries no category', () => {
         renderEditor(makeItem())
-        expect(within(screen.getByTestId('item-section-field')).getByText('Yes')).toBeTruthy()
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Yes')
     })
 
     it('shows the item’s own section when it has one', () => {
         renderEditor(makeItem({ category: 'Toiletries' }))
-        expect(within(screen.getByTestId('item-section-field')).getByText('Toiletries')).toBeTruthy()
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Toiletries')
     })
 
     it('moves the item into another section', () => {
         const { onChange } = renderEditor(makeItem())
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Yes'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Toiletries' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Toiletries' } })
         expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ category: 'Toiletries' }))
     })
 
     it('clears the category when moved back to the default section', () => {
         const { onChange } = renderEditor(makeItem({ category: 'Toiletries' }))
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Toiletries'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Yes' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Yes' } })
         expect(onChange.mock.calls[0][0].category).toBeUndefined()
+    })
+
+    it('offers only sections that exist — creating one is not a typing gesture', () => {
+        renderEditor(makeItem())
+        const labels = [...screen.getByLabelText('Section').querySelectorAll('option')].map(o => o.textContent)
+        expect(labels).toEqual(['Yes', 'Toiletries', 'Clothes'])
+    })
+
+    it('keeps the item’s own section on offer even when it is not a known name', () => {
+        // Otherwise the select would show — and on the next change commit — some
+        // other section entirely, silently moving the item.
+        renderEditor(makeItem({ category: 'Retired name' }))
+        expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('Retired name')
     })
 })
 
@@ -172,5 +177,52 @@ describe('ItemInlineEditor: closing', () => {
         const { onClose } = renderEditor(makeItem())
         fireEvent.keyDown(screen.getByTestId('item-inline-editor'), { key: 'Escape' })
         expect(onClose).toHaveBeenCalled()
+    })
+})
+
+describe('ItemInlineEditor: deleting', () => {
+    function renderDeletable(item: Item) {
+        const onDelete = vi.fn()
+        const onClose = vi.fn()
+        render(
+            <ItemInlineEditor
+                item={item}
+                people={people}
+                allItemNames={['Socks', 'Towel']}
+                sectionNames={['Toiletries']}
+                sectionDefaultLabel="Yes"
+                onChange={vi.fn()}
+                onDelete={onDelete}
+                onClose={onClose}
+            />
+        )
+        return { onDelete, onClose }
+    }
+
+    it('offers no delete when the caller supplies no handler', () => {
+        renderEditor(makeItem())
+        expect(screen.queryByRole('button', { name: /Delete/ })).toBeNull()
+    })
+
+    it('names the item it will delete, so the wrong row is obvious', () => {
+        renderDeletable(makeItem({ text: 'Socks' }))
+        expect(screen.getByRole('button', { name: 'Delete Socks' })).toBeTruthy()
+    })
+
+    it('deletes on click', () => {
+        const { onDelete } = renderDeletable(makeItem())
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(onDelete).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves closing to the caller, whose list has just changed shape', () => {
+        const { onClose } = renderDeletable(makeItem())
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(onClose).not.toHaveBeenCalled()
+    })
+
+    it('still names the button when the item has no text yet', () => {
+        renderDeletable(makeItem({ text: '' }))
+        expect(screen.getByRole('button', { name: 'Delete item' })).toBeTruthy()
     })
 })

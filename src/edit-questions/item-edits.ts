@@ -86,6 +86,32 @@ export function appendItemToSection(
 }
 
 /**
+ * Fold an editor's finished list back into what was stored, turning the items
+ * it dropped into tombstones instead of letting them vanish.
+ *
+ * A modal that rewrites a whole list on save knows only about the items it was
+ * given, which are the *active* ones — so saving it as-is silently discards
+ * every `deletedAt` the list was carrying, and turns each deletion made in the
+ * modal into a plain absence. `mergeItemsById` resolves an item present on one
+ * side only by keeping it, so both of those come straight back on the next pod
+ * merge: the deletion doesn't stick, and an item deleted on another device
+ * reappears. Marking removals rather than dropping them is what makes a delete
+ * survive the round trip — the same shape `handlePeopleSave` uses for people.
+ *
+ * Items with no `id` are the exception: `mergeItemsById` bows out entirely
+ * unless every item on both sides has one, so there is nothing for a tombstone
+ * to match on and a removal stays a removal.
+ */
+export function tombstoneRemovedItems(stored: Item[], kept: Item[], now: string): Item[] {
+    const keptIds = new Set(kept.map(item => item.id).filter(Boolean))
+    const previouslyDeleted = stored.filter(item => item.deletedAt)
+    const nowDeleted = stored
+        .filter(item => !item.deletedAt && item.id && !keptIds.has(item.id))
+        .map(item => ({ ...item, deletedAt: now }))
+    return [...kept, ...nowDeleted, ...previouslyDeleted]
+}
+
+/**
  * Apply an edit to the item at `index`.
  *
  * When the edit leaves the item in the same section this is a straight

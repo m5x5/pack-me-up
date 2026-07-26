@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import React from 'react'
 import { OptionSection } from './questions-page'
 import { DEFAULT_SECTION_ACCENT, sectionAccent } from '../edit-questions/section-accent'
@@ -267,11 +267,7 @@ describe('OptionSection inline item editing', () => {
         // the item being edited — and the row has visibly gone somewhere else.
         const { onItemChange } = renderEditable(withItems(), ['Toiletries'])
         fireEvent.click(screen.getByTitle('Edit Socks'))
-        const field = screen.getByTestId('item-section-field')
-        fireEvent.click(within(field).getByText('Yes'))
-        const input = field.querySelector('input') as HTMLInputElement
-        fireEvent.change(input, { target: { value: 'Toiletries' } })
-        fireEvent.blur(input)
+        fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'Toiletries' } })
         expect(onItemChange).toHaveBeenCalledWith('q1', 'o1', 0, expect.objectContaining({
             category: 'Toiletries',
         }))
@@ -505,5 +501,292 @@ describe('OptionSection with no items, once items can be added', () => {
         fireEvent.change(input, { target: { value: 'Socks' } })
         fireEvent.keyDown(input, { key: 'Enter' })
         expect(onItemAdd).toHaveBeenCalledWith('q1', 'o1', 'Socks', undefined)
+    })
+})
+
+describe('OptionSection: deleting an item', () => {
+    const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
+
+    /** The section with inline editing *and* deleting switched on. */
+    function renderDeletable(option: Option) {
+        const onItemDelete = vi.fn()
+        render(
+            <OptionSection
+                option={option}
+                people={twoPeople}
+                sectionDefaultLabel="Yes"
+                allItemNames={['Socks', 'Towel']}
+                questionId="q1"
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemDelete={onItemDelete}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onItemDelete }
+    }
+
+    it('offers no delete when the page supplies no handler', () => {
+        renderEditable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        // Scoped to the editor: the option's own "Delete option" button is a
+        // different thing entirely and is always there.
+        const editor = screen.getByTestId('item-inline-editor')
+        expect(within(editor).queryByRole('button', { name: /^Delete/ })).toBeNull()
+    })
+
+    it('deletes the row the editor was opened on', () => {
+        const { onItemDelete } = renderDeletable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Towel'))
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Towel' }))
+        expect(onItemDelete).toHaveBeenCalledWith('q1', 'o1', 1)
+    })
+
+    it('closes the editor, whose row has gone and whose index now means another', () => {
+        renderDeletable(withItems())
+        fireEvent.click(screen.getByTitle('Edit Socks'))
+        fireEvent.click(screen.getByRole('button', { name: 'Delete Socks' }))
+        expect(screen.queryByTestId('item-inline-editor')).toBeNull()
+    })
+})
+
+describe('OptionSection: a section with nothing in it yet', () => {
+    function renderWithEmptySection(option: Option) {
+        render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+            />
+        )
+    }
+
+    it('can be opened even though the option has no items', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        expect(screen.getByTestId('option-expand-chevron')).toBeTruthy()
+    })
+
+    it('draws the section, so a section you just made is actually there', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByText('Toiletries')).toBeTruthy()
+    })
+
+    it('says it is empty rather than drawing a blank card', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByText(/Nothing here yet/)).toBeTruthy()
+    })
+
+    it('carries its own ＋, so the first item goes straight into it', () => {
+        renderWithEmptySection(makeOption({ items: [], emptySections: ['Toiletries'] }))
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        expect(screen.getByRole('button', { name: 'Add an item to Toiletries' })).toBeTruthy()
+    })
+})
+
+describe('OptionSection: creating a section', () => {
+    function renderAddable(option: Option, onSectionAdd = vi.fn()) {
+        render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                sectionNames={['Toiletries']}
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+                onSectionAdd={onSectionAdd}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onSectionAdd }
+    }
+
+    it('offers no "+ Add section" when the page supplies no handler', () => {
+        renderEditable(makeOption({ items: [makeItem('Socks')] }))
+        expect(screen.queryByRole('button', { name: '+ Add section' })).toBeNull()
+    })
+
+    it('names the new section and creates it', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.change(screen.getByLabelText('New section name'), { target: { value: 'Beach kit' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+        expect(onSectionAdd).toHaveBeenCalledWith('q1', 'o1', 'Beach kit')
+    })
+
+    it('creates on Enter, so naming several in a row needs no mouse', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        const input = screen.getByLabelText('New section name')
+        fireEvent.change(input, { target: { value: 'Beach kit' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+        expect(onSectionAdd).toHaveBeenCalledWith('q1', 'o1', 'Beach kit')
+    })
+
+    it('creates nothing on an empty name', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+        expect(onSectionAdd).not.toHaveBeenCalled()
+        expect(screen.queryByTestId('add-section')).toBeNull()
+    })
+
+    it('abandons the name on Escape', () => {
+        const { onSectionAdd } = renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        fireEvent.keyDown(screen.getByLabelText('New section name'), { key: 'Escape' })
+        expect(screen.queryByTestId('add-section')).toBeNull()
+        expect(onSectionAdd).not.toHaveBeenCalled()
+    })
+
+    it('suggests names already used elsewhere, so one section is not spelled two ways', () => {
+        renderAddable(makeOption({ items: [makeItem('Socks')] }))
+        fireEvent.click(screen.getByRole('button', { name: '+ Add section' }))
+        const listId = screen.getByLabelText('New section name').getAttribute('list')
+        const options = [...document.querySelectorAll(`#${CSS.escape(listId!)} option`)].map(o => o.getAttribute('value'))
+        expect(options).toContain('Toiletries')
+    })
+})
+
+describe('OptionSection: organising', () => {
+    const withItems = () => makeOption({ items: [makeItem('Socks'), makeItem('Towel')] })
+
+    function renderOrganisable(option: Option, onReorder = vi.fn()) {
+        const view = render(
+            <OptionSection
+                option={option}
+                people={people}
+                sectionDefaultLabel="Yes"
+                questionId="q1"
+                suggestions={buildIndexOf([])}
+                onEdit={vi.fn()}
+                onDelete={vi.fn()}
+                onItemChange={vi.fn()}
+                onItemAdd={vi.fn()}
+                onReorder={onReorder}
+            />
+        )
+        fireEvent.click(screen.getByRole('button', { name: /Yes/ }))
+        return { onReorder, unmount: view.unmount }
+    }
+
+    it('offers organising without opening anything', () => {
+        renderOrganisable(withItems())
+        expect(screen.getByRole('button', { name: 'Organise items' })).toBeTruthy()
+    })
+
+    it('offers nothing to organise with a single item', () => {
+        renderOrganisable(makeOption({ items: [makeItem('Socks')] }))
+        expect(screen.queryByRole('button', { name: 'Organise items' })).toBeNull()
+    })
+
+    it('offers no organising when the page cannot save the result', () => {
+        renderEditable(withItems())
+        expect(screen.queryByRole('button', { name: 'Organise items' })).toBeNull()
+    })
+
+    it('opens onto the whole screen, which is what the drag needs', () => {
+        // Tried nested in the page first: a scroll area inside a scroll area,
+        // with neither in charge of the gesture.
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        const dialog = screen.getByRole('dialog', { name: 'Organise Yes items' })
+        expect(within(dialog).getAllByRole('button', { name: /^Drag / })).toHaveLength(2)
+    })
+
+    it('closes back to the list', () => {
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Finish organising' }))
+        expect(screen.queryByRole('dialog')).toBeNull()
+        expect(screen.getAllByTestId('item-row')).toHaveLength(2)
+    })
+
+    it('closes on Escape', () => {
+        renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+        expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    function moveTowelToTop() {
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Towel' }), { button: 0 })
+        fireEvent.click(within(screen.getByRole('menu')).getByText('Move to top of section'))
+    }
+
+    it('shows the move at once, without waiting for it to be written', () => {
+        const { onReorder } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        // On screen immediately...
+        const rows = [...document.querySelectorAll('[data-reorder-row]')]
+        expect(rows.map(r => r.textContent)).toEqual([
+            expect.stringContaining('Towel'),
+            expect.stringContaining('Socks'),
+        ])
+        // ...and not yet written, so a run of drags costs one save, not one each.
+        expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('writes the move once the dragging stops', async () => {
+        vi.useFakeTimers()
+        try {
+            const { onReorder } = renderOrganisable(withItems())
+            fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+            moveTowelToTop()
+            await act(async () => { vi.advanceTimersByTime(1000) })
+            expect(onReorder).toHaveBeenCalledWith('q1', 'o1', [
+                expect.objectContaining({ text: 'Towel' }),
+                expect.objectContaining({ text: 'Socks' }),
+            ], undefined)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('writes what is still in hand when the dialog is closed', () => {
+        const { onReorder } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        fireEvent.click(screen.getByRole('button', { name: 'Finish organising' }))
+        expect(onReorder).toHaveBeenCalledWith('q1', 'o1', [
+            expect.objectContaining({ text: 'Towel' }),
+            expect.objectContaining({ text: 'Socks' }),
+        ], undefined)
+    })
+
+    it('writes what is still in hand when the list goes away underneath it', () => {
+        const { onReorder, unmount } = renderOrganisable(withItems())
+        fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+        moveTowelToTop()
+        unmount()
+        expect(onReorder).toHaveBeenCalledTimes(1)
+    })
+
+    it('collapses a run of moves into a single write', async () => {
+        vi.useFakeTimers()
+        try {
+            const { onReorder } = renderOrganisable(withItems())
+            fireEvent.click(screen.getByRole('button', { name: 'Organise items' }))
+            moveTowelToTop()
+            fireEvent.pointerDown(screen.getByRole('button', { name: 'Move Socks' }), { button: 0 })
+            fireEvent.click(within(screen.getByRole('menu')).getByText('Move to top of section'))
+            await act(async () => { vi.advanceTimersByTime(1000) })
+            expect(onReorder).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })

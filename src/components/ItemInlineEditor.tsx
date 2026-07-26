@@ -20,7 +20,7 @@ import type { Item, Person } from '../edit-questions/types'
 
 const FIELD_LABEL = 'block text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1'
 
-export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, allItemNames, sectionNames, sectionDefaultLabel, onChange, onClose }: {
+export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, allItemNames, sectionNames, sectionDefaultLabel, onChange, onDelete, onClose }: {
     item: Item
     people: Person[]
     allItemNames: string[]
@@ -29,6 +29,12 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
     /** What the packing list calls items here that carry no category of their own. */
     sectionDefaultLabel: string
     onChange: (edited: Item) => void
+    /**
+     * Omit to leave the item undeletable. Closing afterwards is the caller's
+     * job, not this panel's: it is the caller that knows the list has just lost
+     * a row and that every index after this one has shifted up.
+     */
+    onDelete?: () => void
     onClose: () => void
 }) {
     const setText = useCallback((text: string) => onChange({ ...item, text }), [item, onChange])
@@ -56,7 +62,13 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
     // The default section is offered by name, so "back to the main pile" is a
     // choice rather than the absence of one. Storing it clears the category —
     // see the note on applySectionLayout for why the default is never stamped.
-    const sectionOptions = [sectionDefaultLabel, ...sectionNames.filter(name => name !== sectionDefaultLabel)]
+    // The item's own section is included even if it is not among the offered
+    // names, so an unrecognised one is never silently swapped for another.
+    const sectionOptions = [...new Set([
+        sectionDefaultLabel,
+        ...(item.category ? [item.category] : []),
+        ...sectionNames,
+    ])]
     const setSection = useCallback((value: string) => {
         const category = value === '' || value === sectionDefaultLabel ? undefined : value
         onChange({ ...item, category })
@@ -107,16 +119,38 @@ export const ItemInlineEditor = memo(function ItemInlineEditor({ item, people, a
 
             <div data-testid="item-section-field">
                 <span className={FIELD_LABEL}>Section</span>
-                <CustomCreatableSelect
+                {/* A choice among sections that exist, never a place to make a
+                    new one. Free text here used to create a section, which is
+                    the same gesture that renames one in the organise view — so
+                    the identical action meant "move this item" in one place and
+                    "rename this whole section" in the other. Creating is its own
+                    button now, at the foot of the list. */}
+                <select
+                    aria-label="Section"
                     value={item.category ?? sectionDefaultLabel}
-                    onChange={setSection}
-                    options={sectionOptions}
-                    placeholder="Section"
-                    menuPortalTarget={document.body}
-                />
+                    onChange={e => setSection(e.target.value)}
+                    className="w-full border border-gray-200 rounded px-3 py-2.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                    {sectionOptions.map(label => (
+                        <option key={label} value={label}>{label}</option>
+                    ))}
+                </select>
             </div>
 
-            <div className="flex justify-end">
+            {/* Delete sits opposite Done, at the far end of the panel: it is the
+                one action here that cannot be undone by typing something else,
+                so it stays well away from the button people reach for to leave. */}
+            <div className="flex items-center justify-between">
+                {onDelete ? (
+                    <button
+                        type="button"
+                        onClick={onDelete}
+                        aria-label={item.text ? `Delete ${item.text}` : 'Delete item'}
+                        className="px-2 py-1.5 text-sm font-medium text-gray-400 rounded-lg hover:text-red-600 hover:bg-red-50"
+                    >
+                        Delete
+                    </button>
+                ) : <span />}
                 <button
                     type="button"
                     onClick={onClose}

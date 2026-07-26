@@ -49,6 +49,9 @@ export const PMU = {
     hasPerson: `${PMU_NS}hasPerson`,
     hasQuestion: `${PMU_NS}hasQuestion`,
     hasAlwaysNeededItem: `${PMU_NS}hasAlwaysNeededItem`,
+    // One value per always-needed section that has no items in it yet. A section
+    // is otherwise only its items' categories, so an empty one would vanish.
+    alwaysNeededEmptySection: `${PMU_NS}alwaysNeededEmptySection`,
     // Wizard template version this set was last reconciled against
     templateVersion: `${PMU_NS}templateVersion`,
 
@@ -72,6 +75,8 @@ export const PMU = {
 
     // Option predicates
     hasQuestionItem: `${PMU_NS}hasQuestionItem`,
+    // One value per section of this option's items that has no items in it yet
+    emptySection: `${PMU_NS}emptySection`,
 
     // Item predicates (on option items and always-needed items)
     hasPersonSelection: `${PMU_NS}hasPersonSelection`,
