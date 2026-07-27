@@ -364,6 +364,7 @@ function personToThing(person: Person, personUrl: string): Thing {
     if (person.gender) t = t.addStringNoLocale(PMU.gender, person.gender)
     if (person.species) t = t.addStringNoLocale(PMU.species, person.species)
     if (person.dateOfBirth) t = t.addStringNoLocale(PMU.dateOfBirth, person.dateOfBirth)
+    if (person.color) t = t.addStringNoLocale(PMU.personColor, person.color)
     if (person.lastModified) t = t.addDatetime(PMU.personLastModified, new Date(person.lastModified))
     if (person.deletedAt) t = t.addDatetime(PMU.personDeletedAt, new Date(person.deletedAt))
 
@@ -378,6 +379,7 @@ function thingToPerson(thing: Thing | null, url: string): Person | null {
     const gender = getStringNoLocale(thing, PMU.gender) ?? undefined
     const species = getStringNoLocale(thing, PMU.species) ?? undefined
     const dateOfBirth = getStringNoLocale(thing, PMU.dateOfBirth) ?? undefined
+    const color = getStringNoLocale(thing, PMU.personColor) ?? undefined
     const lastModified = getDatetime(thing, PMU.personLastModified)?.toISOString()
     const deletedAt = getDatetime(thing, PMU.personDeletedAt)?.toISOString()
     return {
@@ -387,6 +389,7 @@ function thingToPerson(thing: Thing | null, url: string): Person | null {
         ...(gender !== undefined ? { gender: gender as Person['gender'] } : {}),
         ...(species !== undefined ? { species: species as Person['species'] } : {}),
         ...(dateOfBirth !== undefined ? { dateOfBirth } : {}),
+        ...(color !== undefined ? { color: color as Person['color'] } : {}),
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(deletedAt !== undefined ? { deletedAt } : {}),
     }

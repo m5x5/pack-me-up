@@ -95,6 +95,7 @@ const fullyPopulatedPerson: Required<Person> = {
     dateOfBirth: '1990-05-04',
     gender: 'female',
     species: 'dog',
+    color: 'fuchsia',
     lastModified: '2025-01-02T00:00:00.000Z',
     deletedAt: '2025-01-03T00:00:00.000Z',
 }

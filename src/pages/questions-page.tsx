@@ -27,11 +27,11 @@ import { AddQuestionItem } from '../components/AddQuestionItem'
 import { ALWAYS_LIST_KEY, buildQuestionSetSuggestions, listKeyFor } from '../edit-questions/item-suggestions'
 import { buildIndexOf, type SuggestionIndex } from '../utils/itemSuggestions'
 import {
-    AVATAR_ON,
-    AVATAR_OFF,
     rateLabel,
     quantityTitle,
 } from '../components/ItemEditorControls'
+import { PERSON_COLOR_OFF, personColorFor, type PersonColorId } from '../edit-questions/person-colors'
+import { PersonColorSwatches } from '../components/PersonColorPicker'
 
 // Stable empty default for the optional inline-editing props, so a section that
 // isn't editable doesn't hand its memoized children a new array every render.
@@ -41,7 +41,7 @@ function PersonDot({ person, index, selected }: { person: Person; index: number;
     return (
         <span
             title={person.name}
-            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold select-none shrink-0 ${selected ? AVATAR_ON[index % AVATAR_ON.length] : AVATAR_OFF}`}
+            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold select-none shrink-0 ${selected ? personColorFor(person, index).avatar : PERSON_COLOR_OFF}`}
         >
             {person.name.charAt(0).toUpperCase()}
         </span>
@@ -57,7 +57,7 @@ const PersonLegend = memo(function PersonLegend({ people, onEdit }: { people: Pe
             )}
             {people.map((person, i) => (
                 <span key={person.id} className="flex items-center gap-1 text-xs text-gray-500">
-                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${AVATAR_ON[i % AVATAR_ON.length]}`}>
+                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${personColorFor(person, i).avatar}`}>
                         {person.name.charAt(0).toUpperCase()}
                     </span>
                     {person.name}
@@ -1268,7 +1268,7 @@ function OptionEditModal({ option, onSave, onClose }: {
     )
 }
 
-function PeopleModal({ people, onSave, onClose }: {
+export function PeopleModal({ people, onSave, onClose }: {
     people: Person[]
     onSave: (newPeople: Person[]) => void
     onClose: () => void
@@ -1276,6 +1276,9 @@ function PeopleModal({ people, onSave, onClose }: {
     const [localPeople, setLocalPeople] = useState<Person[]>(
         people.length > 0 ? people : [{ id: crypto.randomUUID(), name: '' }]
     )
+    // Which person's palette is open. One at a time: twelve swatches under
+    // every row would bury the names this modal exists to edit.
+    const [colorPickerFor, setColorPickerFor] = useState<string | null>(null)
 
     const addPerson = () => setLocalPeople(prev => [...prev, { id: crypto.randomUUID(), name: '' }])
     const removePerson = (idx: number) => {
@@ -1292,6 +1295,12 @@ function PeopleModal({ people, onSave, onClose }: {
         setLocalPeople(prev => prev.map((p, i) => i === idx
             ? { ...p, ageRange: value === '' ? undefined : value as Person['ageRange'] }
             : p))
+    // Picking closes the palette: the choice shows immediately on the avatar
+    // above it, so leaving the grid open would only hide the confirmation.
+    const updateColor = (idx: number, color: PersonColorId) => {
+        setLocalPeople(prev => prev.map((p, i) => i === idx ? { ...p, color } : p))
+        setColorPickerFor(null)
+    }
 
     return (
         <div
@@ -1303,12 +1312,23 @@ function PeopleModal({ people, onSave, onClose }: {
                 <div className="p-5">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit People</h2>
                     <div className="space-y-2 mb-3">
-                        {localPeople.map((person, i) => (
+                        {localPeople.map((person, i) => {
+                            const color = personColorFor(person, i)
+                            const pickerOpen = colorPickerFor === person.id
+                            const personLabel = person.name || `Person ${i + 1}`
+                            return (
                             <div key={person.id}>
                                 <div className="flex items-center gap-2">
-                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shrink-0 ${AVATAR_ON[i % AVATAR_ON.length]}`}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setColorPickerFor(pickerOpen ? null : person.id)}
+                                        aria-label={`Change colour for ${personLabel}`}
+                                        aria-expanded={pickerOpen}
+                                        title="Change colour"
+                                        className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shrink-0 transition-shadow hover:ring-2 hover:ring-offset-1 focus:outline-none focus:ring-2 focus:ring-offset-1 ${color.avatar} ${color.ring} ${pickerOpen ? 'ring-2 ring-offset-1' : ''}`}
+                                    >
                                         {person.name.charAt(0).toUpperCase() || '?'}
-                                    </span>
+                                    </button>
                                     <input
                                         autoFocus={i === 0}
                                         type="text"
@@ -1353,10 +1373,18 @@ function PeopleModal({ people, onSave, onClose }: {
                                         </select>
                                     </div>
                                 )}
+                                {pickerOpen && (
+                                    <PersonColorSwatches
+                                        personName={personLabel}
+                                        selected={color}
+                                        onSelect={id => updateColor(i, id)}
+                                    />
+                                )}
                             </div>
-                        ))}
+                            )
+                        })}
                     </div>
-                    <p className="text-xs text-gray-400 mb-3">Birthdays are optional — add one and we'll suggest packing-item updates as they grow. You can also bump the age group early if they're ready for it.</p>
+                    <p className="text-xs text-gray-400 mb-3">Tap someone's circle to change their colour — it follows them onto every packing list. Birthdays are optional: add one and we'll suggest packing-item updates as they grow, or bump the age group early if they're ready for it.</p>
                     <button
                         type="button"
                         onClick={addPerson}

@@ -19,6 +19,8 @@ import { AgePromotionCard } from '../components/AgePromotionCard'
 import { LoadingState } from '../components/LoadingState'
 import { tripDatesOutOfOrder } from '../create-packing-list/tripDetails'
 import { deduplicateItems } from '../create-packing-list/deduplicate'
+import { PersonAvatar } from '../components/PersonAvatar'
+import { personColorFor } from '../edit-questions/person-colors'
 
 export function getUnreviewedDeletedItems(
     packingLists: PackingList[],
@@ -843,7 +845,7 @@ export function CreatePackingList() {
                             </button>
                         </div>
                         <div className="space-y-2">
-                            {questionSet.people.map((person) => (
+                            {questionSet.people.map((person, personIndex) => (
                                 <label key={person.id} className="flex items-center space-x-3">
                                     <input
                                         type="checkbox"
@@ -856,6 +858,12 @@ export function CreatePackingList() {
                                             }
                                         }}
                                         className="h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                                    />
+                                    {/* The same mark they'll carry on the list this makes */}
+                                    <PersonAvatar
+                                        name={person.name}
+                                        color={personColorFor(person, personIndex)}
+                                        size="sm"
                                     />
                                     <span className="text-gray-700">
                                         {person.name}
