@@ -509,6 +509,17 @@ The principle is **irreplaceability descending, bulk ascending**, with rooms kep
 contiguous (bathroom → bedroom → nursery → kitchen → garage) so the family walks
 the house once. Under this mapping `Essentials` simply stops being used.
 
+> **Later revision — `Day Bag` leads, and by-bag is admitted once.** Shipped as
+> above, then revisited against actually packing with it. The rejection of
+> by-bag holds for *hold vs. boot*, which is transport-specific — but not for
+> the bag that stays with you, which exists on every trip under the same name.
+> Assembling it meant reading the whole list and remembering which rows counted.
+> `Day Bag` is now section 1, and it absorbed `Tech & Chargers` and
+> `Toys & Games` whole: both were day-bag contents wearing a functional label
+> (charger, power bank, headphones; colouring book, travel cards), and neither
+> had anything left once that half moved. Ten categories, not eleven. The
+> reasoning lives on `CATEGORIES` in `item-sections.ts`.
+
 Only populated categories appear, so a childless city break sees seven and a day
 trip four. In the default per-person view the largest single group today is 13
 rows (a female adult's share of "Will you be staying overnight?"); breaking that

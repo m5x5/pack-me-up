@@ -17,25 +17,38 @@ import type { Item, Option, PackingListQuestionSet, Question } from './types'
 export const ALWAYS_NEEDED_CATEGORY = 'Essentials'
 
 /**
- * The sections the built-in template sorts its items into. Functional rather
- * than by-person or by-bag: a functional name is stable across every trip type,
- * derivable from the item alone, and maps onto a place in the house — so the
- * family walks from bathroom to bedroom to kitchen once. By-person is already
- * the list's other axis, and by-bag would depend on how you're travelling.
+ * The sections the built-in template sorts its items into. Mostly functional:
+ * a functional name is stable across every trip type, derivable from the item
+ * alone, and maps onto a place in the house — so the family walks from bathroom
+ * to bedroom to kitchen once. By-person is already the list's other axis.
+ *
+ * `dayBag` is the one deliberate exception, and it earns it. Packing is really
+ * the job of filling two things: the case, which can be anything, and the bag
+ * that stays with you, which cannot — a phone charger in the hold is a phone
+ * charger you don't have. Spreading those items over Tech, Toiletries, Food and
+ * Toys meant assembling the day bag by reading the whole list and remembering
+ * which rows counted. One card for it is the single biggest practical win here,
+ * and unlike "hand luggage" or "boot of the car" the name holds whether you're
+ * flying, driving or walking to the station.
+ *
+ * It also absorbed two whole sections. Tech & Chargers was phone, charger,
+ * power bank, headphones, tablet, adapter — day bag, all of it. Toys & Games
+ * was colouring books and travel card games, which are there for the journey;
+ * the bedtime teddy was always filed under Sleep & Comfort anyway. Neither
+ * section had a life of its own once its day-bag half left.
  *
  * These are plain labels, not an enum: a user can rename or delete any of them,
  * and items they add carry no category at all. Nothing here is load-bearing for
  * correctness — it only decides headings and their order.
  */
 export const CATEGORIES = {
+    dayBag: 'Day Bag',
     documents: 'Documents & Money',
     medical: 'Medicines & First Aid',
-    tech: 'Tech & Chargers',
     toiletries: 'Toiletries',
     clothes: 'Clothes',
     sleep: 'Sleep & Comfort',
     nappies: 'Nappies & Changing',
-    toys: 'Toys & Games',
     food: 'Food & Kitchen',
     kit: 'Kit & Gear',
     pet: 'Pet Care',
@@ -45,6 +58,11 @@ export const CATEGORIES = {
  * Display order for the sections above: irreplaceability descending, bulk
  * ascending. A forgotten passport ends the trip and there are only a handful of
  * them, so documents lead and the tent is loaded last.
+ *
+ * The day bag goes ahead of even the documents. Everything else on the list can
+ * be packed the night before and checked at leisure; the day bag is the one you
+ * are still filling as you leave, so it wants to be the first thing on screen —
+ * and it is short enough to read in the doorway.
  *
  * Without this, a section's position came from the lowest `order` among its
  * items (see `groupItemsByCategory`), which was coherent while a section *was*
@@ -60,14 +78,13 @@ export const CATEGORIES = {
  */
 export const CATEGORY_ORDER: readonly string[] = [
     ALWAYS_NEEDED_CATEGORY,
+    CATEGORIES.dayBag,
     CATEGORIES.documents,
     CATEGORIES.medical,
-    CATEGORIES.tech,
     CATEGORIES.toiletries,
     CATEGORIES.clothes,
     CATEGORIES.sleep,
     CATEGORIES.nappies,
-    CATEGORIES.toys,
     CATEGORIES.food,
     CATEGORIES.kit,
     CATEGORIES.pet,

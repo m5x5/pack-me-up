@@ -222,7 +222,7 @@ describe('buildTemplateUpdateSuggestions - filing an uncategorised set into sect
         const updated = applyTemplateUpdates(set, buildTemplateUpdateSuggestions(set))
 
         const charger = updated.alwaysNeededItems.find(i => i.text === 'Phone charger')!
-        expect(charger.category).toBe('Tech & Chargers')
+        expect(charger.category).toBe('Day Bag')
         expect(charger.lastModified).toBeTruthy()
 
         const overnightYes = updated.questions

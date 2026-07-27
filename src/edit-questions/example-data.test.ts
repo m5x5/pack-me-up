@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createExampleData, ACTIVITY_OPTION_IDS, TEMPLATE_QUESTION_IDS, TRANSPORT_OPTION_IDS, ACCOMMODATION_OPTION_IDS, WIZARD_TEMPLATE_VERSION } from './example-data'
+import { CATEGORIES } from './item-sections'
 import { Person } from './types'
 
 const people: Person[] = [{ id: 'person-1', name: 'Alice', ageRange: 'Adult' }]
@@ -21,6 +22,149 @@ describe('ACTIVITY_OPTION_IDS', () => {
         expect(ACTIVITY_OPTION_IDS.skiing).toBe('activity-option-skiing')
         expect(ACTIVITY_OPTION_IDS.themePark).toBe('activity-option-theme-park')
         expect(ACTIVITY_OPTION_IDS.formalOccasions).toBe('activity-option-formal-occasions')
+        expect(ACTIVITY_OPTION_IDS.festival).toBe('activity-option-festival')
+    })
+})
+
+describe('createExampleData - the day bag', () => {
+    const family: Person[] = [
+        { id: 'a1', name: 'Alice', ageRange: 'Adult', gender: 'female' },
+        { id: 'c1', name: 'Cal', ageRange: 'Child' },
+        { id: 'b1', name: 'Bea', ageRange: 'Baby' },
+    ]
+
+    function everyItem(result: ReturnType<typeof createExampleData>) {
+        return [
+            ...result.alwaysNeededItems,
+            ...result.questions.flatMap(q => q.options.flatMap(o => o.items)),
+        ]
+    }
+
+    const categoryOf = (result: ReturnType<typeof createExampleData>, text: string) =>
+        everyItem(result).find(i => i.text === text)?.category
+
+    // The whole point of the section: these used to be spread over Tech,
+    // Toiletries, Food and Toys, so assembling the day bag meant reading the
+    // entire list and remembering which rows counted.
+    it('gathers what has to stay with you into one section', () => {
+        const result = createExampleData(family)
+        for (const text of [
+            'Wallet and bank cards',
+            'House keys',
+            'Phone',
+            'Phone charger',
+            'Power bank',
+            'Headphones',
+            'Hand sanitiser',
+            'Tissues',
+            'Snacks',
+            'Water bottle',
+            'Day bag / Backpack',
+            'Colouring book and pens',
+            'Playing cards/Travel games',
+            'Ear defenders',
+        ]) {
+            expect(categoryOf(result, text), `"${text}" should be in the day bag`)
+                .toBe(CATEGORIES.dayBag)
+        }
+    })
+
+    it('files the journey items from each transport option into the day bag', () => {
+        const result = createExampleData(family)
+        for (const text of [
+            'Boarding passes',
+            'Tickets',
+            'Medication in hand luggage',
+            'Hand luggage liquids bag',
+            'Downloaded films and music',
+            'Snacks for the journey',
+            'Travel sickness tablets',
+            'Car keys',
+            'Car charger',
+            'Milk or dummy for take-off and landing',
+        ]) {
+            expect(categoryOf(result, text), `"${text}" should be in the day bag`)
+                .toBe(CATEGORIES.dayBag)
+        }
+    })
+
+    // Bulk supplies are packed once and not opened again until you arrive, so
+    // they stay in the sections that map onto a room at home.
+    it('leaves the bulk of the packing in its functional section', () => {
+        const result = createExampleData(family)
+        expect(categoryOf(result, 'Underwear')).toBe(CATEGORIES.clothes)
+        expect(categoryOf(result, 'Toothbrush')).toBe(CATEGORIES.toiletries)
+        expect(categoryOf(result, 'Nappies (pack/supply)')).toBe(CATEGORIES.nappies)
+        expect(categoryOf(result, 'Passport')).toBe(CATEGORIES.documents)
+        expect(categoryOf(result, 'First aid kit')).toBe(CATEGORIES.medical)
+        expect(categoryOf(result, 'Tent')).toBe(CATEGORIES.kit)
+    })
+
+    it('files every template item into one of the template sections', () => {
+        const known = new Set<string>(Object.values(CATEGORIES))
+        for (const item of everyItem(createExampleData(family))) {
+            expect(known, `"${item.text}" is in "${item.category}"`).toContain(item.category)
+        }
+    })
+})
+
+describe('createExampleData - festivals', () => {
+    const family: Person[] = [
+        { id: 'a1', name: 'Alice', ageRange: 'Adult', gender: 'female' },
+        { id: 'c1', name: 'Cal', ageRange: 'Child' },
+    ]
+
+    const festivalItems = (result: ReturnType<typeof createExampleData>) =>
+        result.questions
+            .find(q => q.id === TEMPLATE_QUESTION_IDS.activities)!
+            .options.find(o => o.id === ACTIVITY_OPTION_IDS.festival)!.items
+
+    it('offers a festival as an activity, so it can be combined with camping', () => {
+        const result = createExampleData(family)
+        const activities = result.questions.find(q => q.id === TEMPLATE_QUESTION_IDS.activities)!
+        const festival = activities.options.find(o => o.id === ACTIVITY_OPTION_IDS.festival)
+        expect(festival).toBeTruthy()
+        expect(festival!.text).toBe('Festival or live music')
+    })
+
+    it('packs the things a festival needs and nothing else does', () => {
+        const texts = festivalItems(createExampleData(family)).map(i => i.text)
+        expect(texts).toEqual(expect.arrayContaining([
+            'Festival tickets or wristband',
+            'Bum bag or small crossbody bag',
+            'Cash in small notes',
+            'Ear plugs',
+            'Tent flag or marker',
+            'Dry shampoo',
+            'Toilet roll',
+        ]))
+    })
+
+    // Wellies, a head torch and camp chairs are already in the camping option;
+    // repeating them here is what makes the list right for someone at a
+    // festival who booked a hotel, and `deduplicateItems` collapses the pair
+    // for everyone else.
+    it('repeats the outdoor kit that a festival needs whether or not you camp', () => {
+        const texts = festivalItems(createExampleData(family)).map(i => i.text)
+        expect(texts).toEqual(expect.arrayContaining(['Wellies', 'Head torch', 'Camp chairs']))
+    })
+
+    it('gives children ear defenders and adults ear plugs', () => {
+        const items = festivalItems(createExampleData(family))
+        const defenders = items.find(i => i.text === 'Ear defenders')!
+        expect(defenders.personSelections.find(ps => ps.personId === 'c1')?.selected).toBe(true)
+        expect(defenders.personSelections.find(ps => ps.personId === 'a1')?.selected).toBe(false)
+
+        const plugs = items.find(i => i.text === 'Ear plugs')!
+        expect(plugs.personSelections.find(ps => ps.personId === 'a1')?.selected).toBe(true)
+    })
+
+    it('puts the wristband and the cash where you can reach them', () => {
+        const items = festivalItems(createExampleData(family))
+        expect(items.find(i => i.text === 'Festival tickets or wristband')!.category)
+            .toBe(CATEGORIES.dayBag)
+        expect(items.find(i => i.text === 'Cash in small notes')!.category)
+            .toBe(CATEGORIES.dayBag)
     })
 })
 
