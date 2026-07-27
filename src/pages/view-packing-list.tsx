@@ -107,10 +107,19 @@ function sortByItemOrder(items: PackingListItem[]): PackingListItem[] {
     return sortByOrder(items, PACKING_ITEM_ACCESSORS)
 }
 
-export function groupByCategory(items: PackingListItem[]) {
+/**
+ * `sectionOrder` is the list's own copy of the order its owner arranged their
+ * sections in (see `section-order.ts`). Lists generated before that existed —
+ * and lists whose owner never chose an order — pass nothing and get the
+ * built-in default, which is what every list used to get.
+ */
+export function groupByCategory(
+    items: PackingListItem[],
+    sectionOrder: readonly string[] = CATEGORY_ORDER,
+) {
     return groupItemsByCategory(items, PACKING_ITEM_ACCESSORS, {
         uncategorisedLabel: UNCATEGORISED_LABEL,
-        order: CATEGORY_ORDER,
+        order: sectionOrder,
         pinLast: UNCATEGORISED_LABEL,
     })
 }
@@ -350,14 +359,19 @@ export function ViewPackingList() {
         [packingList?.items, packingList?.deletedItems],
     )
 
+    // The order this list shows its sections in, stamped on at generation from
+    // whatever its owner arranged on their questions page. A list from before
+    // that existed carries none and falls back to the built-in default.
+    const sectionOrder = packingList?.sectionOrder ?? CATEGORY_ORDER
+
     // The sections a new item can be filed into: the ones this list already
     // shows, in the order it shows them, plus the catch-all. Offering sections
     // the list doesn't use would invent cards no one asked for — new sections
     // belong to the question set, where they can be arranged.
     const categoryOptions = useMemo(() => {
-        const labels = groupByCategory(packingList?.items ?? []).map(group => group.label)
+        const labels = groupByCategory(packingList?.items ?? [], sectionOrder).map(group => group.label)
         return labels.includes(UNCATEGORISED_LABEL) ? labels : [...labels, UNCATEGORISED_LABEL]
-    }, [packingList?.items])
+    }, [packingList?.items, sectionOrder])
 
     const peopleOptions = useMemo<PersonOption[]>(() => {
         const byName = new Map<string, string>()
@@ -1140,11 +1154,11 @@ export function ViewPackingList() {
         listSections = [...sharedSections, ...regularSections, ...guestSections]
     } else {
         const visibleByCategory = new Map(
-            groupByCategory(filteredItems.filter(i => !i.communal)).map(({ label, items }) => [label, items])
+            groupByCategory(filteredItems.filter(i => !i.communal), sectionOrder).map(({ label, items }) => [label, items])
         )
         // Categories come from every item, not just the visible ones, so a fully
         // packed category keeps its celebratory card instead of disappearing.
-        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal))
+        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal), sectionOrder)
             .filter(({ label }) => visibleByCategory.has(label) || isSectionComplete(categoryStats[label]))
             .map(({ label }) => ({
                 key: label,
@@ -1475,7 +1489,7 @@ export function ViewPackingList() {
                             const completeLabel = isShared ? 'shared items' : isCategorySection ? title : section.name
                             const collapseLabelTarget = isShared ? 'the shared items' : isCategorySection ? title : `${section.name}'s`
                             const innerGroups = (isShared || !isCategorySection)
-                                ? groupByCategory(items)
+                                ? groupByCategory(items, sectionOrder)
                                 : groupByPerson(items)
                             const isSectionCollapsed = collapsedSections.has(sectionKey)
                             return (

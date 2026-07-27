@@ -14,6 +14,13 @@ export const PMU = {
     QuestionItem: `${PMU_NS}QuestionItem`,
     Person: `${PMU_NS}Person`,
     PersonSelection: `${PMU_NS}PersonSelection`,
+    SectionOrderEntry: `${PMU_NS}SectionOrderEntry`,
+
+    // Shared by PackingList and QuestionSet: the order the list's sections are
+    // shown in. One Thing per section name carrying its position, because a
+    // repeated string on the root Thing comes back as an unordered set and an
+    // order is precisely what this field is.
+    hasSectionOrderEntry: `${PMU_NS}hasSectionOrderEntry`,
 
     // PackingList predicates
     hasItem: `${PMU_NS}hasItem`,

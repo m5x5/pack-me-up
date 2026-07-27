@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback, useId, useRef, useMemo, memo, Fragmen
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
+import { SectionOrderLegend, SectionOrderModal } from '../components/SectionOrderEditor'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { ALWAYS_NEEDED_CATEGORY, addEmptySection, buildSectionGroups, defaultCategoryFor, reconcileEmptySections, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
+import { orderedSectionLabels, reconcileSectionOrder, sectionLabelsOf } from '../edit-questions/section-order'
 import { sectionAccent } from '../edit-questions/section-accent'
 import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
@@ -160,36 +163,6 @@ const LIST_COMPOSER = '__list__'
 /** How long a reorder rests before it is written. Long enough to absorb a run
  *  of drags, short enough that walking away from the screen still saves. */
 const REORDER_SAVE_DELAY_MS = 600
-
-/**
- * Lock background page scroll while a modal is open.
- *
- * Besides being correct modal behaviour, it is what keeps the page — and on a
- * phone the browser's URL bar — from moving while a drag is happening inside.
- * A moving URL bar resizes the viewport, which moves every row the drag has
- * already measured, mid-gesture.
- */
-function useBodyScrollLock() {
-    useEffect(() => {
-        const body = document.body
-        const html = document.documentElement
-        const previous = {
-            body: body.style.overflow,
-            html: html.style.overflow,
-            overscroll: body.style.overscrollBehavior,
-        }
-        // Both: the scrolling element is <body> on some browsers and <html> on
-        // others (notably mobile). Chaining is stopped too.
-        body.style.overflow = 'hidden'
-        html.style.overflow = 'hidden'
-        body.style.overscrollBehavior = 'none'
-        return () => {
-            body.style.overflow = previous.body
-            html.style.overflow = previous.html
-            body.style.overscrollBehavior = previous.overscroll
-        }
-    }, [])
-}
 
 /**
  * Reorganising an item list, as the only thing on the screen.
@@ -679,6 +652,25 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
 function withEmptySections(option: Option, emptySections: string[] | undefined): Option {
     const { emptySections: _dropped, ...rest } = option
     return emptySections?.length ? { ...rest, emptySections } : rest
+}
+
+/**
+ * Carry a chosen section order across an edit that renamed a section.
+ *
+ * Renaming happens inside the item reorder view, which reports its work back as
+ * a list of items and nothing else — so by the time it reaches the page, a
+ * rename is indistinguishable from any other change to which sections exist.
+ * Comparing the section names before and after is what recovers it; see
+ * `reconcileSectionOrder` for the (deliberately narrow) rule that applies.
+ */
+function withReconciledSectionOrder(
+    previous: PackingListQuestionSet,
+    next: PackingListQuestionSet,
+): PackingListQuestionSet {
+    if (!previous.sectionOrder?.length) return next
+    const sectionOrder = reconcileSectionOrder(
+        previous.sectionOrder, sectionLabelsOf(previous), sectionLabelsOf(next))
+    return sectionOrder === previous.sectionOrder ? next : { ...next, sectionOrder }
 }
 
 function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
@@ -1482,6 +1474,7 @@ export function QuestionsPage() {
     const [questionModal, setQuestionModal] = useState<{ question: Question | null } | null>(null)
     const [optionModal, setOptionModal] = useState<{ questionId: string; option: Option | null } | null>(null)
     const [peopleModal, setPeopleModal] = useState(false)
+    const [sectionOrderModal, setSectionOrderModal] = useState(false)
     // Bracket changes made by hand in the people modal; offered the same
     // item-review flow as birthday-driven transitions, then cleared.
     const [manualPromotions, setManualPromotions] = useState<AgeTransition[]>([])
@@ -1726,13 +1719,13 @@ export function QuestionsPage() {
         if (!data) return
         const now = new Date().toISOString()
         const items = renumberItemOrder(reordered, now)
-        await saveData({
+        await saveData(withReconciledSectionOrder(data, {
             ...data,
             questions: withQuestionOptions(data.questions, questionId, options =>
                 options.map(o => o.id === optionId
                     ? withEmptySections({ ...o, items }, emptySections)
                     : o), now),
-        })
+        }))
     }, [saveData])
 
     const handleAlwaysReorder = useCallback(async (reordered: Item[], emptySections: string[] | undefined) => {
@@ -1742,11 +1735,17 @@ export function QuestionsPage() {
         // The reorder view is given the active items, so the tombstones it never
         // saw are carried through rather than dropped.
         const deleted = (data.alwaysNeededItems ?? []).filter(i => i.deletedAt)
-        await saveData({
+        await saveData(withReconciledSectionOrder(data, {
             ...data,
             alwaysNeededItems: [...renumberItemOrder(reordered, now), ...deleted],
             alwaysNeededEmptySections: emptySections,
-        })
+        }))
+    }, [saveData])
+
+    const handleSectionOrderChange = useCallback(async (sectionOrder: string[]) => {
+        const data = dataRef.current
+        if (!data) return
+        await saveData({ ...data, sectionOrder })
     }, [saveData])
 
     const handleAlwaysItemDelete = useCallback(async (index: number) => {
@@ -1845,6 +1844,7 @@ export function QuestionsPage() {
     const openAddOption = useCallback((questionId: string) => setOptionModal({ questionId, option: null }), [])
     const openEditOption = useCallback((questionId: string, option: Option) => setOptionModal({ questionId, option }), [])
     const openPeopleModal = useCallback(() => setPeopleModal(true), [])
+    const openSectionOrderModal = useCallback(() => setSectionOrderModal(true), [])
 
     // The set as a dictionary of its own item names: what the add composers
     // offer as you type, and what the name fields offer as existing options.
@@ -1858,6 +1858,11 @@ export function QuestionsPage() {
     // suggestions so the same section spelled two ways doesn't split into two
     // groups on the packing list.
     const suggestedSectionNames = useMemo(() => data ? sectionNamesIn(data) : [], [data])
+
+    // Every section a generated list will show, in the order it will show them.
+    // Derived rather than stored as-is: the stored order is only a preference,
+    // and sections come and go underneath it as items are edited.
+    const sectionLabels = useMemo(() => data ? orderedSectionLabels(data) : [], [data])
 
     // Memoized so their identity is stable across re-renders that don't change
     // the data (modal opens, sync ticks) — they feed the memoized sections.
@@ -1892,6 +1897,7 @@ export function QuestionsPage() {
                 )}
                 {!isForeign && <TemplateUpdatesCard questionSet={data} onApply={saveData} />}
                 <PersonLegend people={people} onEdit={openPeopleModal} />
+                <SectionOrderLegend labels={sectionLabels} onEdit={openSectionOrderModal} />
                 <AlwaysSection
                     items={activeAlwaysNeededItems}
                     people={people}
@@ -1948,6 +1954,13 @@ export function QuestionsPage() {
                     option={optionModal.option}
                     onSave={handleOptionModalSave}
                     onClose={() => setOptionModal(null)}
+                />
+            )}
+            {sectionOrderModal && (
+                <SectionOrderModal
+                    labels={sectionLabels}
+                    onChange={handleSectionOrderChange}
+                    onClose={() => setSectionOrderModal(false)}
                 />
             )}
             {peopleModal && (
