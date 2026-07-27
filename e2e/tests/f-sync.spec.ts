@@ -53,9 +53,21 @@ test.describe('F – Solid Pod Sync', () => {
     await page.waitForURL(/#\/view-lists\//, { timeout: 10_000 })
   }
 
+  // A list long enough to arrive as a wall of cards opens folded the first time
+  // it is seen, so there is no item to reach for until it is opened.
+  async function openAllSections(target: import('@playwright/test').Page = page) {
+    // waitForURL fires on the URL change, before the view has rendered — wait for
+    // a control that is there whether the list arrived folded or not, otherwise
+    // this looks for the Expand all button before there is one.
+    await expect(target.getByRole('button', { name: /Show Packed/i })).toBeVisible({ timeout: 15_000 })
+    const expandAll = target.getByRole('button', { name: /^Expand all$/ }).first()
+    if (await expandAll.count() > 0) await expandAll.click()
+  }
+
   // Sync to Pod by checking an item (triggers saveWithSyncPrevention → saveToPod).
   // The green indicator disappearing confirms the pod PUT completed — no extra waitForTimeout needed.
   async function syncListToPod() {
+    await openAllSections()
     await page.locator('input[type="checkbox"]').first().click()
     await expect(page.locator('span.text-green-600').first()).toBeVisible({ timeout: 8_000 })
     await expect(page.locator('span.text-green-600').first()).not.toBeVisible({ timeout: 8_000 })
@@ -118,6 +130,7 @@ test.describe('F – Solid Pod Sync', () => {
 
   test('F5: rapid checkbox ticks persist without 409 conflict (stale-rev regression)', async () => {
     await createList(`Rapid Check Test ${Date.now()}`)
+    await openAllSections()
     await page.getByRole('button', { name: 'Show Packed' }).click()
 
     const checkboxes = page.locator('input[type="checkbox"]')
@@ -149,7 +162,9 @@ test.describe('F – Solid Pod Sync', () => {
       await expect(page.locator('span.text-red-600')).not.toBeVisible()
 
       await page.reload()
-      await page.getByRole('button', { name: 'Show Packed' }).click()
+      // The list reopens as it was left, so packed items are already showing —
+      // clicking "Show Packed" again would be clicking "Hide Packed".
+      await expect(page.getByRole('button', { name: 'Hide Packed' })).toBeVisible({ timeout: 10_000 })
       await expect(page.locator(`input[name="${box0Name}"]`)).toBeChecked({ timeout: 5_000 })
       await expect(page.locator(`input[name="${box1Name}"]`)).toBeChecked({ timeout: 5_000 })
     } finally {
@@ -159,6 +174,7 @@ test.describe('F – Solid Pod Sync', () => {
 
   test('F6: custom item added via suggestion card persists in question set after pod sync', async () => {
     await createList(`Suggestion Save Trip ${Date.now()}`)
+    await openAllSections()
     // Confirm list content is loaded before interacting (waitForURL fires on URL match, not content render)
     await expect(page.locator('input[type="checkbox"]').first()).toBeVisible({ timeout: 15_000 })
 
@@ -206,6 +222,8 @@ test.describe('F – Solid Pod Sync', () => {
     await page2.waitForURL(/#\/view-lists\//, { timeout: 8_000 })
     // Wait for list view to load — Show Packed button appears when items are ready (no networkidle)
     await expect(page2.getByRole('button', { name: /Show Packed/i })).toBeVisible({ timeout: 15_000 })
+    // Fresh context, so this is a first open here too — the list arrives folded
+    await openAllSections(page2)
     await page2.getByRole('button', { name: /Show Packed/i }).click()
     await expect(page2.locator('input[type="checkbox"]:checked').first()).toBeVisible({ timeout: 10_000 })
     await context2.close()
