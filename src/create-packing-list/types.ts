@@ -21,6 +21,9 @@ export interface PackingList {
     // back to reconstructing the inputs from their items' question/option ids.
     questionAnswers?: Array<{ questionId: string; selectedOptionIds: string[] }>
     selectedPeopleIds?: string[]
+    // A list deliberately carries no section order of its own: the order lives
+    // on the question set and is read live when the list is shown, so that
+    // changing it reaches every list at once. See `useSectionOrder`.
 }
 
 export interface PackingListItem {

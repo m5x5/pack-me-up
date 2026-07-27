@@ -344,7 +344,9 @@ test.describe('B – Editing Questions', () => {
     const suggestion = page.getByRole('option', { name: /Sunscreen/ }).first()
     await expect(suggestion).toBeVisible({ timeout: 3_000 })
     await suggestion.click()
-    await expect(page.getByLabel('Section')).toHaveValue('Toiletries')
+    // Scoped to the composer: the page also carries a "Reorder sections"
+    // button, and getByLabel matches on substring.
+    await expect(page.getByTestId('add-question-item').getByLabel('Section')).toHaveValue('Toiletries')
 
     await field.press('Enter')
     const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()

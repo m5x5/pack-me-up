@@ -1455,6 +1455,31 @@ describe('grouping honours generated item order', () => {
         expect(groups.map(g => g.label)).toEqual(['Essentials', 'Hiking', 'Beach', 'Other'])
     })
 
+    it('follows the list\'s own section order when it has one', () => {
+        const groups = groupByCategory([
+            mk({ itemText: 'Sunscreen', category: 'Essentials', order: 0 }),
+            mk({ itemText: 'Towel', category: 'Beach', order: 1 }),
+            mk({ itemText: 'Boots', category: 'Hiking', order: 2 }),
+        ], ['Hiking', 'Beach', 'Essentials'])
+        expect(groups.map(g => g.label)).toEqual(['Hiking', 'Beach', 'Essentials'])
+    })
+
+    it('keeps Other last even when the list has its own section order', () => {
+        const groups = groupByCategory([
+            mk({ itemText: 'Mystery', category: undefined, order: 0 }),
+            mk({ itemText: 'Boots', category: 'Hiking', order: 1 }),
+        ], ['Hiking'])
+        expect(groups.map(g => g.label)).toEqual(['Hiking', 'Other'])
+    })
+
+    it('puts a section the order says nothing about after the ones it names', () => {
+        const groups = groupByCategory([
+            mk({ itemText: 'Kite', category: 'Added by hand', order: 0 }),
+            mk({ itemText: 'Boots', category: 'Hiking', order: 1 }),
+        ], ['Hiking'])
+        expect(groups.map(g => g.label)).toEqual(['Hiking', 'Added by hand'])
+    })
+
     it('keeps legacy category ordering alphabetical when no items carry order', () => {
         const groups = groupByCategory([
             mk({ itemText: 'Towel', category: 'Beach' }),

@@ -146,6 +146,10 @@ export const PackingListQuestionSetSchema = z.object({
   // `emptySections`, for the one item list that doesn't belong to an option.
   alwaysNeededEmptySections: z.array(z.string()).optional(),
   questions: z.array(QuestionSchema),
+  // The order the sections of a generated packing list come in — see
+  // `section-order.ts`. Optional and additive: absent means the built-in
+  // `CATEGORY_ORDER` default, which is what every set had before this existed.
+  sectionOrder: z.array(z.string()).optional(),
   lastModified: z.string().optional(), // ISO timestamp for sync conflict resolution
   // Version of the wizard template this set was generated from / last
   // reconciled against. Absent means pre-versioning (treated as 0), so the

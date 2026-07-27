@@ -210,6 +210,52 @@ function thingToPackingListItem(thing: Thing | null, url: string): PackingListIt
     }
 }
 
+// ── Section order ─────────────────────────────────────────────────────────────
+
+/**
+ * The section order, written as one Thing per name carrying its position.
+ *
+ * Every other repeated string in this file (`emptySections`, `selectedPersonId`)
+ * is a set, and is read back sorted because RDF gives no order back. A section
+ * order is the opposite: the order *is* the value, so each entry has to say
+ * where it goes, the same way an option carries its own `order`.
+ *
+ * It lives on the question set alone. A packing list carries no copy — the
+ * order is read live when a list is shown, so that changing it reaches every
+ * list at once.
+ */
+function sectionOrderThings(
+    labels: string[],
+    datasetUrl: string,
+): { urls: string[]; things: Thing[] } {
+    const urls: string[] = []
+    const things: Thing[] = []
+    labels.forEach((label, index) => {
+        const url = `${datasetUrl}#section-order-${index}`
+        urls.push(url)
+        things.push(buildThing({ url })
+            .addUrl(RDF.type, PMU.SectionOrderEntry)
+            .addStringNoLocale(PMU.text, label)
+            .addInteger(PMU.order, index)
+            .build())
+    })
+    return { urls, things }
+}
+
+function readSectionOrder(dataset: SolidDataset, rootThing: Thing): string[] {
+    return getUrlAll(rootThing, PMU.hasSectionOrderEntry)
+        .map(url => {
+            const thing = getThing(dataset, url)
+            if (!thing) return null
+            const label = getStringNoLocale(thing, PMU.text)
+            if (label === null) return null
+            return { label, order: getInteger(thing, PMU.order) ?? 0 }
+        })
+        .filter((entry): entry is { label: string; order: number } => entry !== null)
+        .sort((a, b) => a.order - b.order)
+        .map(({ label }) => label)
+}
+
 // ── QuestionSet ───────────────────────────────────────────────────────────────
 
 export function questionSetToDataset(qs: PackingListQuestionSet, datasetUrl: string): SolidDataset {
@@ -242,6 +288,12 @@ export function questionSetToDataset(qs: PackingListQuestionSet, datasetUrl: str
 
     for (const label of qs.alwaysNeededEmptySections ?? []) {
         rootBuilder = rootBuilder.addStringNoLocale(PMU.alwaysNeededEmptySection, label)
+    }
+
+    {
+        const { urls, things } = sectionOrderThings(qs.sectionOrder ?? [], datasetUrl)
+        for (const url of urls) rootBuilder = rootBuilder.addUrl(PMU.hasSectionOrderEntry, url)
+        for (const t of things) ds = setThing(ds, t)
     }
 
     for (let i = 0; i < qs.alwaysNeededItems.length; i++) {
@@ -287,12 +339,17 @@ export function datasetToQuestionSet(dataset: SolidDataset, datasetUrl: string):
     // Sorted for the same reason as an option's — see `thingToOption`.
     const alwaysNeededEmptySections = getStringNoLocaleAll(rootThing, PMU.alwaysNeededEmptySection).sort()
 
+    // Not sorted, unlike the empty sections above — each entry carries its own
+    // position, which is the only reason this field is stored as Things at all.
+    const sectionOrder = readSectionOrder(dataset, rootThing)
+
     return {
         _id: '1',
         people,
         questions,
         alwaysNeededItems,
         ...(alwaysNeededEmptySections.length > 0 ? { alwaysNeededEmptySections } : {}),
+        ...(sectionOrder.length > 0 ? { sectionOrder } : {}),
         ...(lastModified !== undefined ? { lastModified } : {}),
         ...(templateVersion !== undefined ? { templateVersion } : {}),
     }

@@ -609,6 +609,9 @@ export function CreatePackingList() {
             }))
             .filter(qa => qa.questionId && qa.selectedOptionIds.length > 0)
 
+        // No section order is recorded here on purpose: it belongs to the
+        // question set and is read live when the list is shown, so that
+        // changing it reaches every list at once. See `useSectionOrder`.
         const packingList: PackingList = {
             id: crypto.randomUUID(),
             name: data.name,

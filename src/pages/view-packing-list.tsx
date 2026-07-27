@@ -27,6 +27,7 @@ import { tapFeedback } from '../utils/haptics'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
+import { useSectionOrder } from '../hooks/useSectionOrder'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
 import { useIsDesktop } from '../hooks/useIsDesktop'
@@ -107,10 +108,19 @@ function sortByItemOrder(items: PackingListItem[]): PackingListItem[] {
     return sortByOrder(items, PACKING_ITEM_ACCESSORS)
 }
 
-export function groupByCategory(items: PackingListItem[]) {
+/**
+ * `sectionOrder` is the list's own copy of the order its owner arranged their
+ * sections in (see `section-order.ts`). Lists generated before that existed —
+ * and lists whose owner never chose an order — pass nothing and get the
+ * built-in default, which is what every list used to get.
+ */
+export function groupByCategory(
+    items: PackingListItem[],
+    sectionOrder: readonly string[] = CATEGORY_ORDER,
+) {
     return groupItemsByCategory(items, PACKING_ITEM_ACCESSORS, {
         uncategorisedLabel: UNCATEGORISED_LABEL,
-        order: CATEGORY_ORDER,
+        order: sectionOrder,
         pinLast: UNCATEGORISED_LABEL,
     })
 }
@@ -281,6 +291,10 @@ export function ViewPackingList() {
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
     const { db } = useDatabase()
+    // Read from the question set on every visit, not copied onto the list when
+    // it was generated — the order is one global setting, so changing it has to
+    // reach the lists that already exist. See `useSectionOrder`.
+    const sectionOrder = useSectionOrder(db)
     const { sharedListsWithMe, saveSharedListsWithMe } = useSharedListsSync()
     const effectiveOwnerWebId = ownerWebIdFromUrl ?? packingList?.ownerWebId
     const ownerDisplayName = useOwnerDisplayName(foreignPodUrl, effectiveOwnerWebId, session)
@@ -355,9 +369,9 @@ export function ViewPackingList() {
     // the list doesn't use would invent cards no one asked for — new sections
     // belong to the question set, where they can be arranged.
     const categoryOptions = useMemo(() => {
-        const labels = groupByCategory(packingList?.items ?? []).map(group => group.label)
+        const labels = groupByCategory(packingList?.items ?? [], sectionOrder).map(group => group.label)
         return labels.includes(UNCATEGORISED_LABEL) ? labels : [...labels, UNCATEGORISED_LABEL]
-    }, [packingList?.items])
+    }, [packingList?.items, sectionOrder])
 
     const peopleOptions = useMemo<PersonOption[]>(() => {
         const byName = new Map<string, string>()
@@ -1140,11 +1154,11 @@ export function ViewPackingList() {
         listSections = [...sharedSections, ...regularSections, ...guestSections]
     } else {
         const visibleByCategory = new Map(
-            groupByCategory(filteredItems.filter(i => !i.communal)).map(({ label, items }) => [label, items])
+            groupByCategory(filteredItems.filter(i => !i.communal), sectionOrder).map(({ label, items }) => [label, items])
         )
         // Categories come from every item, not just the visible ones, so a fully
         // packed category keeps its celebratory card instead of disappearing.
-        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal))
+        const categorySections: ListSection[] = groupByCategory(packingList.items.filter(i => !i.communal), sectionOrder)
             .filter(({ label }) => visibleByCategory.has(label) || isSectionComplete(categoryStats[label]))
             .map(({ label }) => ({
                 key: label,
@@ -1475,7 +1489,7 @@ export function ViewPackingList() {
                             const completeLabel = isShared ? 'shared items' : isCategorySection ? title : section.name
                             const collapseLabelTarget = isShared ? 'the shared items' : isCategorySection ? title : `${section.name}'s`
                             const innerGroups = (isShared || !isCategorySection)
-                                ? groupByCategory(items)
+                                ? groupByCategory(items, sectionOrder)
                                 : groupByPerson(items)
                             const isSectionCollapsed = collapsedSections.has(sectionKey)
                             return (

@@ -146,6 +146,10 @@ export const fullyPopulatedQuestionSet: Required<Omit<PackingListQuestionSet, '_
     alwaysNeededItems: [fullyPopulatedQuestionSetItem],
     alwaysNeededEmptySections: ['Documents'],
     questions: [fullyPopulatedQuestion],
+    // Deliberately several values, and deliberately not alphabetical: a section
+    // order is the one repeated field whose *order* is the whole point, so the
+    // round-trip assertions have to be order-dependent here.
+    sectionOrder: ['Toiletries', 'Essentials', 'Beach kit'],
     lastModified: '2025-01-02T00:00:00.000Z',
     templateVersion: 3,
 }
