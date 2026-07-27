@@ -16,12 +16,6 @@ export const PMU = {
     PersonSelection: `${PMU_NS}PersonSelection`,
     SectionOrderEntry: `${PMU_NS}SectionOrderEntry`,
 
-    // Shared by PackingList and QuestionSet: the order the list's sections are
-    // shown in. One Thing per section name carrying its position, because a
-    // repeated string on the root Thing comes back as an unordered set and an
-    // order is precisely what this field is.
-    hasSectionOrderEntry: `${PMU_NS}hasSectionOrderEntry`,
-
     // PackingList predicates
     hasItem: `${PMU_NS}hasItem`,
     hasDeletedItem: `${PMU_NS}hasDeletedItem`,
@@ -59,6 +53,10 @@ export const PMU = {
     // One value per always-needed section that has no items in it yet. A section
     // is otherwise only its items' categories, so an empty one would vanish.
     alwaysNeededEmptySection: `${PMU_NS}alwaysNeededEmptySection`,
+    // The order a generated list's sections are shown in. One Thing per section
+    // name carrying its position, because a repeated string on the root Thing
+    // comes back as an unordered set and an order is precisely what this is.
+    hasSectionOrderEntry: `${PMU_NS}hasSectionOrderEntry`,
     // Wizard template version this set was last reconciled against
     templateVersion: `${PMU_NS}templateVersion`,
 

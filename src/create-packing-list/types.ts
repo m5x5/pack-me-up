@@ -21,14 +21,9 @@ export interface PackingList {
     // back to reconstructing the inputs from their items' question/option ids.
     questionAnswers?: Array<{ questionId: string; selectedOptionIds: string[] }>
     selectedPeopleIds?: string[]
-    // The order this list's sections are shown in, copied from the question set
-    // at generation time (see `section-order.ts`). Stamped on the list rather
-    // than read live from the question set so that a list shared from someone
-    // else's pod arrives in the order its owner arranged, and so that changing
-    // the order later doesn't reshuffle a list somebody is packing from.
-    // Absent — as on every list generated before this existed, and on any set
-    // whose owner never chose an order — means the `CATEGORY_ORDER` default.
-    sectionOrder?: string[]
+    // A list deliberately carries no section order of its own: the order lives
+    // on the question set and is read live when the list is shown, so that
+    // changing it reaches every list at once. See `useSectionOrder`.
 }
 
 export interface PackingListItem {

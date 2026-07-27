@@ -25,48 +25,6 @@ import type {
 } from '../edit-questions/types'
 import { AgeRangeSchema } from '../edit-questions/types'
 
-// ── Section order ─────────────────────────────────────────────────────────────
-
-/**
- * The section order, written as one Thing per name carrying its position.
- *
- * Every other repeated string in this file (`emptySections`, `selectedPersonId`)
- * is a set, and is read back sorted because RDF gives no order back. A section
- * order is the opposite: the order *is* the value, so each entry has to say
- * where it goes, the same way an option carries its own `order`.
- */
-function sectionOrderThings(
-    labels: string[],
-    datasetUrl: string,
-): { urls: string[]; things: Thing[] } {
-    const urls: string[] = []
-    const things: Thing[] = []
-    labels.forEach((label, index) => {
-        const url = `${datasetUrl}#section-order-${index}`
-        urls.push(url)
-        things.push(buildThing({ url })
-            .addUrl(RDF.type, PMU.SectionOrderEntry)
-            .addStringNoLocale(PMU.text, label)
-            .addInteger(PMU.order, index)
-            .build())
-    })
-    return { urls, things }
-}
-
-function readSectionOrder(dataset: SolidDataset, rootThing: Thing): string[] {
-    return getUrlAll(rootThing, PMU.hasSectionOrderEntry)
-        .map(url => {
-            const thing = getThing(dataset, url)
-            if (!thing) return null
-            const label = getStringNoLocale(thing, PMU.text)
-            if (label === null) return null
-            return { label, order: getInteger(thing, PMU.order) ?? 0 }
-        })
-        .filter((entry): entry is { label: string; order: number } => entry !== null)
-        .sort((a, b) => a.order - b.order)
-        .map(({ label }) => label)
-}
-
 // ── PackingList ───────────────────────────────────────────────────────────────
 
 export function packingListToDataset(list: PackingList, datasetUrl: string): SolidDataset {
@@ -121,12 +79,6 @@ export function packingListToDataset(list: PackingList, datasetUrl: string): Sol
         rootBuilder = rootBuilder.addStringNoLocale(PMU.selectedPersonId, personId)
     }
 
-    {
-        const { urls, things } = sectionOrderThings(list.sectionOrder ?? [], datasetUrl)
-        for (const url of urls) rootBuilder = rootBuilder.addUrl(PMU.hasSectionOrderEntry, url)
-        for (const t of things) ds = setThing(ds, t)
-    }
-
     for (const answer of (list.questionAnswers ?? [])) {
         const answerUrl = `${datasetUrl}#answer-${answer.questionId}`
         rootBuilder = rootBuilder.addUrl(PMU.hasAnswer, answerUrl)
@@ -175,7 +127,6 @@ export function datasetToPackingList(dataset: SolidDataset, datasetUrl: string):
         .filter((g): g is { id: string; name: string } => g !== null)
 
     const selectedPeopleIds = getStringNoLocaleAll(rootThing, PMU.selectedPersonId)
-    const sectionOrder = readSectionOrder(dataset, rootThing)
 
     const questionAnswers = getUrlAll(rootThing, PMU.hasAnswer)
         .map(url => {
@@ -201,7 +152,6 @@ export function datasetToPackingList(dataset: SolidDataset, datasetUrl: string):
         ...(guests.length > 0 ? { guests } : {}),
         ...(selectedPeopleIds.length > 0 ? { selectedPeopleIds } : {}),
         ...(questionAnswers.length > 0 ? { questionAnswers } : {}),
-        ...(sectionOrder.length > 0 ? { sectionOrder } : {}),
     }
 }
 
@@ -258,6 +208,52 @@ function thingToPackingListItem(thing: Thing | null, url: string): PackingListIt
         ...(order !== null ? { order } : {}),
         ...(itemLastModified !== undefined ? { lastModified: itemLastModified } : {}),
     }
+}
+
+// ── Section order ─────────────────────────────────────────────────────────────
+
+/**
+ * The section order, written as one Thing per name carrying its position.
+ *
+ * Every other repeated string in this file (`emptySections`, `selectedPersonId`)
+ * is a set, and is read back sorted because RDF gives no order back. A section
+ * order is the opposite: the order *is* the value, so each entry has to say
+ * where it goes, the same way an option carries its own `order`.
+ *
+ * It lives on the question set alone. A packing list carries no copy — the
+ * order is read live when a list is shown, so that changing it reaches every
+ * list at once.
+ */
+function sectionOrderThings(
+    labels: string[],
+    datasetUrl: string,
+): { urls: string[]; things: Thing[] } {
+    const urls: string[] = []
+    const things: Thing[] = []
+    labels.forEach((label, index) => {
+        const url = `${datasetUrl}#section-order-${index}`
+        urls.push(url)
+        things.push(buildThing({ url })
+            .addUrl(RDF.type, PMU.SectionOrderEntry)
+            .addStringNoLocale(PMU.text, label)
+            .addInteger(PMU.order, index)
+            .build())
+    })
+    return { urls, things }
+}
+
+function readSectionOrder(dataset: SolidDataset, rootThing: Thing): string[] {
+    return getUrlAll(rootThing, PMU.hasSectionOrderEntry)
+        .map(url => {
+            const thing = getThing(dataset, url)
+            if (!thing) return null
+            const label = getStringNoLocale(thing, PMU.text)
+            if (label === null) return null
+            return { label, order: getInteger(thing, PMU.order) ?? 0 }
+        })
+        .filter((entry): entry is { label: string; order: number } => entry !== null)
+        .sort((a, b) => a.order - b.order)
+        .map(({ label }) => label)
 }
 
 // ── QuestionSet ───────────────────────────────────────────────────────────────

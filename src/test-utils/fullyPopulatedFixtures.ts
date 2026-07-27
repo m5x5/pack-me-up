@@ -68,10 +68,6 @@ export const fullyPopulatedPackingList: Required<Omit<PackingList, '_rev'>> = {
     guests: [{ id: 'guest-1', name: 'Zoe' }],
     questionAnswers: [{ questionId: 'q1', selectedOptionIds: ['opt1', 'opt2'] }],
     selectedPeopleIds: ['person-1', 'person-2'],
-    // Deliberately several values, and deliberately not alphabetical: a section
-    // order is the one repeated field whose *order* is the whole point, so the
-    // round-trip assertions have to be order-dependent here.
-    sectionOrder: ['Toiletries', 'Essentials', 'Beach kit'],
 }
 
 /**
@@ -150,8 +146,9 @@ export const fullyPopulatedQuestionSet: Required<Omit<PackingListQuestionSet, '_
     alwaysNeededItems: [fullyPopulatedQuestionSetItem],
     alwaysNeededEmptySections: ['Documents'],
     questions: [fullyPopulatedQuestion],
-    // Several values, in a deliberately non-alphabetical order — see the note
-    // on the packing list's copy of this field.
+    // Deliberately several values, and deliberately not alphabetical: a section
+    // order is the one repeated field whose *order* is the whole point, so the
+    // round-trip assertions have to be order-dependent here.
     sectionOrder: ['Toiletries', 'Essentials', 'Beach kit'],
     lastModified: '2025-01-02T00:00:00.000Z',
     templateVersion: 3,

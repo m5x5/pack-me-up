@@ -15,7 +15,6 @@ import { usePodSync } from '../hooks/usePodSync'
 import { questionSetToDataset, datasetToQuestionSet, packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { useForeignPod } from '../components/ForeignPodContext'
 import { generateQuestionBasedItems, generateAlwaysNeededItems, withItemOrder } from '../create-packing-list/generatePackingListItems'
-import { orderedSectionLabels } from '../edit-questions/section-order'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { LoadingState } from '../components/LoadingState'
 import { tripDatesOutOfOrder } from '../create-packing-list/tripDetails'
@@ -610,19 +609,14 @@ export function CreatePackingList() {
             }))
             .filter(qa => qa.questionId && qa.selectedOptionIds.length > 0)
 
-        // Only when the owner has actually arranged their sections. Stamping the
-        // default on every list instead would freeze today's ordering into data,
-        // and then a change to the default could never reach a list again.
-        const sectionOrder = questionSet.sectionOrder?.length
-            ? orderedSectionLabels(questionSet)
-            : undefined
-
+        // No section order is recorded here on purpose: it belongs to the
+        // question set and is read live when the list is shown, so that
+        // changing it reaches every list at once. See `useSectionOrder`.
         const packingList: PackingList = {
             id: crypto.randomUUID(),
             name: data.name,
             createdAt: new Date().toISOString(),
             lastModified: new Date().toISOString(),
-            ...(sectionOrder !== undefined ? { sectionOrder } : {}),
             ...(nights !== undefined ? { nights } : {}),
             ...(destination !== undefined ? { destination } : {}),
             ...(startDate !== undefined ? { startDate } : {}),

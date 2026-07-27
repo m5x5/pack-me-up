@@ -32,6 +32,9 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 // Drags only ever move rows up and down the list.
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
+/** How many chips are drawn before the strip stops naming them. */
+const CHIP_LIMIT = 4
+
 /**
  * The order, at a glance, above the sections it describes.
  *
@@ -42,11 +45,14 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 
  * rather than read. Under two sections there is no order to show and nothing to
  * arrange, so it says nothing at all.
  *
- * The chips scroll sideways rather than wrapping. Wrapping cost five lines
- * above the first question on a phone, for something read once and then
- * ignored; one line is what a strip introducing the page below it can afford,
- * whatever the width. Nothing is hidden from a screen reader by that — every
- * chip is in the document, and each says its position.
+ * On a phone the chips give way to the same names as one truncated line. Nine
+ * chips wrap to five lines at 390px, which is a lot of screen for something
+ * read once — but the reason it is not simply a sideways-scrolling row of chips
+ * instead is worse than cosmetic: a scrollable element wider than the screen
+ * makes Chrome widen the *layout viewport* to fit its content, and every
+ * `position: fixed` overlay on the page — this one, and the item reorganiser —
+ * is then laid out against that width and lands off-screen. Truncation clips
+ * without scrolling, so it cannot do that.
  */
 export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onEdit }: {
     labels: string[]
@@ -54,19 +60,21 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
     onEdit?: () => void
 }) {
     if (labels.length < 2) return null
+    const shown = labels.slice(0, CHIP_LIMIT)
+    const hidden = labels.length - shown.length
     return (
         <div className="flex items-center gap-2 mb-4">
             {/* On a phone the caption costs a third of the row it introduces,
-                and the coloured chips beside a "Reorder" button say what it
-                would have said. Still read out, just not drawn. */}
+                and the names beside a "Reorder" button say what it would have
+                said. Still read out, just not drawn. */}
             <span className="sr-only sm:not-sr-only sm:text-xs sm:text-gray-400 sm:shrink-0">List order</span>
-            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto py-0.5">
-                {labels.map((label, i) => {
+            <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-1.5 sm:min-w-0">
+                {shown.map((label, i) => {
                     const accent = sectionAccent(label, false)
                     return (
                         <span
                             key={label}
-                            className={`inline-flex items-center gap-1 shrink-0 whitespace-nowrap rounded-full border ${accent.border} ${accent.header} pl-1.5 pr-2 py-0.5 text-[11px] ${accent.text}`}
+                            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border ${accent.border} ${accent.header} pl-1.5 pr-2 py-0.5 text-[11px] ${accent.text}`}
                         >
                             <span className={`w-1.5 h-1.5 rounded-full ${accent.rail}`} aria-hidden="true" />
                             <span className="sr-only">{`${i + 1}. `}</span>
@@ -74,15 +82,22 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
                         </span>
                     )
                 })}
+                {hidden > 0 && <span className="text-[11px] text-gray-400">+{hidden} more</span>}
             </div>
+            <span className="sm:hidden flex-1 min-w-0 truncate text-[11px] text-gray-400">
+                {labels.join(' · ')}
+            </span>
             {onEdit && (
                 <button
                     type="button"
                     onClick={onEdit}
                     aria-label="Reorder sections"
-                    className="inline-flex items-center gap-1 shrink-0 text-[11px] font-medium rounded-full px-2 py-1 text-primary-600 hover:bg-primary-50 transition-colors"
+                    // A full-size touch target, like every other control the
+                    // page expects a thumb to find. At the strip's own scale it
+                    // was 24px tall, and missing it looked like a dead button.
+                    className="inline-flex items-center justify-center gap-1 shrink-0 h-11 px-3 text-[11px] font-medium rounded-lg text-primary-600 hover:bg-primary-50 active:bg-primary-100 transition-colors"
                 >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                     </svg>
                     Reorder
@@ -190,7 +205,7 @@ export function SectionOrderModal({ labels, onChange, onClose }: {
                 <div className="p-5 border-b border-gray-100 flex-shrink-0">
                     <h2 className="text-lg font-semibold text-gray-900">Reorder sections</h2>
                     <p className="mt-0.5 text-sm text-gray-500">
-                        The order your packing lists are grouped in. Applies to lists you create from now on.
+                        The order your packing lists are grouped in — every list, including the ones you already have.
                     </p>
                 </div>
                 <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">

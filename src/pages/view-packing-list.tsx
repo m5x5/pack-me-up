@@ -27,6 +27,7 @@ import { tapFeedback } from '../utils/haptics'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
+import { useSectionOrder } from '../hooks/useSectionOrder'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
 import { useIsDesktop } from '../hooks/useIsDesktop'
@@ -290,6 +291,10 @@ export function ViewPackingList() {
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
     const { db } = useDatabase()
+    // Read from the question set on every visit, not copied onto the list when
+    // it was generated — the order is one global setting, so changing it has to
+    // reach the lists that already exist. See `useSectionOrder`.
+    const sectionOrder = useSectionOrder(db)
     const { sharedListsWithMe, saveSharedListsWithMe } = useSharedListsSync()
     const effectiveOwnerWebId = ownerWebIdFromUrl ?? packingList?.ownerWebId
     const ownerDisplayName = useOwnerDisplayName(foreignPodUrl, effectiveOwnerWebId, session)
@@ -358,11 +363,6 @@ export function ViewPackingList() {
         () => buildSuggestionIndex(packingList?.items ?? [], packingList?.deletedItems ?? []),
         [packingList?.items, packingList?.deletedItems],
     )
-
-    // The order this list shows its sections in, stamped on at generation from
-    // whatever its owner arranged on their questions page. A list from before
-    // that existed carries none and falls back to the built-in default.
-    const sectionOrder = packingList?.sectionOrder ?? CATEGORY_ORDER
 
     // The sections a new item can be filed into: the ones this list already
     // shows, in the order it shows them, plus the catch-all. Offering sections

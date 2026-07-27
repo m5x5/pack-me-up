@@ -685,56 +685,6 @@ describe('CreatePackingList – pod sync on creation', () => {
     })
 })
 
-describe('CreatePackingList – section order stamped on the new list', () => {
-    beforeEach(() => {
-        vi.clearAllMocks()
-        mockUseSolidPod.mockReturnValue({ isLoggedIn: false } as ReturnType<typeof useSolidPod>)
-        mockUseToast.mockReturnValue({ showToast: vi.fn() } as ReturnType<typeof useToast>)
-    })
-
-    afterEach(() => {
-        cleanup()
-    })
-
-    const createListWith = async (questionSet: PackingListQuestionSet) => {
-        const db = makeDb({
-            getQuestionSet: vi.fn().mockResolvedValue(questionSet),
-            getAllPackingLists: vi.fn().mockResolvedValue([]),
-        })
-        mockUseDatabase.mockReturnValue({ db } as ReturnType<typeof useDatabase>)
-
-        renderCreatePackingList()
-        await waitFor(() => screen.getByText(/Answer the questions below/i))
-        fireEvent.change(screen.getByPlaceholderText(/enter a name/i), { target: { value: 'Trip' } })
-        fireEvent.click(screen.getByRole('radio', { name: /beach/i }))
-        fireEvent.click(screen.getByRole('button', { name: /create packing list/i }))
-
-        await waitFor(() => expect(vi.mocked(db.savePackingList)).toHaveBeenCalled())
-        return vi.mocked(db.savePackingList).mock.calls[0][0] as PackingList
-    }
-
-    // The list carries its own copy so it stays in the order its owner arranged
-    // even when it is read from someone else's pod, or after the order changes.
-    it('copies the order the owner arranged', async () => {
-        const saved = await createListWith({
-            ...testQuestionSet,
-            alwaysNeededItems: [
-                { text: 'Passport', personSelections: [], category: 'Documents & Money' },
-                { text: 'Socks', personSelections: [], category: 'Clothes' },
-            ],
-            sectionOrder: ['Clothes', 'Documents & Money'],
-        })
-        expect(saved.sectionOrder).toEqual(['Clothes', 'Documents & Money'])
-    })
-
-    // Freezing the default into data would mean a later change to the default
-    // could never reach a list again.
-    it('leaves the field off when the owner never arranged one', async () => {
-        const saved = await createListWith(testQuestionSet)
-        expect(saved.sectionOrder).toBeUndefined()
-    })
-})
-
 // ─── getUnreviewedDeletedItems ────────────────────────────────────────────────
 
 const makeDeletedItem = (overrides: Partial<PackingListItem> = {}): PackingListItem => ({

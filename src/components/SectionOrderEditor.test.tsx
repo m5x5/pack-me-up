@@ -18,13 +18,19 @@ describe('SectionOrderLegend', () => {
         expect(container.textContent).toBe('')
     })
 
-    // The strip scrolls rather than truncating, so a long order is all there —
-    // which is what keeps a screen reader from being told a shorter story than
-    // the one on screen.
-    it('names every section however many there are', () => {
+    it('counts the sections it has run out of chips to name', () => {
         const labels = Array.from({ length: 11 }, (_, i) => `Section ${i + 1}`)
         render(<SectionOrderLegend labels={labels} onEdit={vi.fn()} />)
-        for (const label of labels) expect(screen.getByText(label)).toBeTruthy()
+        expect(screen.getByText('Section 4')).toBeTruthy()
+        expect(screen.queryByText('Section 5')).toBeNull()
+        expect(screen.getByText('+7 more')).toBeTruthy()
+    })
+
+    // The narrow-screen line replaces the chips rather than joining them, so
+    // the order is still there in full when there is no room to draw it.
+    it('carries the whole order as one compact line', () => {
+        render(<SectionOrderLegend labels={['Documents', 'Toiletries', 'Clothes']} onEdit={vi.fn()} />)
+        expect(screen.getByText('Documents · Toiletries · Clothes')).toBeTruthy()
     })
 
     it('numbers the sections for a screen reader', () => {
