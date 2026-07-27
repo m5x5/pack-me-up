@@ -54,8 +54,12 @@ test.describe('K – JSON Schema Compatibility', () => {
     await expect(personInputs.first()).toHaveValue('Alice', { timeout: 20_000 })
     await page.getByRole('button', { name: 'Cancel' }).click()
 
-    // The question from the fixture should be visible as text in the questions list
-    await expect(page.getByText('Will you be staying overnight?')).toBeVisible({ timeout: 10_000 })
+    // The question from the fixture should be in the questions list, as the
+    // card you can open. Matched by role rather than as loose text: this set
+    // carries no categories, so its sections are named after the questions
+    // themselves and the question text appears in the section-order strip too.
+    await expect(page.getByRole('button', { name: 'Will you be staying overnight?' }))
+      .toBeVisible({ timeout: 10_000 })
   })
 
   test('K2: individual packing list loads items from v1 JSON', async () => {
