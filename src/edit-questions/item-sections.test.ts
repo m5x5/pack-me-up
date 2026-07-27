@@ -448,6 +448,22 @@ describe('CATEGORY_ORDER', () => {
         expect(at(CATEGORIES.kit)).toBe(CATEGORY_ORDER.length - 2)
         expect(at(CATEGORIES.pet)).toBe(CATEGORY_ORDER.length - 1)
     })
+
+    // The day bag is the one that has to be right before the door shuts, and
+    // it is the shortest section, so it is the first thing you read.
+    it('leads with the day bag, ahead of even the documents', () => {
+        const at = (name: string) => CATEGORY_ORDER.indexOf(name)
+        expect(at(CATEGORIES.dayBag)).toBe(1)
+        expect(at(CATEGORIES.dayBag)).toBeLessThan(at(CATEGORIES.documents))
+    })
+
+    // Ten sections is already a long walk through the house; the two that were
+    // dropped were both really "things I want to hand", which is the day bag.
+    it('keeps the section list short enough to hold in your head', () => {
+        expect(Object.values(CATEGORIES).length).toBeLessThanOrEqual(10)
+        expect(Object.values(CATEGORIES)).not.toContain('Tech & Chargers')
+        expect(Object.values(CATEGORIES)).not.toContain('Toys & Games')
+    })
 })
 
 describe('empty sections', () => {

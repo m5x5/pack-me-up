@@ -13,6 +13,7 @@ export const ACTIVITY_OPTION_IDS = {
     skiing: 'activity-option-skiing',
     themePark: 'activity-option-theme-park',
     formalOccasions: 'activity-option-formal-occasions',
+    festival: 'activity-option-festival',
 } as const
 
 // Stable IDs for the options of the other multiple-choice questions. Like the
@@ -66,7 +67,7 @@ export const TEMPLATE_QUESTION_IDS = {
 // existing item (a corrected age filter, a new quantity rate, flipping an item
 // to communal) reach new users only; `buildTemplateUpdateSuggestions` matches
 // on item text and never rewrites what the user already has.
-export const WIZARD_TEMPLATE_VERSION = 2
+export const WIZARD_TEMPLATE_VERSION = 3
 import {
     getBabies,
     getToddlers,
@@ -191,7 +192,6 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             order: 1,
             items: items(
                 section(C.toiletries,
-                    item("Beach towel", people),
                     communalItem("After-sun", people),
                 ),
                 section(C.clothes,
@@ -201,6 +201,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                     communalItem("Cool bag", people),
                 ),
                 section(C.kit,
+                    item("Beach towel", people),
                     communalItem("Bucket and spade", people, getUnderTeenagers),
                     communalItem("Beach shade or windbreak", people),
                     communalItem("Beach bag", people),
@@ -245,7 +246,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             text: "Running",
             order: 4,
             items: items(
-                section(C.tech,
+                section(C.kit,
                     item("Sports watch", people, getTeenagersAndAdults),
                 ),
                 section(C.clothes,
@@ -296,7 +297,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             text: "Sightseeing and city walking",
             order: 7,
             items: items(
-                section(C.tech,
+                section(C.dayBag,
                     item("Power bank", people, getTeenagersAndAdults),
                     communalItem("Offline maps downloaded", people, getTeenagersAndAdults),
                 ),
@@ -312,7 +313,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             text: "Skiing or snowboarding",
             order: 8,
             items: items(
-                section(C.toiletries,
+                section(C.dayBag,
                     communalItem("Sunscreen", people),
                     item("Lip balm with SPF", people, getChildrenAndOlder),
                 ),
@@ -334,18 +335,16 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
             text: "Theme park or days out",
             order: 9,
             items: items(
-                section(C.tech,
+                section(C.dayBag,
                     item("Power bank", people, getTeenagersAndAdults),
+                    item("Poncho", people),
+                    item("Ear defenders", people, getUnderTeenagers),
                 ),
                 section(C.clothes,
                     item("Comfortable walking shoes", people, getToddlersAndOlder),
-                    item("Poncho", people),
                 ),
                 section(C.food,
                     communalItem("Cool bag", people),
-                ),
-                section(C.kit,
-                    item("Ear defenders", people, getUnderTeenagers),
                 ),
             )
         },
@@ -362,6 +361,61 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                     item("Evening bag/Clutch", people, getTeenagersAndAdults),
                 ),
             )
+        },
+        {
+            id: ACTIVITY_OPTION_IDS.festival,
+            text: "Festival or live music",
+            order: 11,
+            items: items(
+                // A festival is an activity rather than a place to stay, so it
+                // combines with whichever accommodation you actually booked —
+                // a tent, a campervan, or a hotel down the road.
+                section(C.dayBag,
+                    item("Festival tickets or wristband", people),
+                    item("Bum bag or small crossbody bag", people, getChildrenAndOlder),
+                    // Card readers need signal, and the signal is the first
+                    // thing a field full of people takes away.
+                    communalItem("Cash in small notes", people, getTeenagersAndAdults),
+                    item("Power bank", people, getTeenagersAndAdults),
+                    communalItem("Waterproof phone pouch", people, getTeenagersAndAdults),
+                    item("Water bottle", people, getToddlersAndOlder),
+                    item("Snacks", people, getToddlersAndOlder),
+                    communalItem("Sunscreen", people),
+                    item("Poncho", people),
+                    item("Ear plugs", people, getChildrenAndOlder),
+                    item("Ear defenders", people, getUnderTeenagers),
+                    item("Reusable cup", people, getChildrenAndOlder),
+                ),
+                section(C.documents,
+                    item("Photo ID", people, getTeenagersAndAdults),
+                ),
+                section(C.medical,
+                    communalItem("Blister plasters", people),
+                ),
+                section(C.toiletries,
+                    // Showers are a queue and the taps are cold, so this is the
+                    // washbag a field needs rather than the one a bathroom does.
+                    communalItem("Toilet roll", people),
+                    communalItem("Wet wipes", people),
+                    item("Dry shampoo", people, getTeenagersAndAdults),
+                ),
+                section(C.clothes,
+                    item("Wellies", people, getToddlersAndOlder),
+                    item("Warm layers for the evening", people),
+                    item("Sunglasses", people, getChildrenAndOlder),
+                    item("Fancy dress or costume", people, getChildrenAndOlder),
+                ),
+                section(C.food,
+                    communalItem("Bin bags", people),
+                ),
+                section(C.kit,
+                    // Tents in rows all look alike in the dark, and by then
+                    // your phone is flat.
+                    communalItem("Tent flag or marker", people),
+                    item("Head torch", people, getChildrenAndOlder),
+                    communalItem("Camp chairs", people),
+                ),
+            )
         }
     ]
 
@@ -373,11 +427,30 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
         _id: "1",
         people,
         alwaysNeededItems: items(
-            // Keys and cards lead because this section leads the list: it is the
-            // "check before the door shuts" pile, not strictly paperwork.
-            section(C.documents,
+            // The bag that stays with you. Keys and cards lead the whole list
+            // because this is the "check before the door shuts" pile — and it
+            // is where the phone, the snacks and the wipes belong too, however
+            // little they have in common otherwise.
+            section(C.dayBag,
                 item("Wallet and bank cards", people, getTeenagersAndAdults),
                 communalItem("House keys", people),
+                item("Phone", people, getTeenagersAndAdults),
+                item("Phone charger", people, getTeenagersAndAdults),
+                item("Power bank", people, getTeenagersAndAdults),
+                item("Headphones", people, getChildrenAndOlder),
+                item("Tablet and charger", people, getChildrenAndOlder),
+                communalItem("Hand sanitiser", people),
+                communalItem("Tissues", people),
+                item("Snacks", people, getToddlersAndOlder),
+                item("Water bottle", people, getToddlersAndOlder),
+                item("Colouring book and pens", people, getChildren),
+                communalItem("Playing cards/Travel games", people, getChildrenAndOlder),
+                item("Ear defenders", people, getUnderTeenagers),
+                // The bag itself, so nobody packs a day bag's worth of things
+                // and then leaves the bag at home.
+                item("Day bag / Backpack", people, getChildrenAndOlder),
+            ),
+            section(C.documents,
                 // A pet's papers are wanted at a border, so they sit with the
                 // other documents rather than in Pet Care.
                 item("Vaccination/health records", people, getPets),
@@ -394,22 +467,14 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                 communalItem("Thermometer", people),
                 item("Teething gel", people, getBabies),
             ),
-            section(C.tech,
-                item("Phone", people, getTeenagersAndAdults),
-                item("Phone charger", people, getTeenagersAndAdults),
-                item("Power bank", people, getTeenagersAndAdults),
-                item("Headphones", people, getChildrenAndOlder),
-                item("Tablet and charger", people, getChildrenAndOlder),
-            ),
-            section(C.toiletries,
-                communalItem("Hand sanitiser", people),
-                communalItem("Tissues", people),
-            ),
             section(C.clothes,
                 item("Spare clothes", people, getBabies, { perNight: 1, perNights: 2, maxQuantity: 6 }),
                 item("Spare clothes", people, getToddlers, { perNight: 1, perNights: 3, maxQuantity: 4 }),
             ),
             section(C.sleep,
+                // A dummy is wanted on the journey as much as at bedtime, but
+                // it is the comfort item that decides whether anyone sleeps, so
+                // the pair stays together rather than being split by bag.
                 item("Dummy (if used)", people, getBabies),
                 item("Comfort item (teddy/blanket)", people, getToddlers),
             ),
@@ -423,13 +488,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                 item("Pull-ups/Toddler nappies", people, getToddlers, { perNight: 4 }),
                 communalItem("Potty (travel potty)", people, getToddlers),
             ),
-            section(C.toys,
-                item("Colouring book and pens", people, getChildren),
-                communalItem("Playing cards/Travel games", people, getChildrenAndOlder),
-            ),
             section(C.food,
-                item("Snacks", people, getToddlersAndOlder),
-                item("Water bottle", people, getToddlersAndOlder),
                 item("Bibs", people, getBabies),
                 item("Bottles (if bottle feeding)", people, getBabies),
                 communalItem("Bottle brush and steriliser bags", people, getBabies),
@@ -437,12 +496,10 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                 item("Sippy cup/Toddler cup", people, getToddlers),
             ),
             section(C.kit,
-                item("Day bag / Backpack", people, getChildrenAndOlder),
                 communalItem("Reusable bags", people),
                 communalItem("Pram/Buggy", people, getBabiesAndToddlers),
                 communalItem("Pram rain cover", people, getBabiesAndToddlers),
                 communalItem("Baby carrier/Sling", people, getBabies),
-                item("Ear defenders", people, getUnderTeenagers),
             ),
             // Pet items — only appear when a matching pet is in the group
             section(C.pet,
@@ -500,9 +557,13 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                                 communalItem("Laundry bag", people),
                                 communalItem("Travel detergent", people),
                             ),
+                            section(C.dayBag,
+                                // Wanted on the way, not on arrival — the same
+                                // reason the flying option carries it.
+                                item("Travel pillow", people, getTeenagersAndAdults),
+                            ),
                             section(C.sleep,
                                 item("Pyjamas", people, undefined, { perNight: 1, perNights: 3, maxQuantity: 3 }),
-                                item("Travel pillow", people, getTeenagersAndAdults),
                                 item("Earplugs and eye mask", people, getTeenagersAndAdults),
                                 communalItem("Baby monitor", people, getBabies),
                                 item("Nightlight", people, getUnderTeenagers),
@@ -551,7 +612,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                                 communalItem("Copies of important documents", people, getAdults),
                                 item("Pet passport/Animal health certificate", people, getPets),
                             ),
-                            section(C.tech,
+                            section(C.dayBag,
                                 item("Travel adapter", people, getTeenagersAndAdults),
                             ),
                         )
@@ -576,12 +637,18 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Hot",
                         order: 0,
                         items: items(
-                            section(C.toiletries,
+                            // Sun cream is applied where you are, not where you
+                            // are staying, so it travels in the day bag; the
+                            // after-sun is an evening job and stays in the wash
+                            // bag.
+                            section(C.dayBag,
                                 communalItem("Sunscreen", people),
-                                communalItem("After-sun", people),
                                 communalItem("Baby sunscreen (SPF 50+)", people, getBabies),
                                 communalItem("Toddler sunscreen", people, getToddlers),
                                 communalItem("Kids sunscreen", people, getChildren),
+                            ),
+                            section(C.toiletries,
+                                communalItem("After-sun", people),
                             ),
                             section(C.medical,
                                 communalItem("Insect repellent", people),
@@ -604,7 +671,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Strong sun",
                         order: 1,
                         items: items(
-                            section(C.toiletries,
+                            section(C.dayBag,
                                 communalItem("Sunscreen", people),
                                 item("Lip balm with SPF", people, getChildrenAndOlder),
                             ),
@@ -635,7 +702,7 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                                 item("Raincoat", people),
                                 item("Waterproof shoes/boots", people),
                             ),
-                            section(C.kit,
+                            section(C.dayBag,
                                 communalItem("Umbrella", people),
                                 communalItem("Waterproof rucksack cover", people, getChildrenAndOlder),
                             ),
@@ -693,26 +760,16 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Flying",
                         order: 0,
                         items: items(
-                            section(C.documents,
+                            // Everything a flight adds is by definition
+                            // something you need before you reach the hold.
+                            section(C.dayBag,
                                 communalItem("Boarding passes", people),
-                            ),
-                            section(C.medical,
                                 item("Medication in hand luggage", people),
-                            ),
-                            section(C.tech,
-                                communalItem("Downloaded films and music", people),
-                            ),
-                            section(C.clothes,
-                                item("Spare clothes in cabin bag", people, getBabiesAndToddlers),
-                            ),
-                            section(C.sleep,
-                                item("Travel pillow", people, getTeenagersAndAdults),
-                            ),
-                            section(C.food,
-                                item("Milk or dummy for take-off and landing", people, getBabies),
-                            ),
-                            section(C.kit,
                                 item("Hand luggage liquids bag", people, getTeenagersAndAdults),
+                                communalItem("Downloaded films and music", people),
+                                item("Travel pillow", people, getTeenagersAndAdults),
+                                item("Spare clothes in cabin bag", people, getBabiesAndToddlers),
+                                item("Milk or dummy for take-off and landing", people, getBabies),
                             ),
                         )
                     },
@@ -721,20 +778,18 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Driving",
                         order: 1,
                         items: items(
-                            section(C.documents,
-                                item("Driving licence", people, getAdults),
+                            // Sick bags and snacks are no use in the boot, and
+                            // the keys are no use anywhere else.
+                            section(C.dayBag,
                                 communalItem("Car keys", people),
-                                communalItem("Breakdown cover documents", people, getAdults),
-                            ),
-                            section(C.medical,
                                 communalItem("Travel sickness tablets", people),
                                 communalItem("Sick bags", people),
-                            ),
-                            section(C.tech,
                                 communalItem("Car charger", people),
-                            ),
-                            section(C.food,
                                 communalItem("Snacks for the journey", people),
+                            ),
+                            section(C.documents,
+                                item("Driving licence", people, getAdults),
+                                communalItem("Breakdown cover documents", people, getAdults),
                             ),
                             section(C.kit,
                                 item("Car seat", people, getUnderTeenagers),
@@ -747,13 +802,9 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Train or coach",
                         order: 2,
                         items: items(
-                            section(C.documents,
+                            section(C.dayBag,
                                 communalItem("Tickets", people),
-                            ),
-                            section(C.tech,
                                 communalItem("Downloaded films and music", people),
-                            ),
-                            section(C.food,
                                 communalItem("Snacks for the journey", people),
                             ),
                         )
@@ -763,10 +814,11 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Ferry",
                         order: 3,
                         items: items(
-                            section(C.documents,
+                            // A seasickness remedy in the car deck is a remedy
+                            // you can't get to, which is also why the cruise
+                            // option files it here.
+                            section(C.dayBag,
                                 communalItem("Tickets", people),
-                            ),
-                            section(C.medical,
                                 communalItem("Seasickness remedies", people),
                             ),
                             section(C.kit,
@@ -908,18 +960,16 @@ export function createExampleData(people: Person[], selectedActivityIds: string[
                         text: "Cruise ship",
                         order: 5,
                         items: items(
+                            section(C.dayBag,
+                                communalItem("Seasickness remedies", people),
+                                item("Lanyard for key card", people, getChildrenAndOlder),
+                                communalItem("Port daypack", people),
+                            ),
                             section(C.documents,
                                 communalItem("Booking confirmations", people),
                             ),
-                            section(C.medical,
-                                communalItem("Seasickness remedies", people),
-                            ),
                             section(C.clothes,
                                 item("Formal outfit", people),
-                            ),
-                            section(C.kit,
-                                item("Lanyard for key card", people, getChildrenAndOlder),
-                                communalItem("Port daypack", people),
                             ),
                         )
                     }

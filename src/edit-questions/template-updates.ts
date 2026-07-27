@@ -123,7 +123,7 @@ function buildSetCategoriesSuggestion(
     return {
         kind: 'setCategories',
         key: 'setCategories',
-        label: `Sort ${itemCount} item${itemCount === 1 ? '' : 's'} into ${sections.size} sections (Clothes, Toiletries, Documents & Money…)`,
+        label: `Sort ${itemCount} item${itemCount === 1 ? '' : 's'} into ${sections.size} sections (Day Bag, Clothes, Toiletries…)`,
         contextLabel: 'Organise your list',
         categories,
         itemCount,

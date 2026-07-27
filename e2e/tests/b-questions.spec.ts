@@ -306,17 +306,17 @@ test.describe('B – Editing Questions', () => {
     await setupWizardAndGoToQuestions(page)
     await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
 
-    const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
-    await expect(toiletries).toBeVisible({ timeout: 5_000 })
-    await toiletries.getByTestId('add-to-section').click()
+    const dayBag = page.getByTestId('item-section').filter({ hasText: 'Day Bag' }).first()
+    await expect(dayBag).toBeVisible({ timeout: 5_000 })
+    await dayBag.getByTestId('add-to-section').click()
 
-    const field = page.getByLabel('New item in Toiletries')
+    const field = page.getByLabel('New item in Day Bag')
     await expect(field).toBeVisible({ timeout: 3_000 })
     await field.fill('SectionAddTest')
     await field.press('Enter')
 
     // It lands under the heading it was typed into, not at the end of the list.
-    await expect(toiletries.getByText('SectionAddTest')).toBeVisible({ timeout: 5_000 })
+    await expect(dayBag.getByText('SectionAddTest')).toBeVisible({ timeout: 5_000 })
     // And the composer stays, cleared, because items go in in runs.
     await expect(field).toHaveValue('')
 
@@ -324,7 +324,7 @@ test.describe('B – Editing Questions', () => {
     await page.waitForTimeout(800)
     await page.reload()
     await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
-    const afterReload = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
+    const afterReload = page.getByTestId('item-section').filter({ hasText: 'Day Bag' }).first()
     await expect(afterReload.getByText('SectionAddTest')).toBeVisible({ timeout: 5_000 })
   })
 
@@ -338,7 +338,7 @@ test.describe('B – Editing Questions', () => {
     const field = page.getByLabel(/^New item in /)
     await expect(field).toBeVisible({ timeout: 3_000 })
 
-    // "Sunscreen" lives under Toiletries in a question elsewhere in the set;
+    // "Sunscreen" lives under Day Bag in a question elsewhere in the set;
     // taking the suggestion is what files it there without a second trip.
     await field.fill('sunscr')
     const suggestion = page.getByRole('option', { name: /Sunscreen/ }).first()
@@ -346,11 +346,11 @@ test.describe('B – Editing Questions', () => {
     await suggestion.click()
     // Scoped to the composer: the page also carries a "Reorder sections"
     // button, and getByLabel matches on substring.
-    await expect(page.getByTestId('add-question-item').getByLabel('Section')).toHaveValue('Toiletries')
+    await expect(page.getByTestId('add-question-item').getByLabel('Section')).toHaveValue('Day Bag')
 
     await field.press('Enter')
-    const toiletries = page.getByTestId('item-section').filter({ hasText: 'Toiletries' }).first()
-    await expect(toiletries.getByText('Sunscreen')).toBeVisible({ timeout: 5_000 })
+    const dayBag = page.getByTestId('item-section').filter({ hasText: 'Day Bag' }).first()
+    await expect(dayBag.getByText('Sunscreen')).toBeVisible({ timeout: 5_000 })
   })
 
   test('B13: delete an item from the row you are editing', async ({ freshPage: page }) => {
