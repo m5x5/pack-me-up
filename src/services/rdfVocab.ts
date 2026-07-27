@@ -66,6 +66,10 @@ export const PMU = {
     species: `${PMU_NS}species`,
     // Stored as a plain YYYY-MM-DD string (not a datetime) to avoid timezone drift
     dateOfBirth: 'https://schema.org/birthDate',
+    // Palette id (see person-colors.ts), not a CSS colour — the app owns what
+    // 'rose' looks like, and an older client that doesn't know an id just falls
+    // back to the person's position.
+    personColor: `${PMU_NS}personColor`,
     personLastModified: `${PMU_NS}personLastModified`,
     personDeletedAt: `${PMU_NS}personDeletedAt`,
 

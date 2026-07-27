@@ -8,18 +8,7 @@
  */
 import { memo } from 'react'
 import type { Item, Person } from '../edit-questions/types'
-
-// One distinct colour per person slot (by index). Tailwind classes must be
-// literal strings, so this is a lookup rather than an interpolation.
-export const AVATAR_ON = [
-    'bg-blue-500 text-white',
-    'bg-violet-500 text-white',
-    'bg-emerald-500 text-white',
-    'bg-amber-500 text-white',
-    'bg-rose-500 text-white',
-    'bg-cyan-500 text-white',
-]
-export const AVATAR_OFF = 'bg-gray-100 text-gray-300'
+import { PERSON_COLOR_OFF, personColorFor } from '../edit-questions/person-colors'
 
 /** "2 per night" / "1 per 4 nights" — the human phrasing of an item's rate. */
 export function rateLabel(item: Item): string {
@@ -78,7 +67,7 @@ export const PersonToggles = memo(function PersonToggles({ item, people, layout,
                     title={communalTitle}
                     aria-label={`Toggle shared for ${item.text || 'item'}`}
                     aria-pressed={isCommunal}
-                    className={`inline-flex items-center justify-center h-5 rounded-full px-1 text-[10px] transition-colors mr-1 ${isCommunal ? 'bg-blue-600 text-white' : AVATAR_OFF}`}
+                    className={`inline-flex items-center justify-center h-5 rounded-full px-1 text-[10px] transition-colors mr-1 ${isCommunal ? 'bg-blue-600 text-white' : PERSON_COLOR_OFF}`}
                 >
                     👥
                 </button>
@@ -91,7 +80,7 @@ export const PersonToggles = memo(function PersonToggles({ item, people, layout,
                             onClick={() => onTogglePerson(personIdx)}
                             title={personTitle(person.name)}
                             aria-pressed={selected}
-                            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? AVATAR_ON[personIdx % AVATAR_ON.length] : AVATAR_OFF} ${isCommunal && selected ? 'ring-2 ring-blue-300 ring-offset-1' : ''}`}
+                            className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold transition-colors ${selected ? personColorFor(person, personIdx).avatar : PERSON_COLOR_OFF} ${isCommunal && selected ? 'ring-2 ring-blue-300 ring-offset-1' : ''}`}
                         >
                             {person.name.charAt(0).toUpperCase()}
                         </button>
@@ -125,7 +114,7 @@ export const PersonToggles = memo(function PersonToggles({ item, people, layout,
                         onClick={() => onTogglePerson(personIdx)}
                         title={personTitle(person.name)}
                         aria-pressed={selected}
-                        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${AVATAR_ON[personIdx % AVATAR_ON.length]} border-transparent` : 'bg-white border-gray-200 text-gray-400'}`}
+                        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg border-2 transition-colors ${selected ? `${personColorFor(person, personIdx).avatar} border-transparent` : 'bg-white border-gray-200 text-gray-400'}`}
                     >
                         <span className="text-lg font-bold leading-none">
                             {person.name.charAt(0).toUpperCase()}

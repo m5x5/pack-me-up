@@ -175,4 +175,28 @@ test.describe('C – Packing Lists', () => {
     await expect(page.getByText('This list already matches your questions')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByRole('button', { name: /Add \d+ item/i })).not.toBeVisible()
   })
+
+  test('C9: a person’s chosen colour follows them onto a packing list', async ({ freshPage: page }) => {
+    await runWizard(page)
+
+    // Give the one person in the set a colour of their own
+    await page.goto('/#/manage-questions')
+    await expect(page.getByRole('heading', { name: 'My Questions & Items' })).toBeVisible({ timeout: 8_000 })
+    await page.locator('button[title="Edit people"]').click()
+    await expect(page.getByRole('heading', { name: 'Edit People' })).toBeVisible({ timeout: 3_000 })
+    await page.getByRole('button', { name: 'Change colour for Me' }).click()
+    await page.getByRole('group', { name: 'Colour for Me' }).getByRole('button', { name: 'Fuchsia' }).click()
+    // The avatar shows the choice before the modal is even saved
+    await expect(page.getByRole('button', { name: 'Change colour for Me' })).toHaveClass(/bg-fuchsia-500/)
+    await page.getByRole('button', { name: 'Save' }).click()
+    // Give the async IndexedDB write time to commit
+    await page.waitForTimeout(800)
+
+    // A list made afterwards shows that colour on their card
+    await page.goto('/#/create-packing-list')
+    await createList(page, 'Colourful Trip')
+    const card = page.locator('[data-testid="list-section"]').filter({ hasText: "Me's Items" })
+    await expect(card.getByTestId('person-avatar')).toHaveClass(/bg-fuchsia-500/)
+    await expect(card).toHaveClass(/border-fuchsia-300/)
+  })
 })

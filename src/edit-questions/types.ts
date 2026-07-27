@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PersonColorSchema } from './person-colors'
 
 // Age Range Type
 export const AgeRangeSchema = z.enum(['Baby', 'Toddler', 'Child', 'Teenager', 'Adult'])
@@ -41,6 +42,9 @@ export const PET_SPECIES_OPTIONS = [
 // `dateOfBirth` (ISO date, YYYY-MM-DD) is optional and additive: when present
 // the person's bracket is derived from it and `ageRange` acts as the last
 // bracket the user acknowledged, which is how age-up transitions are detected.
+// `color` is optional and additive: absent means "whatever this person's
+// position gives them", which is the colour they had before the picker
+// existed. See `person-colors.ts`.
 export const PersonSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -48,6 +52,7 @@ export const PersonSchema = z.object({
   dateOfBirth: z.string().optional(),
   gender: GenderSchema.optional(),
   species: PetSpeciesSchema.optional(),
+  color: PersonColorSchema.optional(),
   lastModified: z.string().optional(),
   deletedAt: z.string().optional(),
 })

@@ -28,6 +28,8 @@ import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { useSectionOrder } from '../hooks/useSectionOrder'
+import { usePersonColors } from '../hooks/usePersonColors'
+import { PersonAvatar } from '../components/PersonAvatar'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
 import { useIsDesktop } from '../hooks/useIsDesktop'
@@ -137,10 +139,13 @@ function isSectionComplete(stats?: SectionStats): boolean {
     return stats !== undefined && stats.total > 0 && stats.packed === stats.total
 }
 
+/** Where a custom item was added without saying whose it is. */
+export const UNASSIGNED_LABEL = 'Unassigned'
+
 export function groupByPerson(items: PackingListItem[]) {
     const map = new Map<string, PackingListItem[]>()
     for (const item of items) {
-        const person = item.personName || 'Unassigned'
+        const person = item.personName || UNASSIGNED_LABEL
         if (!map.has(person)) map.set(person, [])
         map.get(person)!.push(item)
     }
@@ -384,6 +389,11 @@ export function ViewPackingList() {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, id]) => ({ name, id }))
     }, [packingList?.items, packingList?.guests])
+
+    // Everyone this list names, so the ones the question set doesn't know —
+    // guests, or the whole cast of a shared list — still come out in colours
+    // nobody else here is wearing.
+    const personColor = usePersonColors(db, peopleOptions)
 
 
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
@@ -1492,8 +1502,16 @@ export function ViewPackingList() {
                                 ? groupByCategory(items, sectionOrder)
                                 : groupByPerson(items)
                             const isSectionCollapsed = collapsedSections.has(sectionKey)
+                            // Only a card that belongs to one person can wear
+                            // their colour: a category card holds everybody's.
+                            const sectionPersonColor = (isShared || isCategorySection)
+                                ? undefined
+                                : personColor({ id: guestId ?? personIdByName.get(section.name) ?? '', name: section.name })
+                            const sectionBorder = isComplete
+                                ? 'border-emerald-300 bg-emerald-50'
+                                : `bg-white ${sectionPersonColor?.border ?? (isShared ? 'border-blue-200' : 'border-gray-200')}`
                             return (
-                            <div key={sectionKey} className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${isComplete ? 'border-emerald-300 bg-emerald-50' : `bg-white ${isGuest ? 'border-amber-200' : isShared ? 'border-blue-200' : 'border-gray-200'}`}`} style={{ breakInside: 'avoid' }}>
+                            <div key={sectionKey} data-testid="list-section" className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${sectionBorder}`} style={{ breakInside: 'avoid' }}>
                                 {/* The rule under the heading separates it from the items
                                     below; a folded card has none, so it would just be a
                                     line ruling off empty space. */}
@@ -1523,6 +1541,9 @@ export function ViewPackingList() {
                                                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                             >
                                                 <span className="shrink-0 text-sm text-gray-400">{isSectionCollapsed ? '▶' : '▼'}</span>
+                                                {sectionPersonColor && (
+                                                    <PersonAvatar name={section.name} color={sectionPersonColor} />
+                                                )}
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 {/* Never let a count break across lines — "9 /" above "9" is
                                                     a fraction the eye has to reassemble. */}
@@ -1627,6 +1648,16 @@ export function ViewPackingList() {
                                                         className="flex items-center gap-1 text-left text-sm font-semibold text-gray-600 hover:text-gray-900"
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
+                                                        {/* A category card's groups are people, so each one
+                                                            gets the same mark its owner's card would have.
+                                                            The catch-all group is nobody's. */}
+                                                        {isCategorySection && label !== UNASSIGNED_LABEL && (
+                                                            <PersonAvatar
+                                                                name={label}
+                                                                color={personColor({ id: personIdByName.get(label) ?? '', name: label })}
+                                                                size="sm"
+                                                            />
+                                                        )}
                                                         <span>{label}</span>
                                                         <span className="ml-1 shrink-0 whitespace-nowrap text-xs font-normal text-gray-400">{groupStat.packed} / {groupStat.total}</span>
                                                     </button>
