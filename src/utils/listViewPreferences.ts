@@ -42,11 +42,23 @@ function stringsOnly(value: unknown): string[] {
     return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
 }
 
-function isDefault(prefs: ListViewPreferences): boolean {
-    return prefs.viewMode === DEFAULT_LIST_VIEW_PREFERENCES.viewMode
-        && prefs.showPacked === DEFAULT_LIST_VIEW_PREFERENCES.showPacked
-        && prefs.collapsedSections.length === 0
-        && prefs.collapsedGroups.length === 0
+/**
+ * Whether this list has been opened on this device before.
+ *
+ * The list view folds a big list down on its *first* open only; every open
+ * after that belongs to whatever the user last chose, including choosing to
+ * have everything open. That's why an entry is written even when it matches the
+ * defaults exactly — the entry itself is the record that the user has seen this
+ * list, and deleting it would have the list fold itself up again on the next
+ * visit as if for the first time.
+ */
+export function hasStoredListViewPreferences(listId: string | undefined): boolean {
+    if (!listId) return false
+    try {
+        return localStorage.getItem(listViewPreferencesKey(listId)) !== null
+    } catch {
+        return false
+    }
 }
 
 /**
@@ -86,13 +98,6 @@ export function loadListViewPreferences(listId: string | undefined): ListViewPre
 export function saveListViewPreferences(listId: string | undefined, prefs: ListViewPreferences): void {
     if (!listId) return
     try {
-        // A list sitting at the defaults has nothing worth remembering, so it
-        // leaves no entry behind — otherwise every list ever opened would
-        // accumulate one.
-        if (isDefault(prefs)) {
-            localStorage.removeItem(listViewPreferencesKey(listId))
-            return
-        }
         localStorage.setItem(listViewPreferencesKey(listId), JSON.stringify(prefs))
     } catch {
         // Storage full or blocked — the list still works, it just won't

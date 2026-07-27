@@ -2568,3 +2568,159 @@ describe('ViewPackingList folding sections away', () => {
         })
     })
 })
+
+describe('ViewPackingList opening a long list for the first time', () => {
+    // Six people so the list has plenty to fold, and 36 items so it clears the
+    // "long enough to arrive as a wall" threshold.
+    const people = ['Alice', 'Bob', 'Cara', 'Dev', 'Eve', 'Finn']
+    function bigList(id: string, itemsPerPerson: number) {
+        return {
+            id,
+            name: 'Big Trip',
+            createdAt: '2026-01-01T00:00:00Z',
+            items: people.flatMap((person, p) =>
+                Array.from({ length: itemsPerPerson }, (_, i) => ({
+                    id: `${person}-${i}`,
+                    itemText: `${person} item ${i}`,
+                    personName: person,
+                    personId: `p${p}`,
+                    questionId: 'q1',
+                    optionId: 'o1',
+                    category: 'Clothes',
+                    packed: false,
+                })),
+            ),
+        }
+    }
+
+    function mockList(list: ReturnType<typeof bigList>) {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...list, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getPackingList: vi.fn().mockResolvedValue(list),
+                savePackingList: vi.fn().mockResolvedValue({ rev: '2' }),
+                getQuestionSet: vi.fn().mockRejectedValue({ name: 'not_found' }),
+            } as unknown as PackingAppDatabase,
+        })
+    }
+
+    function renderList(listId: string) {
+        return render(
+            <MemoryRouter initialEntries={[`/view-list/${listId}`]}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('opens a long list folded', async () => {
+        mockList(bigList('big-1', 6))
+        renderList('big-1')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        expect(screen.queryByText('Alice item 0')).toBeNull()
+        expect(screen.getByRole('button', { name: /expand alice's list/i })).toBeTruthy()
+    })
+
+    it('keeps every section and its count on the page', async () => {
+        mockList(bigList('big-2', 6))
+        renderList('big-2')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        for (const person of people) {
+            expect(screen.getByRole('button', { name: new RegExp(`expand ${person}'s list`, 'i') }).textContent)
+                .toContain('0 / 6')
+        }
+    })
+
+    it('says why the list arrived folded, and offers the way out', async () => {
+        mockList(bigList('big-3', 6))
+        renderList('big-3')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        const note = screen.getByTestId('folded-on-open-note')
+        expect(note.textContent).toContain('all 6 sections start folded')
+
+        fireEvent.click(within(note).getByRole('button', { name: /expand all/i }))
+
+        expect(screen.getByText('Alice item 0')).toBeTruthy()
+        expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+
+    it('drops the note as soon as the user opens a section themselves', async () => {
+        mockList(bigList('big-4', 6))
+        renderList('big-4')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /expand alice's list/i }))
+
+        expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+
+    it('leaves a short list open', async () => {
+        // Six people, one item each — plenty of sections, but no wall
+        mockList(bigList('small-1', 1))
+        renderList('small-1')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        expect(screen.getByText('Alice item 0')).toBeTruthy()
+        expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+
+    it('leaves a long list with a single section open, having nothing to fold into', async () => {
+        const list = bigList('solo-1', 6)
+        mockList({ ...list, items: list.items.map(item => ({ ...item, personName: 'Alice', personId: 'p0' })) })
+        renderList('solo-1')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        expect(screen.getByText('Alice item 0')).toBeTruthy()
+    })
+
+    it('does not fold a list the user has opened before', async () => {
+        mockList(bigList('big-5', 6))
+        const { unmount } = renderList('big-5')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+        fireEvent.click(within(screen.getByTestId('folded-on-open-note')).getByRole('button', { name: /expand all/i }))
+        unmount()
+
+        renderList('big-5')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        // Their arrangement wins, even though it matches the plain defaults
+        expect(screen.getByText('Alice item 0')).toBeTruthy()
+        expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+
+    it('reopens folded if that is how the user left it', async () => {
+        mockList(bigList('big-6', 6))
+        const { unmount } = renderList('big-6')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+        unmount()
+
+        renderList('big-6')
+        await waitFor(() => expect(screen.getByText("Alice's Items")).toBeTruthy())
+
+        expect(screen.queryByText('Alice item 0')).toBeNull()
+        // Second time around it is their arrangement, not something to explain
+        expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+})

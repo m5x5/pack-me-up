@@ -30,7 +30,7 @@ import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
 import { useIsDesktop } from '../hooks/useIsDesktop'
-import { loadListViewPreferences, saveListViewPreferences, type ListViewMode } from '../utils/listViewPreferences'
+import { loadListViewPreferences, saveListViewPreferences, hasStoredListViewPreferences, type ListViewMode } from '../utils/listViewPreferences'
 
 type FormData = {
     items: Record<string, boolean>
@@ -56,6 +56,13 @@ const ITEM_FLOURISH_MS = 450
 // finishing — the item flourish, plus a beat to read the "All packed!" badge —
 // before it folds itself away.
 const SECTION_FOLD_DELAY_MS = 900
+
+// How long a list has to be before it arrives folded. Roughly "more rows than
+// fit on a screen": below this the wall the folding exists to prevent isn't
+// there, and a freshly generated list is better off showing the user what it
+// made them. Only ever applies to a list's first open — see
+// hasStoredListViewPreferences.
+const FOLD_ON_OPEN_MIN_ITEMS = 30
 
 // Joins section keys into a single comparable value. Section keys are people's
 // names and category labels, so the separator has to be something neither can
@@ -163,6 +170,12 @@ export function ViewPackingList() {
     // items were showing. Read once, synchronously, so a list opens folded the
     // way it was closed rather than flashing its full self first.
     const [storedPreferences] = useState(() => loadListViewPreferences(id))
+    // Whether this list has been opened here before. Read before the first save
+    // writes an entry, so it stays true to its name for the whole visit.
+    const [listSeenBefore] = useState(() => hasStoredListViewPreferences(id))
+    // True while a first-open fold is still exactly as this page left it — the
+    // one moment worth explaining, and only until the user touches anything.
+    const [foldedOnOpen, setFoldedOnOpen] = useState(false)
     const [showPacked, setShowPacked] = useState(storedPreferences.showPacked)
     const [viewMode, setViewMode] = useState<ListViewMode>(storedPreferences.viewMode)
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -185,6 +198,8 @@ export function ViewPackingList() {
     // Sections finished before the user arrived fold without ceremony; after the
     // first pass, folding waits for the celebration to be seen.
     const hasFoldedOnOpenRef = useRef(false)
+    // The first-open fold happens once per mount at most, whatever else changes.
+    const hasSeededFoldRef = useRef(false)
     const [showAddGuest, setShowAddGuest] = useState(false)
     // Reveals an empty Shared Items section on lists that have no communal
     // items yet; once an item is added the section persists from the data.
@@ -249,12 +264,16 @@ export function ViewPackingList() {
             return next
         })
 
-    const toggleSection = (sectionKey: string) =>
+    const toggleSection = (sectionKey: string) => {
+        // Once the user has arranged the list themselves, the note explaining
+        // how it arrived has nothing left to explain.
+        setFoldedOnOpen(false)
         setCollapsedSections(prev => {
             const next = new Set(prev)
             if (next.has(sectionKey)) { next.delete(sectionKey) } else { next.add(sectionKey) }
             return next
         })
+    }
 
     const handleCheckAll = (items: PackingListItem[]) =>
         items.forEach(item => setValue(`items.${item.id}`, true))
@@ -939,6 +958,30 @@ export function ViewPackingList() {
     // below from being cancelled and restarted by every unrelated re-render.
     const completeSectionSignature = completeSectionKeys.join(KEY_SEPARATOR)
 
+    // A list long enough to arrive as a wall of cards opens folded — but only
+    // the very first time it is seen on this device. Every open after that is
+    // the user's own arrangement, including the arrangement "everything open",
+    // so this can never override a choice they've made. Short lists are left
+    // alone: a freshly generated list is a thing worth showing someone, and
+    // folding it would trade the payoff for tidiness it doesn't need.
+    useLayoutEffect(() => {
+        if (listSeenBefore || hasSeededFoldRef.current || !listItems) return
+        if (listItems.length <= FOLD_ON_OPEN_MIN_ITEMS) return
+
+        const sectionKeys = new Set(
+            listItems.map(item => (item.communal ? SHARED_SECTION_KEY : item.personName)),
+        )
+        // Guests with nothing in them yet still have a card to fold
+        for (const guest of packingList?.guests ?? []) sectionKeys.add(guest.name)
+        // Nothing to fold *into* — one long section stays open, since folding it
+        // would leave the user looking at a single closed box.
+        if (sectionKeys.size < 2) return
+
+        hasSeededFoldRef.current = true
+        setCollapsedSections(prev => new Set([...prev, ...sectionKeys]))
+        setFoldedOnOpen(true)
+    }, [listSeenBefore, listItems, packingList?.guests])
+
     // Showing packed items is a request to see everything, so it hands back the
     // sections this page folded away — but not the ones the user folded, which
     // are none of our business.
@@ -1122,6 +1165,7 @@ export function ViewPackingList() {
     const everySectionFolded = listSections.length > 0 && foldableSections.length === 0
     const showFoldAllControl = listSections.length > 1
     const toggleAllSections = () => {
+        setFoldedOnOpen(false)
         if (everySectionFolded) {
             // Expanding by hand settles the matter: sections that are already
             // finished are marked as dealt with so they don't fold straight back.
@@ -1340,6 +1384,27 @@ export function ViewPackingList() {
                             <p className="text-2xl font-bold text-white drop-shadow-sm">You're all packed!</p>
                             <p className="text-emerald-100 mt-1 text-sm font-medium">Everything's ready — time for adventure!</p>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* The one time the page arranges the list for the user, it says so and
+                hands back the undo in the same breath — same bargain as the hidden
+                packed items note below. It goes the moment they arrange anything
+                themselves, so it never becomes furniture. */}
+            {foldedOnOpen && everySectionFolded && (
+                <div data-testid="folded-on-open-note" className="w-full max-w-screen-2xl mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                        <p className="text-sm text-blue-800">
+                            A long list, so all {listSections.length} sections start folded — tap any heading to open one.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={toggleAllSections}
+                            className="shrink-0 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                        >
+                            Expand all
+                        </button>
                     </div>
                 </div>
             )}

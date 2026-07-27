@@ -4,6 +4,7 @@ import {
     loadListViewPreferences,
     saveListViewPreferences,
     listViewPreferencesKey,
+    hasStoredListViewPreferences,
 } from './listViewPreferences'
 
 describe('listViewPreferences', () => {
@@ -115,19 +116,41 @@ describe('listViewPreferences', () => {
             expect(setItem).not.toHaveBeenCalled()
         })
 
-        it('does not leave an entry behind for a list left at its defaults', () => {
+        it('keeps an entry for a list left at its defaults, so it counts as seen', () => {
             saveListViewPreferences('list-1', DEFAULT_LIST_VIEW_PREFERENCES)
 
-            expect(localStorage.getItem(listViewPreferencesKey('list-1'))).toBeNull()
+            expect(hasStoredListViewPreferences('list-1')).toBe(true)
         })
 
-        it('clears a stored entry once the list is back to its defaults', () => {
+        it('still counts as seen once the user opens everything back up', () => {
             saveListViewPreferences('list-1', { ...DEFAULT_LIST_VIEW_PREFERENCES, collapsedSections: ['Alice'] })
-            expect(localStorage.getItem(listViewPreferencesKey('list-1'))).not.toBeNull()
-
             saveListViewPreferences('list-1', DEFAULT_LIST_VIEW_PREFERENCES)
 
-            expect(localStorage.getItem(listViewPreferencesKey('list-1'))).toBeNull()
+            expect(hasStoredListViewPreferences('list-1')).toBe(true)
+        })
+    })
+
+    describe('knowing whether a list has been opened before', () => {
+        it('is false for a list never opened', () => {
+            expect(hasStoredListViewPreferences('list-1')).toBe(false)
+        })
+
+        it('is false without a list id', () => {
+            expect(hasStoredListViewPreferences(undefined)).toBe(false)
+        })
+
+        it('is true once the list has been saved', () => {
+            saveListViewPreferences('list-1', DEFAULT_LIST_VIEW_PREFERENCES)
+
+            expect(hasStoredListViewPreferences('list-1')).toBe(true)
+        })
+
+        it('treats unreadable storage as never opened rather than throwing', () => {
+            vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+                throw new Error('SecurityError')
+            })
+
+            expect(hasStoredListViewPreferences('list-1')).toBe(false)
         })
     })
 })
