@@ -9,6 +9,13 @@ import { deleteAllLocalData, deleteAllPodData } from '../services/dataDeletion'
 
 const SUPPORT_EMAIL = 'tim.packmeup@gmail.com'
 
+/**
+ * Sentry's retention for error events, which is set by plan tier: 30 days on the
+ * Developer (free) plan we're on, 90 on Team and above. Stated to the user, so
+ * it has to be corrected here if the plan ever changes.
+ */
+const ERROR_REPORT_RETENTION = '30 days'
+
 type DeletionScope = 'device' | 'pod' | 'everything'
 
 const CONFIRMATIONS: Record<DeletionScope, { title: string, message: string }> = {
@@ -166,9 +173,8 @@ export function YourDataPage() {
                     and your browser or device type — no name, no email, no account, and no IP address.
                     Analytics are cookie-free totals, like how many people opened the wizard. Because
                     there's no identifier attached to either, there's nothing we could look up and delete
-                    for one person — and equally nothing in them that points back to you. Our
-                    error-reporting provider drops the reports automatically at the end of its retention
-                    period.
+                    for one person — and equally nothing in them that points back to you. Crash reports
+                    are deleted automatically after {ERROR_REPORT_RETENTION} either way.
                 </p>
                 <p className="text-gray-700">
                     The exception is the in-app feedback form: if you send feedback and fill in your name

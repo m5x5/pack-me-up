@@ -100,6 +100,7 @@ describe('YourDataPage', () => {
         // No setUser call and sendDefaultPii unset means these events have no
         // name, account or IP on them — a deletion request has nothing to match.
         expect(screen.getByText(/no IP address/i)).toBeTruthy()
+        expect(screen.getByText(/deleted automatically after 30 days/i)).toBeTruthy()
         // The in-app feedback form is the one place an email is collected, and so
         // the one deletion request here that can actually be actioned.
         expect(screen.getByText(/feedback form/i)).toBeTruthy()
