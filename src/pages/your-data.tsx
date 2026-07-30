@@ -161,17 +161,26 @@ export function YourDataPage() {
             <section className="space-y-3">
                 <h2 className="text-xl font-bold text-primary-900">Error reports and analytics</h2>
                 <p className="text-gray-700">
-                    Crash reports (error messages, stack traces, device details — never the contents of
-                    your lists) and cookie-free, aggregate page-view analytics are the only things that
-                    leave your device to us. They aren't tied to an account, so the app can't delete them
-                    for you. Email{' '}
+                    The only things that leave your device to us are crash reports and page-view counts,
+                    and neither is linked to you. A crash report carries the error message, a stack trace
+                    and your browser or device type — no name, no email, no account, and no IP address.
+                    Analytics are cookie-free totals, like how many people opened the wizard. Because
+                    there's no identifier attached to either, there's nothing we could look up and delete
+                    for one person — and equally nothing in them that points back to you. Our
+                    error-reporting provider drops the reports automatically at the end of its retention
+                    period.
+                </p>
+                <p className="text-gray-700">
+                    The exception is the in-app feedback form: if you send feedback and fill in your name
+                    or email, that message is stored with what you typed. We can find and delete that —
+                    email{' '}
                     <a
                         href={`mailto:${SUPPORT_EMAIL}`}
                         className="font-semibold text-primary-700 underline hover:text-primary-900"
                     >
                         {SUPPORT_EMAIL}
                     </a>{' '}
-                    and we'll delete any error reports we hold for you.
+                    and we will.
                 </p>
             </section>
 

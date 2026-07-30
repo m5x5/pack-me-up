@@ -92,6 +92,19 @@ describe('YourDataPage', () => {
         expect(screen.getByText(/tim\.packmeup@gmail\.com/)).toBeTruthy()
     })
 
+    it('does not offer to delete crash reports or analytics, which carry nothing to find them by', () => {
+        givenLoggedOut()
+
+        render(<YourDataPage />)
+
+        // No setUser call and sendDefaultPii unset means these events have no
+        // name, account or IP on them — a deletion request has nothing to match.
+        expect(screen.getByText(/no IP address/i)).toBeTruthy()
+        // The in-app feedback form is the one place an email is collected, and so
+        // the one deletion request here that can actually be actioned.
+        expect(screen.getByText(/feedback form/i)).toBeTruthy()
+    })
+
     it('offers no pod deletion button when signed out, but says how to do it anyway', () => {
         givenLoggedOut()
 

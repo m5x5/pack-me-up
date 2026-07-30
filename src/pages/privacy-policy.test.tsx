@@ -32,7 +32,10 @@ describe('PrivacyPolicyPage', () => {
     it('points users at the page where they can delete their data', () => {
         renderPage()
 
-        const link = screen.getByRole('link', { name: 'Your data' })
-        expect(link.getAttribute('href')).toBe('/your-data')
+        const links = screen.getAllByRole('link', { name: 'Your data' })
+        expect(links.length).toBeGreaterThan(0)
+        for (const link of links) {
+            expect(link.getAttribute('href')).toBe('/your-data')
+        }
     })
 })

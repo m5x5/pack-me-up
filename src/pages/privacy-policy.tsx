@@ -68,6 +68,20 @@ export const PrivacyPolicyPage = () => {
                     bugs. Error reports may include technical details like error messages, stack traces,
                     and device/browser information, but do not include the contents of your packing lists.
                 </p>
+                <p className="text-gray-700">
+                    Neither is linked to you: we don't attach a name, email or account to them, and we
+                    don't collect your IP address. That also means we have no way to single out one
+                    person's crash reports or page views on request — there is no identifier to search
+                    for. The in-app feedback form is the exception, since it asks for your name and email;
+                    see the{' '}
+                    <Link
+                        to="/your-data"
+                        className="font-semibold text-primary-700 underline hover:text-primary-900"
+                    >
+                        Your data
+                    </Link>{' '}
+                    page for how to have that deleted.
+                </p>
             </section>
 
             <section className="space-y-2">
