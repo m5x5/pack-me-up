@@ -177,16 +177,17 @@ export function YourDataPage() {
                     are deleted automatically after {ERROR_REPORT_RETENTION} either way.
                 </p>
                 <p className="text-gray-700">
-                    The exception is the in-app feedback form: if you send feedback and fill in your name
-                    or email, that message is stored with what you typed. We can find and delete that —
-                    email{' '}
+                    The exception is anything you send us on purpose. If you report a bug with the app's
+                    feedback button, or email us directly, we have whatever you chose to put in it —
+                    including your name and email address if you filled those in. Ask us to delete it and
+                    we will:{' '}
                     <a
                         href={`mailto:${SUPPORT_EMAIL}`}
                         className="font-semibold text-primary-700 underline hover:text-primary-900"
                     >
                         {SUPPORT_EMAIL}
-                    </a>{' '}
-                    and we will.
+                    </a>
+                    .
                 </p>
             </section>
 

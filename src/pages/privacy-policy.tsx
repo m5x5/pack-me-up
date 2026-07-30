@@ -72,8 +72,8 @@ export const PrivacyPolicyPage = () => {
                     Neither is linked to you: we don't attach a name, email or account to them, and we
                     don't collect your IP address. That also means we have no way to single out one
                     person's crash reports or page views on request — there is no identifier to search
-                    for. The in-app feedback form is the exception, since it asks for your name and email;
-                    see the{' '}
+                    for. Anything you send us deliberately is the exception — the app's feedback button
+                    asks for your name and email, and emailing us tells us your address; see the{' '}
                     <Link
                         to="/your-data"
                         className="font-semibold text-primary-700 underline hover:text-primary-900"
