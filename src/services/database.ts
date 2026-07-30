@@ -41,6 +41,21 @@ export type AppDocument = QuestionSetDocument | PackingListDocument | SharedWith
  */
 export const LOCAL_NAMESPACE = 'local'
 
+/** Every database this app creates is named `packing-app-data--<namespace>`. */
+export const DATABASE_NAME_PREFIX = 'packing-app-data--'
+
+export function databaseNameForNamespace(namespace: string): string {
+    return `${DATABASE_NAME_PREFIX}${namespace}`
+}
+
+/**
+ * Pre-namespace database names, still present on devices that used the app
+ * before `migrateFromLegacyDatabases` moved their contents across. Migration
+ * copies rather than deletes, so these survive and must be cleaned up by
+ * anything claiming to delete all local data.
+ */
+export const LEGACY_DATABASE_NAMES = ['packing-list-question-set', 'packing-lists'] as const
+
 function hasName(err: unknown): err is { name: string } {
     return typeof err === 'object' && err !== null && 'name' in err
 }
@@ -74,7 +89,7 @@ export class PackingAppDatabase {
     private static instances: Map<string, PackingAppDatabase> = new Map()
 
     private constructor(namespace: string) {
-        this.db = new PouchDB<AppDocument>(`packing-app-data--${namespace}`)
+        this.db = new PouchDB<AppDocument>(databaseNameForNamespace(namespace))
         console.log('PouchDB instance created:', {
             name: this.db.name,
             namespace,
@@ -94,6 +109,15 @@ export class PackingAppDatabase {
             PackingAppDatabase.instances.set(namespace, new PackingAppDatabase(namespace))
         }
         return PackingAppDatabase.instances.get(namespace)!
+    }
+
+    /**
+     * Drops every cached instance, so the next `getInstance` call opens a fresh
+     * handle. Needed after the underlying databases are destroyed — a cached
+     * instance would otherwise keep serving a database that no longer exists.
+     */
+    public static forgetAllInstances(): void {
+        PackingAppDatabase.instances.clear()
     }
 
     /**
@@ -388,8 +412,9 @@ export class PackingAppDatabase {
     }
 
     public async migrateFromLegacyDatabases(): Promise<{ migrated: boolean, questionSets: number, packingLists: number }> {
-        const legacyQuestionDb = new PouchDB('packing-list-question-set')
-        const legacyPackingListsDb = new PouchDB('packing-lists')
+        const [legacyQuestionDbName, legacyPackingListsDbName] = LEGACY_DATABASE_NAMES
+        const legacyQuestionDb = new PouchDB(legacyQuestionDbName)
+        const legacyPackingListsDb = new PouchDB(legacyPackingListsDbName)
 
         let questionSets = 0
         let packingLists = 0

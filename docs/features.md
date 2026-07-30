@@ -8,3 +8,4 @@
 - Share lists with other users via their Solid Pod; grant/revoke access
 - Browse packing lists shared from other pods
 - Export and restore questions and lists
+- Delete all your data — from this device, from your Solid Pod, or both

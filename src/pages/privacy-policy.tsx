@@ -1,4 +1,6 @@
-const LAST_UPDATED = '21 July 2026'
+import { Link } from 'react-router-dom'
+
+const LAST_UPDATED = '30 July 2026'
 
 export const PrivacyPolicyPage = () => {
     return (
@@ -40,6 +42,21 @@ export const PrivacyPolicyPage = () => {
                     If you use the sharing feature, the packing lists or questions you choose to share are
                     made accessible to the specific people you share them with, via your Pod's access
                     controls.
+                </p>
+            </section>
+
+            <section className="space-y-2">
+                <h2 className="text-xl font-bold text-primary-900">Deleting your data</h2>
+                <p className="text-gray-700">
+                    You can delete everything the app has stored at any time — from this device, from
+                    your Solid Pod, or both — on the{' '}
+                    <Link
+                        to="/your-data"
+                        className="font-semibold text-primary-700 underline hover:text-primary-900"
+                    >
+                        Your data
+                    </Link>{' '}
+                    page. That page also explains how to delete your data without the app installed.
                 </p>
             </section>
 

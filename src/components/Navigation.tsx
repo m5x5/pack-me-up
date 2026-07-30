@@ -95,6 +95,12 @@ export const Navigation = () => {
                         {/* Solid Login/Logout section */}
                         <div className="hidden md:flex items-center gap-4">
                             <Link
+                                to="/your-data"
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/70 hover:text-white transition-colors duration-200"
+                            >
+                                Your Data
+                            </Link>
+                            <Link
                                 to="/privacy-policy"
                                 className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/70 hover:text-white transition-colors duration-200"
                             >
@@ -229,6 +235,13 @@ export const Navigation = () => {
                                 Sharing
                             </Link>
                         )}
+                        <Link
+                            to="/your-data"
+                            className="block px-3 py-3 rounded-xl text-base font-medium text-white/70 hover:text-white transition-colors duration-200"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            Your Data
+                        </Link>
                         <Link
                             to="/privacy-policy"
                             className="block px-3 py-3 rounded-xl text-base font-medium text-white/70 hover:text-white transition-colors duration-200"

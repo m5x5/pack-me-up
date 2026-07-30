@@ -21,6 +21,7 @@ import { ForeignPackingListsPage } from './pages/foreign-packing-lists'
 import { SharingSettingsPage } from './pages/sharing-settings'
 import { QuestionsPage } from './pages/questions-page'
 import { PrivacyPolicyPage } from './pages/privacy-policy'
+import { YourDataPage } from './pages/your-data'
 
 function DefaultRedirect() {
   const { isLoggedIn, isLoading } = useSolidPod()
@@ -51,6 +52,7 @@ function App() {
                 <Route path="/backups" element={<BackupsPage />} />
                 <Route path="/sharing" element={<SharingSettingsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/your-data" element={<YourDataPage />} />
                 <Route path="/pod/:encodedPodUrl" element={<ForeignPodLayout />}>
                   <Route index element={<Navigate to="view-lists" replace />} />
                   <Route path="view-lists" element={<ForeignPackingListsPage />} />
