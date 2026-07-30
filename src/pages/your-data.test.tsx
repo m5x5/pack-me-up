@@ -112,8 +112,20 @@ describe('YourDataPage', () => {
 
         render(<YourDataPage />)
 
-        expect(screen.queryByRole('button', { name: /from my pod/i })).toBeNull()
+        expect(screen.queryByRole('button', { name: /delete everything/i })).toBeNull()
         expect(screen.getByText(/pack-me-up/)).toBeTruthy()
+    })
+
+    it('never offers to delete the pod copy on its own, which would undo itself', async () => {
+        givenLoggedIn()
+
+        render(<YourDataPage />)
+        await waitFor(() => screen.getByRole('button', { name: /delete everything/i }))
+
+        // syncAllDataFromPod re-uploads every local-only list on the next login,
+        // so a pod-only deletion rebuilds the folder it just removed.
+        expect(screen.queryByRole('button', { name: /from my pod/i })).toBeNull()
+        expect(screen.getByText(/no\s+pod-only option/i)).toBeTruthy()
     })
 
     it('asks for confirmation before deleting anything', () => {
@@ -137,16 +149,15 @@ describe('YourDataPage', () => {
         await waitFor(() => expect(window.location.reload).toHaveBeenCalled())
     })
 
-    it('deletes pod data once confirmed', async () => {
+    it('deletes pod data from the resolved pod once confirmed', async () => {
         givenLoggedIn()
 
         render(<YourDataPage />)
-        await waitFor(() => screen.getByRole('button', { name: /from my pod/i }))
-        click(/from my pod/i)
+        await waitFor(() => screen.getByRole('button', { name: /delete everything/i }))
+        click(/delete everything/i)
         click(/^delete$/i)
 
         await waitFor(() => expect(mockDeleteAllPodData).toHaveBeenCalledWith(session, 'https://alice.example/'))
-        expect(mockDeleteAllLocalData).not.toHaveBeenCalled()
     })
 
     it('deletes the pod copy before the local one, so login sync cannot restore it', async () => {
@@ -179,22 +190,28 @@ describe('YourDataPage', () => {
         mockDeleteAllPodData.mockRejectedValue(failure)
 
         render(<YourDataPage />)
-        await waitFor(() => screen.getByRole('button', { name: /from my pod/i }))
-        click(/from my pod/i)
+        await waitFor(() => screen.getByRole('button', { name: /delete everything/i }))
+        click(/delete everything/i)
         click(/^delete$/i)
 
-        await waitFor(() => expect(handlePodError).toHaveBeenCalledWith(failure, expect.stringMatching(/pod/i)))
+        await waitFor(() => expect(handlePodError).toHaveBeenCalledWith(failure, expect.stringMatching(/failed to delete/i)))
+        // A failed pod deletion must not go on to wipe the device copy, which is
+        // the only remaining copy of the data at that point.
+        expect(mockDeleteAllLocalData).not.toHaveBeenCalled()
         expect(window.location.reload).not.toHaveBeenCalled()
     })
 
-    it('does not attempt a pod deletion when no pod can be resolved', async () => {
+    it('deletes nothing at all when no pod can be resolved', async () => {
         givenLoggedIn(null)
 
         render(<YourDataPage />)
-        await waitFor(() => screen.getByRole('button', { name: /from my pod/i }))
-        click(/from my pod/i)
+        await waitFor(() => screen.getByRole('button', { name: /delete everything/i }))
+        click(/delete everything/i)
         click(/^delete$/i)
 
         await waitFor(() => expect(mockDeleteAllPodData).not.toHaveBeenCalled())
+        // Wiping the device while the pod copy survives is the one outcome
+        // "delete everything" must never produce.
+        expect(mockDeleteAllLocalData).not.toHaveBeenCalled()
     })
 })

@@ -16,16 +16,19 @@ const SUPPORT_EMAIL = 'tim.packmeup@gmail.com'
  */
 const ERROR_REPORT_RETENTION = '30 days'
 
-type DeletionScope = 'device' | 'pod' | 'everything'
+/**
+ * Deliberately no pod-only scope. Deleting the pod copy while leaving the device
+ * copy in place does not last: `syncAllDataFromPod` uploads every local-only
+ * list on the next login, so the pod folder would rebuild itself without the
+ * user doing anything. A button that quietly undoes itself is worse than no
+ * button, so pod deletion is only offered together with the device copy.
+ */
+type DeletionScope = 'device' | 'everything'
 
 const CONFIRMATIONS: Record<DeletionScope, { title: string, message: string }> = {
     device: {
         title: 'Delete all data on this device?',
         message: 'Every packing list, question and setting stored on this device will be removed. This can\'t be undone.',
-    },
-    pod: {
-        title: 'Delete all Pack Me Up data from your pod?',
-        message: 'The whole pack-me-up folder in your pod will be removed, including your backups. This can\'t be undone.',
     },
     everything: {
         title: 'Delete everything?',
@@ -57,10 +60,10 @@ export function YourDataPage() {
     const runDeletion = async (scope: DeletionScope) => {
         setIsDeleting(true)
         try {
-            // Pod first, always. The pod copy syncs back down on next login
+            // Pod first. The pod copy syncs back down on next login
             // (DatabaseContext -> syncAllDataFromPod), so deleting the device
             // copy first would simply hand the data back to the user later.
-            if (scope !== 'device') {
+            if (scope === 'everything') {
                 if (!session || !podUrl) {
                     showToast('No pod found for your account', 'error')
                     return
@@ -68,16 +71,11 @@ export function YourDataPage() {
                 await deleteAllPodData(session, podUrl)
             }
 
-            if (scope !== 'pod') {
-                await deleteAllLocalData()
-                // Contexts still hold handles to databases that no longer exist.
-                window.location.reload()
-                return
-            }
-
-            showToast('All Pack Me Up data has been deleted from your pod.', 'success')
+            await deleteAllLocalData()
+            // Contexts still hold handles to databases that no longer exist.
+            window.location.reload()
         } catch (error) {
-            handlePodError(error, 'Failed to delete your pod data. Please try again.')
+            handlePodError(error, 'Failed to delete your data. Please try again.')
         } finally {
             setIsDeleting(false)
             setPendingScope(null)
@@ -105,7 +103,7 @@ export function YourDataPage() {
                 {isLoggedIn && (
                     <p className="text-gray-700 font-medium">
                         You're signed in, so anything also saved in your pod will sync back to this device
-                        next time you sign in. To remove it for good, delete your pod data too.
+                        next time you sign in. To remove it for good, use "Delete everything" below.
                     </p>
                 )}
                 <Button
@@ -131,24 +129,19 @@ export function YourDataPage() {
                             in your pod{podUrl ? <> (<span className="break-all">{podUrl}</span>)</> : null},
                             including your backups. Deleting it leaves the rest of your pod untouched.
                         </p>
-                        <div className="flex flex-wrap gap-3">
-                            <Button
-                                type="button"
-                                variant="danger"
-                                onClick={() => setPendingScope('pod')}
-                                disabled={isDeleting}
-                            >
-                                Delete all data from my pod
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="danger"
-                                onClick={() => setPendingScope('everything')}
-                                disabled={isDeleting}
-                            >
-                                Delete everything
-                            </Button>
-                        </div>
+                        <Button
+                            type="button"
+                            variant="danger"
+                            onClick={() => setPendingScope('everything')}
+                            disabled={isDeleting}
+                        >
+                            Delete everything
+                        </Button>
+                        <p className="text-sm text-gray-600">
+                            This removes your pod copy and this device's copy together. There's no
+                            pod-only option because it wouldn't hold: signing in again re-uploads whatever
+                            is still on this device, rebuilding the folder you just deleted.
+                        </p>
                     </>
                 ) : (
                     <p className="text-gray-700">
