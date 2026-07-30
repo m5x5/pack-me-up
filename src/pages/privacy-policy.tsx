@@ -1,4 +1,6 @@
-const LAST_UPDATED = '21 July 2026'
+import { Link } from 'react-router-dom'
+
+const LAST_UPDATED = '30 July 2026'
 
 export const PrivacyPolicyPage = () => {
     return (
@@ -44,12 +46,41 @@ export const PrivacyPolicyPage = () => {
             </section>
 
             <section className="space-y-2">
+                <h2 className="text-xl font-bold text-primary-900">Deleting your data</h2>
+                <p className="text-gray-700">
+                    You can delete everything the app has stored at any time — from this device, from
+                    your Solid Pod, or both — on the{' '}
+                    <Link
+                        to="/your-data"
+                        className="font-semibold text-primary-700 underline hover:text-primary-900"
+                    >
+                        Your data
+                    </Link>{' '}
+                    page. That page also explains how to delete your data without the app installed.
+                </p>
+            </section>
+
+            <section className="space-y-2">
                 <h2 className="text-xl font-bold text-primary-900">Analytics and error reporting</h2>
                 <p className="text-gray-700">
                     We use privacy-friendly, cookie-free analytics to understand overall app usage (such as
                     which pages are visited), and an error-reporting tool to help us diagnose crashes and
                     bugs. Error reports may include technical details like error messages, stack traces,
                     and device/browser information, but do not include the contents of your packing lists.
+                </p>
+                <p className="text-gray-700">
+                    Neither is linked to you: we don't attach a name, email or account to them, and we
+                    don't collect your IP address. That also means we have no way to single out one
+                    person's crash reports or page views on request — there is no identifier to search
+                    for. Anything you send us deliberately is the exception — the app's feedback button
+                    asks for your name and email, and emailing us tells us your address; see the{' '}
+                    <Link
+                        to="/your-data"
+                        className="font-semibold text-primary-700 underline hover:text-primary-900"
+                    >
+                        Your data
+                    </Link>{' '}
+                    page for how to have that deleted.
                 </p>
             </section>
 

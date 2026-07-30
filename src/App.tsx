@@ -5,6 +5,7 @@ import { Routes } from 'react-router-dom'
 import { Navigate } from 'react-router-dom'
 import './App.css'
 import { Navigation } from './components/Navigation'
+import { Footer } from './components/Footer'
 import { SessionExpiredBanner } from './components/SessionExpiredBanner'
 import { ToastProvider } from './components/ToastContext'
 import { LandingPage } from './pages/landing-page'
@@ -21,6 +22,7 @@ import { ForeignPackingListsPage } from './pages/foreign-packing-lists'
 import { SharingSettingsPage } from './pages/sharing-settings'
 import { QuestionsPage } from './pages/questions-page'
 import { PrivacyPolicyPage } from './pages/privacy-policy'
+import { YourDataPage } from './pages/your-data'
 
 function DefaultRedirect() {
   const { isLoggedIn, isLoading } = useSolidPod()
@@ -35,10 +37,12 @@ function App() {
         <DatabaseProvider>
         <HashRouter>
             <Analytics />
-          <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50">
+          {/* Column layout keeps the footer at the bottom of short pages rather
+              than floating it under the content. */}
+          <div className="min-h-screen flex flex-col bg-gradient-to-br from-primary-50 via-white to-accent-50">
             <Navigation />
             <SessionExpiredBanner />
-            <div className="container mx-auto px-4 py-8" style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}>
+            <div className="flex-1 container mx-auto px-4 py-8">
               <Routes>
                 <Route path="/" element={<DefaultRedirect />} />
                 <Route path="/home" element={<LandingPage />} />
@@ -51,6 +55,7 @@ function App() {
                 <Route path="/backups" element={<BackupsPage />} />
                 <Route path="/sharing" element={<SharingSettingsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/your-data" element={<YourDataPage />} />
                 <Route path="/pod/:encodedPodUrl" element={<ForeignPodLayout />}>
                   <Route index element={<Navigate to="view-lists" replace />} />
                   <Route path="view-lists" element={<ForeignPackingListsPage />} />
@@ -60,6 +65,7 @@ function App() {
                 </Route>
               </Routes>
             </div>
+            <Footer />
           </div>
         </HashRouter>
         </DatabaseProvider>

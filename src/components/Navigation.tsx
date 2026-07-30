@@ -94,18 +94,6 @@ export const Navigation = () => {
                         </div>
                         {/* Solid Login/Logout section */}
                         <div className="hidden md:flex items-center gap-4">
-                            <Link
-                                to="/privacy-policy"
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/70 hover:text-white transition-colors duration-200"
-                            >
-                                Privacy Policy
-                            </Link>
-                            <a
-                                href="mailto:tim.packmeup@gmail.com"
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium text-white/70 hover:text-white transition-colors duration-200"
-                            >
-                                Feedback
-                            </a>
                             {isLoggedIn ? (
                                 <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl">
                                     {sharedContexts.length > 0 && (
@@ -229,20 +217,6 @@ export const Navigation = () => {
                                 Sharing
                             </Link>
                         )}
-                        <Link
-                            to="/privacy-policy"
-                            className="block px-3 py-3 rounded-xl text-base font-medium text-white/70 hover:text-white transition-colors duration-200"
-                            onClick={() => setIsOpen(false)}
-                        >
-                            Privacy Policy
-                        </Link>
-                        <a
-                            href="mailto:tim.packmeup@gmail.com"
-                            className="block px-3 py-3 rounded-xl text-base font-medium text-white/70 hover:text-white transition-colors duration-200"
-                            onClick={() => setIsOpen(false)}
-                        >
-                            Feedback
-                        </a>
                         {/* Mobile Solid Login/Logout */}
                         <div className="border-t border-white/20 pt-2 mt-2">
                             {isLoggedIn ? (

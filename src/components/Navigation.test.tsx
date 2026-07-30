@@ -59,16 +59,19 @@ describe('Navigation', () => {
         expect(screen.queryByText('Edit Questions')).toBeNull()
     })
 
-    it('shows feedback email link', () => {
+    // Feedback, the privacy policy and data deletion live in the Footer now —
+    // they're once-in-a-while links, and the nav is for everyday ones. See
+    // Footer.test.tsx for their coverage.
+    it('keeps once-in-a-while links out of the nav', () => {
         render(
             <MemoryRouter>
                 <Navigation />
             </MemoryRouter>
         )
 
-        const feedbackLinks = screen.getAllByRole('link', { name: /feedback/i })
-        expect(feedbackLinks.length).toBeGreaterThan(0)
-        expect(feedbackLinks[0].getAttribute('href')).toBe('mailto:tim.packmeup@gmail.com')
+        expect(screen.queryByRole('link', { name: /feedback/i })).toBeNull()
+        expect(screen.queryByRole('link', { name: /privacy/i })).toBeNull()
+        expect(screen.queryByRole('link', { name: /delete my data/i })).toBeNull()
     })
 
     it('shows Backups link when logged in', () => {
