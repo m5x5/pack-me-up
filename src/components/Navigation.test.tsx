@@ -24,6 +24,10 @@ vi.mock('./DatabaseContext', () => ({
     }),
 }))
 
+vi.mock('./ThemeContext', () => ({
+    useTheme: vi.fn().mockReturnValue({ theme: 'light', setTheme: vi.fn(), toggleTheme: vi.fn() }),
+}))
+
 import { useSolidPod } from './SolidPodContext'
 import { getPodOwnerProfile } from '../services/solidPod'
 

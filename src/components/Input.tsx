@@ -8,7 +8,7 @@ export function Input({ label, ...props }: InputProps) {
     return (
         <div className="flex-1">
             {label && (
-                <label className="block text-sm font-semibold text-gray-800 mb-2">
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
                     {label}
                 </label>
             )}
@@ -22,7 +22,7 @@ export function Input({ label, ...props }: InputProps) {
                     border-primary-200
                     rounded-xl
                     shadow-soft
-                    text-gray-900
+                    text-gray-900 dark:text-gray-100
                     placeholder-gray-400
                     focus:outline-none
                     focus:ring-2

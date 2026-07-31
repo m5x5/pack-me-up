@@ -67,12 +67,12 @@ const PersonLegend = memo(function PersonLegend({ people, photos, onEdit }: { pe
                 </span>
             ))}
             {people.length > 2 && (
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-xs font-semibold ring-2 ring-white">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 dark:text-gray-300 text-xs font-semibold ring-2 ring-white">
                     +{people.length - 2}
                 </span>
             )}
             {people.length === 0 && (
-                <span className="text-xs text-gray-600">No people added</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">No people added</span>
             )}
         </>
     )
@@ -84,7 +84,7 @@ const PersonLegend = memo(function PersonLegend({ people, photos, onEdit }: { pe
                     onClick={onEdit}
                     title="Edit people"
                     aria-label="Edit people"
-                    className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
+                    className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                     {cluster}
                 </button>
@@ -111,7 +111,7 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
     const showDots = people.length > 1
     const content = (
         <>
-            <span className={`flex-1 min-w-0 text-left ${item.text ? 'text-gray-700' : 'text-gray-400 italic'}`}>
+            <span className={`flex-1 min-w-0 text-left ${item.text ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500 italic'}`}>
                 {item.text || 'no text'}
             </span>
             {item.communal && (
@@ -154,7 +154,7 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
             onClick={() => onOpen(index)}
             aria-expanded={isOpen ?? false}
             title={`Edit ${item.text || 'item'}`}
-            className={`group w-full flex items-center gap-2 py-1 px-2 text-sm rounded transition-colors ${isOpen ? 'bg-primary-50' : 'hover:bg-gray-100'}`}
+            className={`group w-full flex items-center gap-2 py-1 px-2 text-sm rounded transition-colors ${isOpen ? 'bg-primary-50 dark:bg-primary-950/40' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
         >
             {content}
             {/* Decorative, not a button of its own: the whole row is the target,
@@ -164,7 +164,7 @@ const ItemRow = memo(function ItemRow({ item, people, index, isOpen, onOpen }: {
             <svg
                 data-testid="item-edit-icon"
                 aria-hidden="true"
-                className={`w-3.5 h-3.5 shrink-0 transition-colors ${isOpen ? 'text-primary-500' : 'text-gray-400 group-hover:text-gray-700'}`}
+                className={`w-3.5 h-3.5 shrink-0 transition-colors ${isOpen ? 'text-primary-500' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-700 dark:group-hover:text-gray-200'}`}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
             >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -212,12 +212,12 @@ function ReorganiseModal({ items, defaultLabel, emptySections, onChange, onClose
             <div
                 role="dialog"
                 aria-label={`Organise ${defaultLabel} items`}
-                className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[85vh]"
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[85vh]"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="p-5 border-b border-gray-100 flex-shrink-0">
-                    <h2 className="text-lg font-semibold text-gray-900">Organise items</h2>
-                    <p className="mt-0.5 text-sm text-gray-500 truncate">{defaultLabel}</p>
+                <div className="p-5 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Organise items</h2>
+                    <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400 truncate">{defaultLabel}</p>
                 </div>
                 <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
                     <SectionedItemReorder
@@ -228,7 +228,7 @@ function ReorganiseModal({ items, defaultLabel, emptySections, onChange, onClose
                         onChange={onChange}
                     />
                 </div>
-                <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex justify-end">
+                <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 flex justify-end">
                     <button
                         type="button"
                         onClick={onClose}
@@ -300,7 +300,7 @@ function useDeferredReorder(onReorder?: (items: Item[], emptySections: string[] 
     return { draft, onChange, flush: stop }
 }
 
-const FOOT_BUTTON = 'py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors'
+const FOOT_BUTTON = 'py-2 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:border-primary-300 dark:border-primary-700 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 transition-colors'
 
 /**
  * Name a new section. Offers the names already used elsewhere in the set, so
@@ -336,7 +336,7 @@ function AddSection({ suggestions, onAdd, onClose }: {
                 }}
                 aria-label="New section name"
                 placeholder="Section name (e.g. Toiletries)"
-                className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             <datalist id={listId}>
                 {suggestions.map(label => <option key={label} value={label} />)}
@@ -552,7 +552,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
             <button
                 type="button"
                 onClick={() => setOrganising(true)}
-                className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 text-primary-600 hover:bg-primary-50 transition-colors"
+                className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 transition-colors"
             >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -604,7 +604,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                             // clipped away to nothing. The heading rounds its own
                             // top corners instead of relying on the card to crop
                             // them.
-                            className={`rounded-lg border ${accent.border} bg-white`}
+                            className={`rounded-lg border ${accent.border} bg-white dark:bg-gray-800`}
                         >
                             <div className={`flex items-center gap-2 rounded-t-lg px-2.5 py-1.5 ${accent.header}`}>
                                 <span
@@ -638,7 +638,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                                     // A section you have just made, before anything is
                                     // in it. Says so rather than drawing a card with a
                                     // blank body, which reads as a rendering fault.
-                                    <p className="px-1.5 py-1 text-xs text-gray-400 italic">
+                                    <p className="px-1.5 py-1 text-xs text-gray-400 dark:text-gray-500 italic">
                                         Nothing here yet — use ＋ to add the first item
                                     </p>
                                 )}
@@ -693,7 +693,7 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
             <DropdownMenu.Trigger asChild>
                 <button
                     type="button"
-                    className="p-2 text-gray-400 hover:text-gray-700 rounded"
+                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 rounded"
                     title="More actions"
                 >
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -707,11 +707,11 @@ function OptionContextMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete:
                 <DropdownMenu.Content
                     align="end"
                     sideOffset={4}
-                    className="w-32 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                    className="w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-50"
                 >
                     <DropdownMenu.Item
                         onSelect={onEdit}
-                        className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none"
+                        className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-default outline-none"
                     >
                         Edit
                     </DropdownMenu.Item>
@@ -803,24 +803,24 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
             ) : (
                 <svg
                     data-testid="option-expand-chevron"
-                    className={`w-4 h-4 text-gray-400 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
             )}
-            <span className="text-sm font-medium text-gray-800 flex-1 min-w-0">
-                {option.text || <em className="text-gray-400 font-normal">Untitled option</em>}
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-1 min-w-0">
+                {option.text || <em className="text-gray-400 dark:text-gray-500 font-normal">Untitled option</em>}
             </span>
             {isEmpty ? (
-                <span className="text-xs text-gray-400 italic flex-shrink-0 mr-1">No items</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 italic flex-shrink-0 mr-1">No items</span>
             ) : (
-                <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-1">{option.items.length} items</span>
+                <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 mr-1">{option.items.length} items</span>
             )}
         </>
     )
     return (
-        <div data-testid="option-section" className="bg-gray-50 rounded-lg p-3">
+        <div data-testid="option-section" className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
             <div className={`flex items-center${isExpanded ? ' mb-2' : ''}`}>
                 {!canExpand ? (
                     <div className="flex items-center gap-2 flex-1 text-left min-w-0">
@@ -848,7 +848,7 @@ export function OptionSection({ option, people, sectionDefaultLabel, allItemName
                         <button
                             type="button"
                             onClick={onEdit}
-                            className="p-1 text-gray-300 hover:text-gray-600 rounded"
+                            className="p-1 text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 rounded"
                             title="Edit option"
                         >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -903,16 +903,16 @@ function DeleteConfirmModal({ onConfirm, onCancel }: { onConfirm: () => void; on
             onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
         >
             <div
-                className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6"
+                className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
                 onClick={e => e.stopPropagation()}
             >
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete question?</h2>
-                <p className="text-sm text-gray-500 mb-6">This will permanently remove the question and all its options.</p>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Delete question?</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">This will permanently remove the question and all its options.</p>
                 <div className="flex justify-end gap-3">
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="px-4 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100"
+                        className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                         Cancel
                     </button>
@@ -943,7 +943,7 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
                 <DropdownMenu.Trigger asChild>
                     <button
                         type="button"
-                        className="p-2 text-gray-400 hover:text-gray-700 rounded"
+                        className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 rounded"
                         title="More actions"
                     >
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -957,25 +957,25 @@ function QuestionContextMenu({ onMoveUp, onMoveDown, onEdit, onDelete }: {
                     <DropdownMenu.Content
                         align="end"
                         sideOffset={4}
-                        className="w-40 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                        className="w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-50"
                     >
                         <DropdownMenu.Item
                             onSelect={onEdit}
-                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none"
+                            className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-default outline-none"
                         >
                             Edit
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
                             onSelect={onMoveUp}
                             disabled={!onMoveUp}
-                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
+                            className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
                         >
                             Move Up
                         </DropdownMenu.Item>
                         <DropdownMenu.Item
                             onSelect={onMoveDown}
                             disabled={!onMoveDown}
-                            className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
+                            className="px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-default outline-none data-[disabled]:text-gray-300 data-[disabled]:pointer-events-none"
                         >
                             Move Down
                         </DropdownMenu.Item>
@@ -1030,23 +1030,23 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
     const moveUp = canMoveUp ? () => onMove(question.id, 'up') : undefined
     const moveDown = canMoveDown ? () => onMove(question.id, 'down') : undefined
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div className="flex items-stretch">
                 <button
                     type="button"
                     onClick={() => setIsExpanded(e => !e)}
-                    className="flex items-center gap-3 flex-1 text-left px-4 py-4 sm:px-6 min-w-0 hover:bg-gray-50 transition-colors duration-150"
+                    className="flex items-center gap-3 flex-1 text-left px-4 py-4 sm:px-6 min-w-0 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-150"
                 >
                     <svg
-                        className={`w-5 h-5 text-gray-400 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                        className={`w-5 h-5 text-gray-400 dark:text-gray-500 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
-                    <span className="font-medium text-gray-900 flex-1 min-w-0">
-                        {question.text || <em className="text-gray-400 font-normal">Untitled question</em>}
+                    <span className="font-medium text-gray-900 dark:text-gray-100 flex-1 min-w-0">
+                        {question.text || <em className="text-gray-400 dark:text-gray-500 font-normal">Untitled question</em>}
                     </span>
-                    <span className="hidden sm:inline text-xs text-gray-400 flex-shrink-0 mr-2">{question.options.length} options</span>
+                    <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 mr-2">{question.options.length} options</span>
                 </button>
                 <div className="flex items-center pr-3 flex-shrink-0">
                     {/* Mobile: context menu */}
@@ -1064,7 +1064,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             type="button"
                             onClick={moveUp}
                             disabled={!canMoveUp}
-                            className={`p-1.5 rounded ${canMoveUp ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            className={`p-1.5 rounded ${canMoveUp ? 'text-gray-300 hover:text-gray-600 dark:hover:text-gray-300' : 'text-gray-100 cursor-not-allowed'}`}
                             title="Move up"
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1075,7 +1075,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                             type="button"
                             onClick={moveDown}
                             disabled={!canMoveDown}
-                            className={`p-1.5 rounded ${canMoveDown ? 'text-gray-300 hover:text-gray-600' : 'text-gray-100 cursor-not-allowed'}`}
+                            className={`p-1.5 rounded ${canMoveDown ? 'text-gray-300 hover:text-gray-600 dark:hover:text-gray-300' : 'text-gray-100 cursor-not-allowed'}`}
                             title="Move down"
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1085,7 +1085,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                         <button
                             type="button"
                             onClick={handleEdit}
-                            className="p-1.5 text-gray-300 hover:text-gray-600 rounded"
+                            className="p-1.5 text-gray-300 hover:text-gray-600 dark:hover:text-gray-300 rounded"
                             title="Edit question"
                         >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1129,7 +1129,7 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                     <button
                         type="button"
                         onClick={() => onAddOption(question.id)}
-                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors flex items-center justify-center gap-1"
+                        className="w-full py-2 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:border-primary-300 dark:border-primary-700 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 transition-colors flex items-center justify-center gap-1"
                     >
                         <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add Option
                     </button>
@@ -1166,7 +1166,7 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
     const hasExpandedRef = useRef(isExpanded)
     if (isExpanded) hasExpandedRef.current = true
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
             <div className="flex items-center">
                 <button
                     type="button"
@@ -1174,14 +1174,14 @@ const AlwaysSection = memo(function AlwaysSection({ items, people, emptySections
                     className="flex items-center gap-2 flex-1 text-left min-w-0"
                 >
                     <svg
-                        className={`w-5 h-5 text-gray-400 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                        className={`w-5 h-5 text-gray-400 dark:text-gray-500 flex-shrink-0 transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                         fill="none" viewBox="0 0 24 24" stroke="currentColor"
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                     <span className="flex flex-col min-w-0">
-                        <span className="font-medium text-gray-900">Always Needed Items</span>
-                        <span className="hidden sm:inline text-sm font-normal text-gray-500">{items.length} items</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">Always Needed Items</span>
+                        <span className="hidden sm:inline text-sm font-normal text-gray-500 dark:text-gray-400">{items.length} items</span>
                     </span>
                 </button>
             </div>
@@ -1247,12 +1247,12 @@ function OptionEditModal({ option, onSave, onClose }: {
             onClick={onClose}
             onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <div className="p-5">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                         {option ? 'Edit Option' : 'Add Option'}
                     </h2>
-                    <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 mb-1">Answer text</label>
+                    <label htmlFor={fieldId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Answer text</label>
                     <input
                         id={fieldId}
                         autoFocus
@@ -1260,11 +1260,11 @@ function OptionEditModal({ option, onSave, onClose }: {
                         value={text}
                         onChange={e => setText(e.target.value)}
                         placeholder="e.g. Yes"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-5"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-5"
                         onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
                     />
                     <div className="flex gap-2 justify-end">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                             Cancel
                         </button>
                         <button
@@ -1342,9 +1342,9 @@ export function PeopleModal({ people, onSave, onClose }: {
             onClick={onClose}
             onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
                 <div className="p-5">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit People</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Edit People</h2>
                     <div className="space-y-2 mb-3">
                         {localPeople.map((person, i) => {
                             const color = personColorFor(person, i)
@@ -1369,7 +1369,7 @@ export function PeopleModal({ people, onSave, onClose }: {
                                         value={person.name}
                                         onChange={e => updateName(i, e.target.value)}
                                         placeholder={`Person ${i + 1}`}
-                                        className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                                         onKeyDown={e => { if (e.key === 'Enter') addPerson() }}
                                     />
                                     {localPeople.length > 1 && (
@@ -1391,14 +1391,14 @@ export function PeopleModal({ people, onSave, onClose }: {
                                             title="Birthday (optional) — used to keep age-based items up to date"
                                             value={person.dateOfBirth ?? ''}
                                             onChange={e => updateDob(i, e.target.value)}
-                                            className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                            className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                         />
                                         <select
                                             aria-label={`Age group for ${person.name || `Person ${i + 1}`}`}
                                             title="Age group — change it manually if they're ready for the next one early"
                                             value={person.ageRange ?? ''}
                                             onChange={e => updateAgeRange(i, e.target.value)}
-                                            className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                            className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                         >
                                             <option value="">Age group…</option>
                                             {AGE_RANGE_OPTIONS.map(option => (
@@ -1417,7 +1417,7 @@ export function PeopleModal({ people, onSave, onClose }: {
                                             value={person.webId ?? ''}
                                             onChange={e => updateWebId(i, e.target.value)}
                                             onBlur={e => fillBirthdayFromProfile(i, e.target.value)}
-                                            className="w-full min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                            className="w-full min-w-0 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-gray-600 dark:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                         />
                                     </div>
                                 )}
@@ -1432,16 +1432,16 @@ export function PeopleModal({ people, onSave, onClose }: {
                             )
                         })}
                     </div>
-                    <p className="text-xs text-gray-400 mb-3">Tap someone's circle to change their colour — it follows them onto every packing list. Birthdays are optional: add one and we'll suggest packing-item updates as they grow, or bump the age group early if they're ready for it.</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Tap someone's circle to change their colour — it follows them onto every packing list. Birthdays are optional: add one and we'll suggest packing-item updates as they grow, or bump the age group early if they're ready for it.</p>
                     <button
                         type="button"
                         onClick={addPerson}
-                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors mb-4 flex items-center justify-center gap-1"
+                        className="w-full py-2 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:border-primary-300 dark:border-primary-700 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 transition-colors mb-4 flex items-center justify-center gap-1"
                     >
                         <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add Person
                     </button>
                     <div className="flex gap-2 justify-end">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                             Cancel
                         </button>
                         <button type="button" onClick={() => onSave(localPeople)} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
@@ -1481,29 +1481,29 @@ function QuestionModal({ question, onSave, onClose }: {
             onClick={onClose}
             onKeyDown={e => { if (e.key === 'Escape') onClose() }}
         >
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <div className="p-5">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                         {question ? 'Edit Question' : 'Add Question'}
                     </h2>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Question text</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Question text</label>
                     <input
                         autoFocus
                         type="text"
                         value={text}
                         onChange={e => setText(e.target.value)}
                         placeholder="e.g. Are you going to a hot climate?"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
                         onKeyDown={e => { if (e.key === 'Enter' && text.trim()) onSave(text.trim(), type) }}
                     />
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Answer type</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Answer type</label>
                     <div className="flex gap-2 mb-5">
                         {(['single-choice', 'multiple-choice'] as QuestionType[]).map(t => (
                             <button
                                 key={t}
                                 type="button"
                                 onClick={() => setType(t)}
-                                className={`flex-1 py-2 rounded-lg text-sm border-2 transition-colors ${type === t ? 'border-primary-400 bg-primary-50 text-primary-900 font-medium' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                className={`flex-1 py-2 rounded-lg text-sm border-2 transition-colors ${type === t ? 'border-primary-400 bg-primary-50 dark:bg-primary-950/40 text-primary-900 dark:text-primary-200 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'}`}
                             >
                                 {t === 'single-choice' ? 'Single choice' : 'Multiple choice'}
                             </button>
@@ -1513,7 +1513,7 @@ function QuestionModal({ question, onSave, onClose }: {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100"
+                            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                         >
                             Cancel
                         </button>
@@ -1968,17 +1968,17 @@ export function QuestionsPage() {
         <div className="w-full flex flex-col items-center py-8 px-4">
             <div className="w-full max-w-3xl space-y-4">
                 <div className="mb-2">
-                    <h1 className="text-2xl font-bold text-gray-900">{isForeign ? 'Questions & Items' : 'My Questions & Items'}</h1>
-                    <p className="mt-1 text-gray-600 text-sm">Customise the questions and packing items that generate your lists. Changes here affect all future packing lists you create.</p>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{isForeign ? 'Questions & Items' : 'My Questions & Items'}</h1>
+                    <p className="mt-1 text-gray-600 dark:text-gray-400 text-sm">Customise the questions and packing items that generate your lists. Changes here affect all future packing lists you create.</p>
                     {!isForeign && !wizardHintDismissed && (
-                        <p className="mt-1 text-xs text-gray-400 flex items-center gap-1.5">
-                            <span>Want to start from scratch? <Link to="/wizard" className="text-primary-600 hover:underline">Redo the setup wizard</Link> to regenerate your questions.</span>
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                            <span>Want to start from scratch? <Link to="/wizard" className="text-primary-600 dark:text-primary-400 hover:underline">Redo the setup wizard</Link> to regenerate your questions.</span>
                             <button
                                 type="button"
                                 onClick={dismissWizardHint}
                                 aria-label="Dismiss"
                                 title="Dismiss"
-                                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                                className="shrink-0 rounded p-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
                                 <X className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
@@ -2035,7 +2035,7 @@ export function QuestionsPage() {
                 <button
                     type="button"
                     onClick={() => setQuestionModal({ question: null })}
-                    className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors flex items-center justify-center gap-1"
+                    className="w-full py-3 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:border-primary-300 dark:border-primary-700 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 transition-colors flex items-center justify-center gap-1"
                 >
                     <Plus className="w-4 h-4" aria-hidden="true" />Add Question
                 </button>

@@ -100,16 +100,16 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
     <Modal isOpen={isOpen} onClose={handleClose} title="Login with Your Solid Pod">
       {connectingIssuer ? (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <Loader2 className="w-8 h-8 text-primary-600 animate-spin" aria-hidden="true" />
+          <Loader2 className="w-8 h-8 text-primary-600 dark:text-primary-400 animate-spin" aria-hidden="true" />
           <div>
-            <p className="font-medium text-gray-900">Connecting to {connectingProviderName}…</p>
-            <p className="mt-1 text-sm text-gray-500">You'll be redirected to sign in. This can take a few seconds.</p>
+            <p className="font-medium text-gray-900 dark:text-gray-100">Connecting to {connectingProviderName}…</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">You'll be redirected to sign in. This can take a few seconds.</p>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           <label className="block">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
               {isLastUsed && !query ? 'Continue with your last-used provider, search for another, or paste a Pod URL:' : 'Search providers or paste a Pod URL:'}
             </span>
             <input
@@ -126,13 +126,13 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
                 else handleCustomSubmit();
               }}
               placeholder="Search providers or paste a Pod URL…"
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               autoFocus
             />
           </label>
 
           {connectError && (
-            <p className="text-sm text-danger-600">{connectError}</p>
+            <p className="text-sm text-danger-600 dark:text-danger-400">{connectError}</p>
           )}
 
           <div className="space-y-2">
@@ -144,29 +144,29 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
                 className={`w-full text-left px-4 py-3 rounded-md transition-colors ${
                   provider.issuer === primaryProvider.issuer
                     ? 'border-2 border-blue-400 bg-blue-50 hover:bg-blue-100 hover:border-blue-500'
-                    : 'border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                    : 'border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400'
                 }`}
               >
-                <div className="font-medium text-gray-900">{provider.name}</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">{provider.name}</div>
                 {provider.description && (
                   <div className="text-xs text-green-700 font-medium">{provider.description}</div>
                 )}
-                <div className="text-xs text-gray-400">{provider.issuer}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500">{provider.issuer}</div>
               </button>
             ))}
 
             {query.trim() && matchingProviders.length === 0 && (
-              <p className="text-sm text-gray-500 px-1">No matching providers.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 px-1">No matching providers.</p>
             )}
 
             {query.trim() && (
               <button
                 type="button"
                 onClick={handleCustomSubmit}
-                className="w-full text-left px-4 py-3 border border-dashed border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-md transition-colors"
+                className="w-full text-left px-4 py-3 border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400 rounded-md transition-colors"
               >
-                <div className="font-medium text-gray-900">Connect to custom provider</div>
-                <div className="text-xs text-gray-400 truncate">{normalizeIssuerUrl(query)}</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">Connect to custom provider</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{normalizeIssuerUrl(query)}</div>
               </button>
             )}
           </div>

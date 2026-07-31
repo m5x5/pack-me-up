@@ -8,6 +8,7 @@ import { Navigation } from './components/Navigation'
 import { Footer } from './components/Footer'
 import { SessionExpiredBanner } from './components/SessionExpiredBanner'
 import { ToastProvider } from './components/ToastContext'
+import { ThemeProvider } from './components/ThemeContext'
 import { LandingPage } from './pages/landing-page'
 import { CreatePackingList } from './pages/create-packing-list'
 import { PackingLists } from './pages/packing-lists'
@@ -32,6 +33,7 @@ function DefaultRedirect() {
 
 function App() {
   return (
+    <ThemeProvider>
     <ToastProvider>
       <SolidPodProvider>
         <DatabaseProvider>
@@ -39,7 +41,7 @@ function App() {
             <Analytics />
           {/* Column layout keeps the footer at the bottom of short pages rather
               than floating it under the content. */}
-          <div className="min-h-screen flex flex-col bg-gradient-to-br from-primary-50 via-white to-accent-50">
+          <div className="min-h-screen flex flex-col bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
             <Navigation />
             <SessionExpiredBanner />
             <div className="flex-1 container mx-auto px-4 py-8">
@@ -71,6 +73,7 @@ function App() {
         </DatabaseProvider>
       </SolidPodProvider>
     </ToastProvider>
+    </ThemeProvider>
   )
 }
 

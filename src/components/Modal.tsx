@@ -17,11 +17,11 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
                     colour itself, and /40 matches every other overlay in the app */}
                 <div className="fixed inset-0 bg-black/40 transition-opacity" onClick={onClose} />
 
-                <div role="dialog" aria-modal="true" className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all w-full sm:my-8 sm:max-w-lg sm:p-6">
+                <div role="dialog" aria-modal="true" className="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all w-full sm:my-8 sm:max-w-lg sm:p-6">
                     <div className="absolute right-0 top-0 pr-4 pt-4">
                         <button
                             type="button"
-                            className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none"
+                            className="rounded-md bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-300 focus:outline-none"
                             onClick={onClose}
                         >
                             <span className="sr-only">Close</span>
@@ -32,7 +32,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
                     </div>
                     <div className="sm:flex sm:items-start">
                         <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
-                            <h3 className="text-lg font-semibold leading-6 text-gray-900 mb-4">
+                            <h3 className="text-lg font-semibold leading-6 text-gray-900 dark:text-gray-100 mb-4">
                                 {title}
                             </h3>
                             <div className="mt-2">
