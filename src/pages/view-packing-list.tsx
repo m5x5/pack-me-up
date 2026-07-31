@@ -1243,7 +1243,7 @@ export function ViewPackingList() {
                 </button>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                        <h1 className="text-xl font-bold text-gray-900 truncate">{packingList.name}</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 truncate">{packingList.name}</h1>
                         {foreignPodUrl && (
                             <span className="text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">
                                 Shared list
