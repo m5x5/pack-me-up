@@ -28,6 +28,13 @@ export const COMMON_PROVIDERS: SolidProvider[] = [
 
 export const LAST_PROVIDER_KEY = 'solid-last-provider-issuer';
 
+// Users shouldn't have to type the scheme themselves - default to https:// for
+// anything that doesn't already specify http:// or https://.
+const normalizeIssuerUrl = (value: string): string => {
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
 const DEFAULT_PROVIDER = COMMON_PROVIDERS.find(p => p.issuer === 'https://login.inrupt.com')!;
 
 function getLastUsedProvider(): SolidProvider | null {
@@ -62,7 +69,7 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
 
   const handleCustomSubmit = () => {
     if (query.trim()) {
-      handleProviderSelect(query.trim());
+      handleProviderSelect(normalizeIssuerUrl(query));
     }
   };
 
@@ -127,7 +134,7 @@ export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProvid
               className="w-full text-left px-4 py-3 border border-dashed border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-md transition-colors"
             >
               <div className="font-medium text-gray-900">Connect to custom provider</div>
-              <div className="text-xs text-gray-400 truncate">{query.trim()}</div>
+              <div className="text-xs text-gray-400 truncate">{normalizeIssuerUrl(query)}</div>
             </button>
           )}
         </div>

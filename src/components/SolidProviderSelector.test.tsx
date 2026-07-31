@@ -70,6 +70,12 @@ describe('SolidProviderSelector', () => {
       expect(screen.getByText('Connect to custom provider')).toBeTruthy()
       expect(screen.getByText('https://my-pod.example.com')).toBeTruthy()
     })
+
+    it('defaults the custom-provider option to https:// when no scheme is typed', () => {
+      render(<SolidProviderSelector {...defaultProps} />)
+      fireEvent.change(getSearchInput(), { target: { value: 'my-pod.example.com' } })
+      expect(screen.getByText('https://my-pod.example.com')).toBeTruthy()
+    })
   })
 
   describe('with last-used provider stored', () => {
@@ -113,6 +119,15 @@ describe('SolidProviderSelector', () => {
       fireEvent.change(input, { target: { value: 'https://my-pod.example.com' } })
       fireEvent.keyDown(input, { key: 'Enter' })
       expect(onSelect).toHaveBeenCalledWith('https://my-pod.example.com')
+    })
+
+    it('prepends https:// to a custom provider URL typed without a scheme', () => {
+      const onSelect = vi.fn()
+      render(<SolidProviderSelector {...defaultProps} onSelect={onSelect} />)
+      fireEvent.change(getSearchInput(), { target: { value: 'my-pod.example.com' } })
+      fireEvent.click(screen.getByText('Connect to custom provider'))
+      expect(onSelect).toHaveBeenCalledWith('https://my-pod.example.com')
+      expect(localStorage.getItem(LAST_PROVIDER_KEY)).toBe('https://my-pod.example.com')
     })
 
     it('calls onSelect with the issuer', () => {
