@@ -31,6 +31,18 @@ describe('Footer', () => {
         expect(screen.getByRole('link', { name: 'Feedback' }).getAttribute('href')).toBe(`mailto:${FEEDBACK_EMAIL}`)
     })
 
+    // Sentry's feedback widget is a fixed circle in the bottom-right corner, and
+    // on a narrow screen it sat right on top of the "Feedback" link once you
+    // scrolled to the end of the page. The links need to clear it; on desktop the
+    // row is centred well clear of the widget, so the extra space comes off again.
+    it('keeps the links clear of the floating feedback widget on mobile', () => {
+        const { container } = renderFooter()
+
+        const nav = container.querySelector('footer nav')!
+        expect(nav.className).toContain('pb-24')
+        expect(nav.className).toContain('md:pb-5')
+    })
+
     // Same story as the nav's top inset: a browser tab has its own chrome below
     // the page, so only the native shell and installed PWAs should reserve room
     // for the gesture bar. CSS decides that, not an inline style.
