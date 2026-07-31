@@ -26,11 +26,12 @@ describe('SectionOrderLegend', () => {
         expect(screen.getByText('+7 more')).toBeTruthy()
     })
 
-    // The narrow-screen line replaces the chips rather than joining them, so
-    // the order is still there in full when there is no room to draw it.
-    it('carries the whole order as one compact line', () => {
+    // The chips already carry the order on wider screens; on a phone they're
+    // hidden, and joining the names into one line to fill the gap just made
+    // the row longer than the "Reorder" button it sits beside needs.
+    it('does not spell out the section names on a phone', () => {
         render(<SectionOrderLegend labels={['Documents', 'Toiletries', 'Clothes']} onEdit={vi.fn()} />)
-        expect(screen.getByText('Documents · Toiletries · Clothes')).toBeTruthy()
+        expect(screen.queryByText('Documents · Toiletries · Clothes')).toBeNull()
     })
 
     it('numbers the sections for a screen reader', () => {

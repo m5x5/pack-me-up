@@ -64,9 +64,10 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
     const hidden = labels.length - shown.length
     return (
         <div className="flex items-center gap-2 mb-4">
-            {/* On a phone the caption costs a third of the row it introduces,
-                and the names beside a "Reorder" button say what it would have
-                said. Still read out, just not drawn. */}
+            {/* On a phone the caption costs a third of the row it introduces, and
+                the section names aren't worth the space next to a "Reorder"
+                button that already says what the row is about. Still read out,
+                just not drawn. */}
             <span className="sr-only sm:not-sr-only sm:text-xs sm:text-gray-600 dark:sm:text-gray-400 sm:shrink-0">List order</span>
             <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-1.5 sm:min-w-0">
                 {shown.map((label, i) => {
@@ -84,9 +85,6 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
                 })}
                 {hidden > 0 && <span className="text-[11px] text-gray-600 dark:text-gray-400">+{hidden} more</span>}
             </div>
-            <span className="sm:hidden flex-1 min-w-0 truncate text-[11px] text-gray-600 dark:text-gray-400">
-                {labels.join(' · ')}
-            </span>
             {onEdit && (
                 <button
                     type="button"
@@ -95,7 +93,7 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
                     // A full-size touch target, like every other control the
                     // page expects a thumb to find. At the strip's own scale it
                     // was 24px tall, and missing it looked like a dead button.
-                    className="inline-flex items-center justify-center gap-1 shrink-0 h-11 px-3 text-[11px] font-medium rounded-lg text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 active:bg-primary-100 transition-colors"
+                    className="ml-auto sm:ml-0 inline-flex items-center justify-center gap-1 shrink-0 h-11 px-3 text-[11px] font-medium rounded-lg text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:bg-primary-950/40 active:bg-primary-100 transition-colors"
                 >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
