@@ -315,8 +315,19 @@ export const Navigation = () => {
                         <div className="border-t border-white/20 pt-2 mt-2">
                             {isLoggedIn ? (
                                 <>
-                                    <div className="px-3 py-2 text-sm font-medium truncate" title={webId}>
-                                        {webId}
+                                    <div className="px-3 py-2 flex items-center gap-2" title={webId}>
+                                        {profilePhoto ? (
+                                            <img
+                                                src={profilePhoto}
+                                                alt=""
+                                                className="w-8 h-8 shrink-0 rounded-full object-cover ring-2 ring-white"
+                                                // The photo may live behind pod auth; fall back to the icon
+                                                onError={() => setProfilePhoto(null)}
+                                            />
+                                        ) : (
+                                            <CircleUserRound className="w-8 h-8 shrink-0" aria-hidden="true" />
+                                        )}
+                                        <span className="text-sm font-medium truncate">{displayName}</span>
                                     </div>
                                     <button
                                         onClick={() => {
