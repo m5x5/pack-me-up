@@ -1029,24 +1029,36 @@ body {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
 }
 /*
- * Status-bar inset for the top of the app.
+ * Device insets for the top (status bar) and bottom (gesture bar) of the app.
  *
- * The nav only needs to reserve room for the device status bar when the app
- * actually paints underneath it — the native shell, or an installed PWA. In an
- * ordinary browser tab the browser's own chrome already sits above the page,
- * yet Chrome on Android still reports a non-zero safe-area-inset-top with
- * viewport-fit=cover, which left a tall empty band above the logo on mobile.
+ * The nav and footer only need to reserve that room when the app actually
+ * paints underneath those bars — the native shell, or an installed PWA. In an
+ * ordinary browser tab the browser's own chrome already sits outside the page,
+ * yet Chrome on Android still reports non-zero insets with viewport-fit=cover,
+ * which left a tall empty band above the logo on mobile.
  */
 .safe-area-top {
   padding-top: 0;
+}
+
+.safe-area-bottom {
+  padding-bottom: 0;
 }
 
 @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
   .safe-area-top {
     padding-top: env(safe-area-inset-top);
   }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 .native-app .safe-area-top {
   padding-top: env(safe-area-inset-top);
+}
+
+.native-app .safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }

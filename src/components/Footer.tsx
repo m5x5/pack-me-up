@@ -15,10 +15,7 @@ const linkStyles = 'text-gray-500 hover:text-primary-700 hover:underline transit
  */
 export function Footer() {
     return (
-        <footer
-            className="border-t border-primary-100 bg-white/40"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
+        <footer className="border-t border-primary-100 bg-white/40 safe-area-bottom">
             <nav
                 aria-label="Site information"
                 className="container mx-auto px-4 py-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm"

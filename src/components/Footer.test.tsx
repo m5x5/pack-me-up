@@ -31,6 +31,17 @@ describe('Footer', () => {
         expect(screen.getByRole('link', { name: 'Feedback' }).getAttribute('href')).toBe(`mailto:${FEEDBACK_EMAIL}`)
     })
 
+    // Same story as the nav's top inset: a browser tab has its own chrome below
+    // the page, so only the native shell and installed PWAs should reserve room
+    // for the gesture bar. CSS decides that, not an inline style.
+    it('leaves the gesture-bar inset to CSS rather than an inline style', () => {
+        const { container } = renderFooter()
+
+        const footer = container.querySelector('footer')!
+        expect(footer.style.paddingBottom).toBe('')
+        expect(footer.className).toContain('safe-area-bottom')
+    })
+
     it('avoids reusing "Your data", which the pod switcher already uses for something else', () => {
         renderFooter()
 

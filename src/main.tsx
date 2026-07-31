@@ -10,9 +10,9 @@ import { initSentry } from './sentry.ts'
 
 initSentry()
 
-// The native shell draws under the status bar, so the safe-area insets in
-// index.css apply there. A browser tab renders below the browser's own chrome
-// and must not add them — see the .safe-area-top rules.
+// The native shell draws under the status and gesture bars, so the safe-area
+// insets in index.css apply there. A browser tab renders inside the browser's
+// own chrome and must not add them — see the .safe-area-* rules.
 if (Capacitor.isNativePlatform()) {
     document.documentElement.classList.add('native-app')
 }
