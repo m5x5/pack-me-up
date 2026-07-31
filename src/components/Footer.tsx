@@ -15,13 +15,16 @@ const linkStyles = 'text-gray-500 hover:text-primary-700 hover:underline transit
  */
 export function Footer() {
     return (
-        <footer
-            className="border-t border-primary-100 bg-white/40"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
+        <footer className="border-t border-primary-100 bg-white/40 safe-area-bottom">
+            {/*
+              * pb-24 on mobile keeps the last row above Sentry's fixed feedback
+              * widget, which otherwise sits on top of the "Feedback" link once you
+              * scroll to the end of the page. Desktop centres the row well clear of
+              * the widget, so the extra space comes off again at md.
+              */}
             <nav
                 aria-label="Site information"
-                className="container mx-auto px-4 py-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm"
+                className="container mx-auto px-4 py-5 pb-24 md:pb-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm"
             >
                 <Link to="/privacy-policy" className={linkStyles}>
                     Privacy policy

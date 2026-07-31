@@ -74,6 +74,34 @@ describe('Navigation', () => {
         expect(screen.queryByRole('link', { name: /delete my data/i })).toBeNull()
     })
 
+    // In a normal browser tab the browser's own chrome sits above the page, but
+    // Chrome on Android still reports a non-zero safe-area-inset-top, which left
+    // a tall empty band above the logo. The inset is applied through a class so
+    // CSS can limit it to the cases that actually draw under the status bar.
+    it('leaves the status-bar inset to CSS rather than an inline style', () => {
+        const { container } = render(
+            <MemoryRouter>
+                <Navigation />
+            </MemoryRouter>
+        )
+
+        const nav = container.querySelector('nav')!
+        expect(nav.style.paddingTop).toBe('')
+        expect(nav.className).toContain('safe-area-top')
+    })
+
+    it('uses a shorter header row on mobile than on desktop', () => {
+        const { container } = render(
+            <MemoryRouter>
+                <Navigation />
+            </MemoryRouter>
+        )
+
+        const row = container.querySelector('nav .flex.items-center.justify-between')!
+        expect(row.className).toContain('h-14')
+        expect(row.className).toContain('md:h-16')
+    })
+
     it('shows Backups link when logged in', () => {
         mockUseSolidPod.mockReturnValue({
             session: null,
