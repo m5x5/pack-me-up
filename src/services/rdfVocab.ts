@@ -70,6 +70,8 @@ export const PMU = {
     // 'rose' looks like, and an older client that doesn't know an id just falls
     // back to the person's position.
     personColor: `${PMU_NS}personColor`,
+    // The person's Solid WebID, when they have one
+    personWebId: `${PMU_NS}webId`,
     personLastModified: `${PMU_NS}personLastModified`,
     personDeletedAt: `${PMU_NS}personDeletedAt`,
 

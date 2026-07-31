@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDebouncedCallback } from 'use-debounce'
+import { ArrowLeft, CheckCheck, Plus, Share2, X } from 'lucide-react'
 import { PackingList, PackingListItem } from '../create-packing-list/types'
 import { useDatabase } from '../components/DatabaseContext'
 import { Button } from '../components/Button'
@@ -29,6 +30,8 @@ import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../ut
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { useSectionOrder } from '../hooks/useSectionOrder'
 import { usePersonColors } from '../hooks/usePersonColors'
+import { usePersonProfilePhotos } from '../hooks/usePersonProfilePhotos'
+import { Modal } from '../components/Modal'
 import { PersonAvatar } from '../components/PersonAvatar'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
 import { buildSuggestionIndex } from '../utils/itemSuggestions'
@@ -175,7 +178,7 @@ export function ViewPackingList() {
     // Additions computed from the question set; non-null opens the preview modal.
     const [questionUpdateAdditions, setQuestionUpdateAdditions] = useState<PackingListItem[] | null>(null)
     // Whether the question set exists locally (gates the "Update from questions" button).
-    const [hasQuestionSet, setHasQuestionSet] = useState(false)
+    const [questionUpdateAvailable, setQuestionUpdateAvailable] = useState(false)
     const [ownPodUrl, setOwnPodUrl] = useState<string | null>(null)
     // Tracks whether initial data has been loaded (local DB or pod).
     // Used to surface a real error to the user instead of hanging on "Loading…"
@@ -192,6 +195,14 @@ export function ViewPackingList() {
     // one moment worth explaining, and only until the user touches anything.
     const [foldedOnOpen, setFoldedOnOpen] = useState(false)
     const [showPacked, setShowPacked] = useState(storedPreferences.showPacked)
+    // A once-per-device explainer for where packed items go — plain localStorage,
+    // same treatment as the wizard hint on the questions page.
+    const [packedHintDismissed, setPackedHintDismissed] = useState(() => localStorage.getItem('packedHiddenHintDismissed') === 'true')
+
+    const dismissPackedHint = () => {
+        localStorage.setItem('packedHiddenHintDismissed', 'true')
+        setPackedHintDismissed(true)
+    }
     const [viewMode, setViewMode] = useState<ListViewMode>(storedPreferences.viewMode)
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
     // Which section has an add-item composer open inside it. Only one is mounted
@@ -312,17 +323,23 @@ export function ViewPackingList() {
 
     // The "Update from questions" action only applies to the user's own lists,
     // regenerating them from their local question set. Foreign lists belong to
-    // someone else, so gate the button on a question set existing locally.
+    // someone else, and a list the questions have nothing new for has nothing
+    // to update — so the button only shows when the diff is non-empty.
     useEffect(() => {
-        if (foreignPodUrl || !db) {
-            setHasQuestionSet(false)
+        if (foreignPodUrl || !db || !packingList) {
+            setQuestionUpdateAvailable(false)
             return
         }
+        let cancelled = false
         Promise.resolve()
             .then(() => db.getQuestionSet())
-            .then(() => setHasQuestionSet(true))
-            .catch(() => setHasQuestionSet(false))
-    }, [db, foreignPodUrl])
+            .then(questionSet => {
+                if (cancelled) return
+                setQuestionUpdateAvailable(computeQuestionSetAdditions(packingList, questionSet).length > 0)
+            })
+            .catch(() => { if (!cancelled) setQuestionUpdateAvailable(false) })
+        return () => { cancelled = true }
+    }, [db, foreignPodUrl, packingList])
 
     useEffect(() => {
         if (!packingList || !foreignPodUrl || !id || !sharedListsWithMe) return
@@ -394,6 +411,8 @@ export function ViewPackingList() {
     // guests, or the whole cast of a shared list — still come out in colours
     // nobody else here is wearing.
     const personColor = usePersonColors(db, peopleOptions)
+    // Profile photos for people whose question-set entry names a WebID
+    const personPhoto = usePersonProfilePhotos(db, session)
 
 
     const { register, setValue, getValues, control, reset } = useForm<FormData>({
@@ -1213,6 +1232,15 @@ export function ViewPackingList() {
         <div className="w-full flex flex-col items-center py-8 px-4">
             {/* Non-sticky header: name, actions */}
             <div className="w-full max-w-screen-2xl mb-3">
+                <button
+                    type="button"
+                    onClick={() => navigate(backPath)}
+                    aria-label="Back to lists"
+                    title="Back to lists"
+                    className="mb-1 -ml-1.5 inline-flex items-center justify-center rounded-lg p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                >
+                    <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+                </button>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                         <h1 className="text-xl font-bold text-gray-900 truncate">{packingList.name}</h1>
@@ -1236,20 +1264,12 @@ export function ViewPackingList() {
                                 type="button"
                                 variant="secondary"
                                 onClick={() => setShowSharedSection(true)}
+                                className="inline-flex items-center gap-1.5"
                             >
-                                + Add Shared Items
+                                <Plus className="w-4 h-4" aria-hidden="true" />Add Shared Items
                             </Button>
                         )}
-                        {!foreignPodUrl && (
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => { setShowAddGuest(v => !v); setNewGuestName('') }}
-                            >
-                                + Add Guest
-                            </Button>
-                        )}
-                        {!foreignPodUrl && hasQuestionSet && (
+                        {!foreignPodUrl && questionUpdateAvailable && (
                             <Button
                                 type="button"
                                 variant="secondary"
@@ -1258,23 +1278,53 @@ export function ViewPackingList() {
                                 Update from questions
                             </Button>
                         )}
-                        {isLoggedIn && !foreignPodUrl && (
-                            <Button
+                        {!foreignPodUrl && (
+                            /* The list's cast, folded into a quiet cluster: the first two
+                               people, then "+n" for the rest. Tapping it is how a guest
+                               joins — adding a person starts from the people already here. */
+                            <button
                                 type="button"
-                                variant="secondary"
+                                onClick={() => { setShowAddGuest(v => !v); setNewGuestName('') }}
+                                aria-label="Add Guest"
+                                title="Add Guest"
+                                aria-expanded={showAddGuest}
+                                data-testid="guest-cluster"
+                                className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
+                            >
+                                {peopleOptions.slice(0, 2).map(person => (
+                                    <span key={person.name} className="rounded-full ring-2 ring-white">
+                                        <PersonAvatar
+                                            name={person.name}
+                                            color={personColor({ id: person.id ?? '', name: person.name })}
+                                            photoUrl={personPhoto[person.name]}
+                                        />
+                                    </span>
+                                ))}
+                                {peopleOptions.length > 2 && (
+                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-xs font-semibold ring-2 ring-white">
+                                        +{peopleOptions.length - 2}
+                                    </span>
+                                )}
+                                {peopleOptions.length === 0 && (
+                                    // A list that names nobody yet still needs a way in
+                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 ring-2 ring-white">
+                                        <Plus className="w-4 h-4" aria-hidden="true" />
+                                    </span>
+                                )}
+                            </button>
+                        )}
+                        {isLoggedIn && !foreignPodUrl && (
+                            <button
+                                type="button"
                                 onClick={() => setShareModalOpen(true)}
                                 disabled={!ownPodUrl}
+                                aria-label="Share"
+                                title="Share"
+                                className="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Share
-                            </Button>
+                                <Share2 className="w-5 h-5" aria-hidden="true" />
+                            </button>
                         )}
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => navigate(backPath)}
-                        >
-                            Back to Lists
-                        </Button>
                     </div>
                 </div>
                 {(packingList.destination || tripDates) && (
@@ -1435,21 +1485,55 @@ export function ViewPackingList() {
 
             {/* Hidden packed items banner — at 100% it's just noise next to the
                 celebration, and the Show Packed button is right there anyway */}
-            {hiddenPackedCount > 0 && !allPacked && (
+            {hiddenPackedCount > 0 && !allPacked && !packedHintDismissed && (
                 <div className="w-full max-w-screen-2xl mb-4">
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-2">
                         <p className="text-sm text-amber-800">
                             {hiddenPackedCount} packed item{hiddenPackedCount !== 1 ? 's' : ''} hidden — tap <strong>Show Packed</strong> to see them.
                         </p>
+                        <button
+                            type="button"
+                            onClick={dismissPackedHint}
+                            aria-label="Dismiss"
+                            title="Dismiss"
+                            className="shrink-0 rounded p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-100 transition-colors"
+                        >
+                            <X className="w-4 h-4" aria-hidden="true" />
+                        </button>
                     </div>
                 </div>
             )}
 
             {/* Main content */}
             <div className="w-full">
-                {/* Add Guest inline form — appears just above the grid */}
-                {showAddGuest && (
-                    <div className="mb-4 flex gap-2 max-w-sm">
+                {/* Add Guest modal — who's already here, then who's joining */}
+                <Modal
+                    isOpen={showAddGuest}
+                    onClose={() => { setShowAddGuest(false); setNewGuestName('') }}
+                    title="Add Guest"
+                >
+                    {peopleOptions.length > 0 && (
+                        <div className="mb-4">
+                            <p className="text-xs text-gray-500 mb-2">Already on this list</p>
+                            <ul className="flex flex-wrap gap-2">
+                                {peopleOptions.map(person => (
+                                    <li
+                                        key={person.name}
+                                        className="flex items-center gap-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-full pl-1 pr-3 py-0.5"
+                                    >
+                                        <PersonAvatar
+                                            name={person.name}
+                                            color={personColor({ id: person.id ?? '', name: person.name })}
+                                            photoUrl={personPhoto[person.name]}
+                                            size="sm"
+                                        />
+                                        {person.name}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    <div className="flex gap-2">
                         <input
                             type="text"
                             value={newGuestName}
@@ -1477,7 +1561,7 @@ export function ViewPackingList() {
                             Cancel
                         </button>
                     </div>
-                )}
+                </Modal>
                 <div>
                     {/* Once everything is packed the cards hold nothing but empty
                         celebrations, so they fold away and leave the banner as the
@@ -1511,7 +1595,16 @@ export function ViewPackingList() {
                                 ? 'border-emerald-300 bg-emerald-50'
                                 : `bg-white ${sectionPersonColor?.border ?? (isShared ? 'border-blue-200' : 'border-gray-200')}`
                             return (
-                            <div key={sectionKey} data-testid="list-section" className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${sectionBorder}`} style={{ breakInside: 'avoid' }}>
+                            <div
+                                key={sectionKey}
+                                data-testid="list-section"
+                                // A folded card is all heading, so the whole card expands it —
+                                // the header button stays the accessible toggle. Unfolded, the
+                                // body is full of its own controls, so only the header toggles.
+                                onClick={isSectionCollapsed ? () => toggleSection(sectionKey) : undefined}
+                                className={`border rounded-lg p-4 shadow-sm mb-4 transition-colors duration-300 ${sectionBorder} ${isSectionCollapsed ? 'cursor-pointer' : ''}`}
+                                style={{ breakInside: 'avoid' }}
+                            >
                                 {/* The rule under the heading separates it from the items
                                     below; a folded card has none, so it would just be a
                                     line ruling off empty space. */}
@@ -1537,12 +1630,12 @@ export function ViewPackingList() {
                                             <button
                                                 type="button"
                                                 aria-label={`${isSectionCollapsed ? 'Expand' : 'Collapse'} ${collapseLabelTarget} list`}
-                                                onClick={() => toggleSection(sectionKey)}
+                                                onClick={e => { e.stopPropagation(); toggleSection(sectionKey) }}
                                                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                             >
                                                 <span className="shrink-0 text-sm text-gray-400">{isSectionCollapsed ? '▶' : '▼'}</span>
                                                 {sectionPersonColor && (
-                                                    <PersonAvatar name={section.name} color={sectionPersonColor} />
+                                                    <PersonAvatar name={section.name} color={sectionPersonColor} photoUrl={personPhoto[section.name]} />
                                                 )}
                                                 <span className="text-xl font-semibold text-gray-800">{title}</span>
                                                 {/* Never let a count break across lines — "9 /" above "9" is
@@ -1569,7 +1662,7 @@ export function ViewPackingList() {
                                                 <button
                                                     type="button"
                                                     aria-label={`Rename ${section.name}`}
-                                                    onClick={() => { setRenamingGuestId(guestId); setRenamingGuestName(section.name) }}
+                                                    onClick={e => { e.stopPropagation(); setRenamingGuestId(guestId); setRenamingGuestName(section.name) }}
                                                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -1579,7 +1672,7 @@ export function ViewPackingList() {
                                                 <button
                                                     type="button"
                                                     aria-label={`Remove ${section.name}`}
-                                                    onClick={() => setGuestToRemove(guestId)}
+                                                    onClick={e => { e.stopPropagation(); setGuestToRemove(guestId) }}
                                                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -1656,6 +1749,7 @@ export function ViewPackingList() {
                                                                 name={label}
                                                                 color={personColor({ id: personIdByName.get(label) ?? '', name: label })}
                                                                 size="sm"
+                                                                photoUrl={personPhoto[label]}
                                                             />
                                                         )}
                                                         <span>{label}</span>
@@ -1671,18 +1765,20 @@ export function ViewPackingList() {
                                                                 aria-label={`Add item to ${groupLabel}`}
                                                                 aria-expanded={composerOpen}
                                                                 onClick={() => setOpenComposerKey(composerOpen ? null : categoryKey)}
-                                                                className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${composerOpen ? 'border-blue-300 bg-blue-100 text-blue-800' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${composerOpen ? 'border-blue-300 bg-blue-100 text-blue-800' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                                             >
                                                                 {/* A section name is what the heading is for; on a
                                                                     phone the word "Add" is what pushes it off. */}
-                                                                {isDesktop ? '+ Add' : '+'}
+                                                                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                                                                {isDesktop && 'Add'}
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 aria-label="Check all"
                                                                 onClick={() => handleCheckAll(catItems)}
-                                                                className="text-xs text-blue-600 hover:text-blue-800"
+                                                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
                                                             >
+                                                                <CheckCheck className="w-3.5 h-3.5" aria-hidden="true" />
                                                                 Check all
                                                             </button>
                                                         </div>

@@ -45,3 +45,16 @@ export function tripDatesOutOfOrder(startDate: string | undefined, endDate: stri
     if (!start || !end) return false
     return end.getTime() < start.getTime()
 }
+
+/**
+ * Whether the trip is over: its last known date (end, or start when there is
+ * no end) is before today. A list without trip dates is never "past" — there
+ * is nothing to age it by.
+ */
+export function tripIsPast(startDate: string | undefined, endDate: string | undefined): boolean {
+    const last = parseTripDate(endDate) ?? parseTripDate(startDate)
+    if (!last) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return last < today
+}

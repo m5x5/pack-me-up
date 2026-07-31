@@ -74,6 +74,6 @@ export async function loginToCss(
   await page.waitForURL(/localhost:4173/, { timeout: 20_000 })
   // Wait for logged-in state (skip if the caller expects a migration prompt to block the nav)
   if (options?.waitForLoggedIn !== false) {
-    await page.getByRole('button', { name: 'Logout' }).first().waitFor({ timeout: 20_000 })
+    await page.getByRole('button', { name: 'Account menu' }).first().waitFor({ timeout: 20_000 })
   }
 }

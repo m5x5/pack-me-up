@@ -1,24 +1,85 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { CircleUserRound, ChevronDown } from 'lucide-react'
 import { useSolidPod } from './SolidPodContext'
 import { useDatabase } from './DatabaseContext'
 import { SolidProviderSelector } from './SolidProviderSelector'
+import { getPodOwnerProfile } from '../services/solidPod'
 import type { SharedContext } from '../services/rdfSerialization'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// The username as it appears in the WebID itself — no provider suffix, no case
+// changes beyond what the URL already carries. Used only when the profile has
+// no foaf:name to show.
+const webIdShortName = (webId: string): string => {
+    try {
+        const url = new URL(webId)
+        const path = url.pathname
+            .replace(/\/profile\/card\/?$/, '/')
+            .replace(/\/profile\/?$/, '/')
+        const firstSegment = path.split('/').find(s => s.length > 0)
+        if (firstSegment && !UUID_RE.test(firstSegment)) return decodeURIComponent(firstSegment)
+        const parts = url.hostname.split('.')
+        return parts.length >= 3 ? parts[0] : url.hostname
+    } catch {
+        return webId
+    }
+}
 
 export const Navigation = () => {
     const [isOpen, setIsOpen] = useState(false)
     const [isProviderSelectorOpen, setIsProviderSelectorOpen] = useState(false)
-    const { login, logout, isLoggedIn, webId } = useSolidPod()
+    const { login, logout, isLoggedIn, webId, session } = useSolidPod()
     const { db, loginSyncVersion } = useDatabase()
     const location = useLocation()
     const navigate = useNavigate()
     const [sharedContexts, setSharedContexts] = useState<SharedContext[]>([])
+    const [isProfileOpen, setIsProfileOpen] = useState(false)
+    const [profileName, setProfileName] = useState<string | null>(null)
+    const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
+    const profileRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         db.getSharedWithMe()
             .then(swm => setSharedContexts(swm.contexts))
             .catch(() => {})
     }, [db, loginSyncVersion])
+
+    // The bar shows a person, not an address: prefer the profile's foaf:name
+    // and photo, fall back to the WebID's username and a generic icon.
+    useEffect(() => {
+        setProfileName(null)
+        setProfilePhoto(null)
+        if (!session || !webId) return
+        let cancelled = false
+        getPodOwnerProfile(session, '', webId)
+            .then(({ name, photo }) => {
+                if (cancelled) return
+                if (name) setProfileName(name)
+                if (photo) setProfilePhoto(photo)
+            })
+            .catch(() => {})
+        return () => { cancelled = true }
+    }, [session, webId])
+
+    useEffect(() => {
+        if (!isProfileOpen) return
+        const onOutside = (e: MouseEvent) => {
+            if (profileRef.current && !profileRef.current.contains(e.target as Node)) setIsProfileOpen(false)
+        }
+        const onEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setIsProfileOpen(false)
+        }
+        document.addEventListener('mousedown', onOutside)
+        document.addEventListener('keydown', onEscape)
+        return () => {
+            document.removeEventListener('mousedown', onOutside)
+            document.removeEventListener('keydown', onEscape)
+        }
+    }, [isProfileOpen])
+
+    const displayName = profileName ?? (webId ? webIdShortName(webId) : '')
 
     const podMatch = /^\/pod\/([^/]+)/.exec(location.pathname)
     const currentForeignEncoded = podMatch?.[1] ?? null
@@ -27,7 +88,6 @@ export const Navigation = () => {
     // When viewing a foreign pod, contextual links stay inside that pod's routes
     const viewListsPath = inForeignContext ? `/pod/${currentForeignEncoded}/view-lists` : '/view-lists'
     const manageQuestionsPath = inForeignContext ? `/pod/${currentForeignEncoded}/manage-questions` : '/manage-questions'
-    const createListPath = inForeignContext ? `/pod/${currentForeignEncoded}/create-packing-list` : '/create-packing-list'
 
     const handleSolidLogin = () => {
         setIsProviderSelectorOpen(true)
@@ -62,40 +122,20 @@ export const Navigation = () => {
                                         {inForeignContext ? 'Questions & Items' : 'My Questions & Items'}
                                     </Link>
                                     <Link
-                                        to={createListPath}
-                                        className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
-                                    >
-                                        Create List
-                                    </Link>
-                                    <Link
                                         to={viewListsPath}
                                         className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
                                     >
-                                        View Lists
+                                        Lists
                                     </Link>
-                                    {isLoggedIn && (
-                                        <Link
-                                            to="/backups"
-                                            className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
-                                        >
-                                            Backups
-                                        </Link>
-                                    )}
-                                    {isLoggedIn && (
-                                        <Link
-                                            to="/sharing"
-                                            className="px-4 py-2 rounded-xl text-sm font-semibold hover:bg-white/20 transition-all duration-200 hover:scale-105"
-                                        >
-                                            Sharing
-                                        </Link>
-                                    )}
                                 </div>
                             </div>
                         </div>
                         {/* Solid Login/Logout section */}
                         <div className="hidden md:flex items-center gap-4">
                             {isLoggedIn ? (
-                                <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl">
+                                /* relative z-[70]: keeps the dropdown above the packing list's
+                                   sticky progress strip (z-50) */
+                                <div className="relative z-[70] flex items-center gap-3">
                                     {sharedContexts.length > 0 && (
                                         <select
                                             value={currentForeignEncoded ?? '__own__'}
@@ -119,15 +159,76 @@ export const Navigation = () => {
                                             ))}
                                         </select>
                                     )}
-                                    <span className="text-sm font-medium truncate max-w-xs" title={webId}>
-                                        {webId}
-                                    </span>
-                                    <button
-                                        onClick={handleLogout}
-                                        className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-white/20 hover:bg-white/30 transition-all duration-200 hover:scale-105"
-                                    >
-                                        Logout
-                                    </button>
+                                    <div ref={profileRef} className="relative">
+                                        <button
+                                            onClick={() => setIsProfileOpen(v => !v)}
+                                            aria-haspopup="menu"
+                                            aria-expanded={isProfileOpen}
+                                            aria-label="Account menu"
+                                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all duration-200"
+                                        >
+                                            {profilePhoto ? (
+                                                <img
+                                                    src={profilePhoto}
+                                                    alt=""
+                                                    className="w-6 h-6 shrink-0 rounded-full object-cover ring-2 ring-white"
+                                                    // The photo may live behind pod auth; fall back to the icon
+                                                    onError={() => setProfilePhoto(null)}
+                                                />
+                                            ) : (
+                                                <CircleUserRound className="w-6 h-6 shrink-0" aria-hidden="true" />
+                                            )}
+                                            <span className="truncate max-w-[12rem]">{displayName}</span>
+                                            <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                                        </button>
+                                        {isProfileOpen && (
+                                            <div
+                                                role="menu"
+                                                // z-[70]: above the sticky progress strip (z-50) and the
+                                                // confetti overlay (z-60) on the packing-list page
+                                                className="absolute right-0 top-full mt-2 w-72 rounded-xl bg-white text-gray-900 shadow-lg ring-1 ring-black/10 py-2 z-[70]"
+                                            >
+                                                <div className="px-4 py-2 border-b border-gray-100">
+                                                    <p className="text-xs text-gray-500">Signed in as</p>
+                                                    <a
+                                                        href={webId}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block text-sm font-medium break-all text-primary-700 hover:underline"
+                                                        title="Open your profile in a new tab"
+                                                    >
+                                                        {webId}
+                                                    </a>
+                                                </div>
+                                                <Link
+                                                    to="/backups"
+                                                    role="menuitem"
+                                                    onClick={() => setIsProfileOpen(false)}
+                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50"
+                                                >
+                                                    Backups
+                                                </Link>
+                                                <Link
+                                                    to="/sharing"
+                                                    role="menuitem"
+                                                    onClick={() => setIsProfileOpen(false)}
+                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50"
+                                                >
+                                                    Sharing
+                                                </Link>
+                                                <button
+                                                    role="menuitem"
+                                                    onClick={() => {
+                                                        setIsProfileOpen(false)
+                                                        handleLogout()
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 text-sm font-medium text-danger-600 hover:bg-danger-50 border-t border-gray-100 mt-1 pt-2.5"
+                                                >
+                                                    Logout
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-end">
@@ -186,18 +287,11 @@ export const Navigation = () => {
                             {inForeignContext ? 'Questions & Items' : 'My Questions & Items'}
                         </Link>
                         <Link
-                            to={createListPath}
-                            className="block px-3 py-3 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
-                            onClick={() => setIsOpen(false)}
-                        >
-                            Create List
-                        </Link>
-                        <Link
                             to={viewListsPath}
                             className="block px-3 py-3 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
                             onClick={() => setIsOpen(false)}
                         >
-                            View Lists
+                            Lists
                         </Link>
                         {isLoggedIn && (
                             <Link

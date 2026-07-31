@@ -38,9 +38,9 @@ export const test = base.extend<MyFixtures>({
     // The context already has a valid session from authedContext's fresh login.
     // The app will try to restore the session (prompt=none), but since the same
     // CSS process is running and consent was just given, this should succeed quickly.
-    // Wait up to 30 seconds for "Logout" to appear.
+    // Wait up to 30 seconds for the account menu to appear.
     await page.goto('/')
-    await page.getByRole('button', { name: 'Logout' }).first().waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByRole('button', { name: 'Account menu' }).first().waitFor({ state: 'visible', timeout: 30_000 })
     await use(page)
   },
 

@@ -57,7 +57,7 @@ test.describe('B – Editing Questions', () => {
     const personInputs = page.locator('input[placeholder^="Person "]')
     const initialCount = await personInputs.count()
     // Click Add Person
-    await page.getByRole('button', { name: '+ Add Person' }).click()
+    await page.getByRole('button', { name: 'Add Person', exact: true }).click()
     await expect(personInputs).toHaveCount(initialCount + 1)
     // Fill in the new person's name
     await personInputs.last().fill('Charlie')
@@ -116,7 +116,7 @@ test.describe('B – Editing Questions', () => {
 
     // One field at the foot of the list, rather than a modal, a blank row and a
     // Save button.
-    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    await page.getByRole('button', { name: 'Add item', exact: true }).first().click()
     const field = page.getByLabel(/^New item in /)
     await expect(field).toBeVisible({ timeout: 3_000 })
     await field.fill('WaterBottleTest')
@@ -334,7 +334,7 @@ test.describe('B – Editing Questions', () => {
 
     // The composer at the foot of the list is the one that asks where the item
     // goes, so it is the one a suggestion can answer for.
-    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    await page.getByRole('button', { name: 'Add item', exact: true }).first().click()
     const field = page.getByLabel(/^New item in /)
     await expect(field).toBeVisible({ timeout: 3_000 })
 
@@ -382,7 +382,7 @@ test.describe('B – Editing Questions', () => {
     await setupWizardAndGoToQuestions(page)
     await openAlwaysNeeded(page)
 
-    await page.getByRole('button', { name: '+ Add section' }).first().click()
+    await page.getByRole('button', { name: 'Add section', exact: true }).first().click()
     const nameField = page.getByLabel('New section name')
     await expect(nameField).toBeVisible({ timeout: 3_000 })
     await nameField.fill('Paperwork')
@@ -413,7 +413,7 @@ test.describe('B – Editing Questions', () => {
     await page.getByTitle('Edit option').first().click()
     await expect(page.getByRole('heading', { name: 'Edit Option' })).toBeVisible({ timeout: 3_000 })
     await expect(page.getByLabel('Answer text')).toBeVisible()
-    await expect(page.getByRole('button', { name: '+ Add Item' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Add item', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Organise items' })).toHaveCount(0)
   })
 
@@ -434,7 +434,7 @@ test.describe('B – Editing Questions', () => {
     const emptyOption = options.nth(emptyIndex)
     await emptyOption.getByTestId('option-expand-chevron').click()
 
-    await emptyOption.getByRole('button', { name: '+ Add item' }).click()
+    await emptyOption.getByRole('button', { name: 'Add item', exact: true }).click()
     const field = emptyOption.locator('input[role="combobox"]')
     await field.fill('FirstItemTest')
     await field.press('Enter')

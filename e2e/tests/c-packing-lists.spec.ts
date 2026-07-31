@@ -130,7 +130,7 @@ test.describe('C – Packing Lists', () => {
     await expect(page.getByRole('heading', { name: 'My Questions & Items' })).toBeVisible({ timeout: 8_000 })
     await page.getByRole('button', { name: /Always Needed Items/i }).first().click()
     await expect(page.getByTestId('item-row').first()).toBeVisible({ timeout: 5_000 })
-    await page.getByRole('button', { name: '+ Add item' }).first().click()
+    await page.getByRole('button', { name: 'Add item', exact: true }).first().click()
     const field = page.getByLabel(/^New item in /)
     await expect(field).toBeVisible({ timeout: 3_000 })
     await field.fill(itemName)
@@ -170,9 +170,9 @@ test.describe('C – Packing Lists', () => {
     await page.getByRole('button', { name: /^Remove$/ }).click()
     await expect(page.getByText('GadgetTest')).not.toBeVisible({ timeout: 5_000 })
 
-    await page.getByRole('button', { name: /Update from questions/i }).click()
-    // No preview — the list already matches (the deleted item is not resurrected)
-    await expect(page.getByText('This list already matches your questions')).toBeVisible({ timeout: 5_000 })
+    // The update button disappears — the list already matches, and the
+    // deleted item is not resurrected as a pending update
+    await expect(page.getByRole('button', { name: /Update from questions/i })).not.toBeVisible({ timeout: 5_000 })
     await expect(page.getByRole('button', { name: /Add \d+ item/i })).not.toBeVisible()
   })
 

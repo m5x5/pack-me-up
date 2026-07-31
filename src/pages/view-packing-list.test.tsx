@@ -44,6 +44,7 @@ vi.mock('../services/solidPod', () => ({
     friendlyWebIdName: vi.fn((url: string) => url),
     resolveOwnerDisplayName: vi.fn((foafName: string | null | undefined, ownerWebId: string | null | undefined, podUrl: string) => foafName ?? ownerWebId ?? podUrl),
     getPodOwnerName: vi.fn().mockResolvedValue(null),
+    getPodOwnerProfile: vi.fn().mockResolvedValue({ name: null, photo: null }),
     deriveWebIdFromPodUrl: vi.fn((url: string) => `${url.replace(/\/+$/, '')}/profile/card#me`),
 }))
 
@@ -431,6 +432,40 @@ describe('ViewPackingList hidden items banner', () => {
         fireEvent.click(screen.getByRole('button', { name: /show packed/i }))
 
         expect(screen.queryByText(/item.* hidden/i)).toBeNull()
+    })
+
+    it('dismisses the banner via its dismiss button and remembers the choice', async () => {
+        localStorage.removeItem('packedHiddenHintDismissed')
+        renderComponent()
+
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        checkPassport()
+
+        await waitFor(() => expect(screen.getByText(/item.* hidden/i)).toBeTruthy())
+
+        fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+
+        expect(screen.queryByText(/item.* hidden/i)).toBeNull()
+        expect(localStorage.getItem('packedHiddenHintDismissed')).toBe('true')
+        localStorage.removeItem('packedHiddenHintDismissed')
+    })
+
+    it('does not show the banner again once dismissed', async () => {
+        localStorage.setItem('packedHiddenHintDismissed', 'true')
+        renderComponent()
+
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+
+        checkPassport()
+
+        // Items are hidden as usual (Show Packed lights up), but the explainer stays away
+        await waitFor(() => {
+            const showPackedBtn = screen.getByRole('button', { name: /show packed/i })
+            expect(showPackedBtn.className).toContain('bg-gradient-primary')
+        })
+        expect(screen.queryByText(/item.* hidden/i)).toBeNull()
+        localStorage.removeItem('packedHiddenHintDismissed')
     })
 
     it('uses primary button variant for "Show Packed" when items are hidden', async () => {
@@ -1106,6 +1141,53 @@ describe('ViewPackingList expandable person sections', () => {
         expect(screen.getByText('Toothbrush')).toBeTruthy()
     })
 
+    it('shows the list people as a stacked avatar cluster that opens the guest form', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        const cluster = screen.getByTestId('guest-cluster')
+        const avatars = within(cluster).getAllByTestId('person-avatar')
+        expect(avatars.map(a => a.getAttribute('title'))).toEqual(['Alice', 'Bob'])
+        // Two people: nobody left over to count
+        expect(cluster.textContent).not.toContain('+')
+
+        fireEvent.click(cluster)
+        expect(screen.getByPlaceholderText('Guest name...')).toBeTruthy()
+    })
+
+    it('clicking anywhere on a collapsed card expands it', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+        fireEvent.click(screen.getByRole('button', { name: /collapse alice's list/i }))
+        expect(screen.queryByText('Toothbrush')).toBeNull()
+
+        const collapsedCard = screen.getByRole('button', { name: /expand alice's list/i }).closest('[data-testid="list-section"]')!
+        fireEvent.click(collapsedCard)
+
+        expect(screen.getByText('Toothbrush')).toBeTruthy()
+    })
+
+    it('the header toggle still works while the whole collapsed card is clickable', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+        fireEvent.click(screen.getByRole('button', { name: /collapse alice's list/i }))
+
+        // The button's click must not double-toggle by also bubbling to the card
+        fireEvent.click(screen.getByRole('button', { name: /expand alice's list/i }))
+
+        expect(screen.getByText('Toothbrush')).toBeTruthy()
+    })
+
+    it('clicking the body of an expanded card does not collapse it', async () => {
+        renderComponentMultiCategory()
+        await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
+
+        const card = screen.getByText('Toothbrush').closest('[data-testid="list-section"]')!
+        fireEvent.click(card)
+
+        expect(screen.getByText('Toothbrush')).toBeTruthy()
+    })
+
     it('add-item input is hidden when person section is collapsed', async () => {
         renderComponentMultiCategory()
         await waitFor(() => expect(screen.getByText('Toothbrush')).toBeTruthy())
@@ -1591,7 +1673,7 @@ describe('ViewPackingList update from questions', () => {
         expect(screen.getByLabelText(/add goggles/i)).toBeTruthy()
     })
 
-    it('toasts and shows no preview when the list already matches', async () => {
+    it('hides the button when the list already matches the questions', async () => {
         // Question set whose only item is already on the list
         const matchingQs = {
             ...questionSetWithNewItem,
@@ -1603,13 +1685,13 @@ describe('ViewPackingList update from questions', () => {
                 }],
             }],
         }
-        renderUpdatable({ getQuestionSet: vi.fn().mockResolvedValue(matchingQs) })
+        const db = renderUpdatable({ getQuestionSet: vi.fn().mockResolvedValue(matchingQs) })
         await waitFor(() => expect(screen.getByText('Swimsuit')).toBeTruthy())
 
-        fireEvent.click(await screen.findByRole('button', { name: /update from questions/i }))
-
-        await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('This list already matches your questions', 'success'))
-        expect(screen.queryByRole('button', { name: /add 1 item/i })).toBeNull()
+        // Wait for the availability check to have actually run before
+        // asserting on the button's absence
+        await waitFor(() => expect(db.getQuestionSet).toHaveBeenCalled())
+        expect(screen.queryByRole('button', { name: /update from questions/i })).toBeNull()
     })
 
     it('excludes an unchecked item and persists only the selected additions', async () => {

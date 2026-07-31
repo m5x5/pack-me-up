@@ -10,6 +10,12 @@ vi.mock('../utils/uuid', () => ({
 }))
 
 const mockNavigate = vi.fn()
+
+// Duplicate and Delete live behind each card's three-dot menu.
+// Radix opens its dropdown on pointerdown, not click.
+function openCardMenu() {
+    fireEvent.pointerDown(screen.getAllByRole('button', { name: /more actions/i })[0], { button: 0 })
+}
 vi.mock('react-router-dom', async (importOriginal) => {
     const actual = await importOriginal<typeof import('react-router-dom')>()
     return { ...actual, useNavigate: () => mockNavigate }
@@ -234,6 +240,8 @@ describe('PackingLists delete confirmation', () => {
 
         await screen.findByText(/Summer Holiday/)
 
+        openCardMenu()
+
         fireEvent.click(screen.getByText('🗑️ Delete'))
 
         expect(db.deletePackingList).not.toHaveBeenCalled()
@@ -246,6 +254,8 @@ describe('PackingLists delete confirmation', () => {
         renderComponent()
 
         await screen.findByText(/Summer Holiday/)
+
+        openCardMenu()
 
         fireEvent.click(screen.getByText('🗑️ Delete'))
 
@@ -262,6 +272,8 @@ describe('PackingLists delete confirmation', () => {
         renderComponent()
 
         await screen.findByText(/Summer Holiday/)
+
+        openCardMenu()
 
         fireEvent.click(screen.getByText('🗑️ Delete'))
 
@@ -282,6 +294,8 @@ describe('PackingLists delete confirmation', () => {
         renderComponent()
 
         await screen.findByText(/Summer Holiday/)
+
+        openCardMenu()
 
         fireEvent.click(screen.getByText('🗑️ Delete'))
 
@@ -409,7 +423,7 @@ describe('PackingLists duplicate', () => {
         })
     })
 
-    it('shows a Duplicate button on each list card', async () => {
+    it('offers Duplicate in each card\'s three-dot menu', async () => {
         const db = makeDb()
         mockUseDatabase.mockReturnValue({ db: db as unknown as PackingAppDatabase })
 
@@ -417,7 +431,8 @@ describe('PackingLists duplicate', () => {
 
         await screen.findByText(/Summer Holiday/)
 
-        expect(screen.getByRole('button', { name: /duplicate/i })).toBeTruthy()
+        openCardMenu()
+        expect(screen.getByRole('menuitem', { name: /duplicate/i })).toBeTruthy()
     })
 
     it('calls savePackingList with a new list named "Copy of {name}" when Duplicate is clicked', async () => {
@@ -428,7 +443,9 @@ describe('PackingLists duplicate', () => {
 
         await screen.findByText(/Summer Holiday/)
 
-        fireEvent.click(screen.getByRole('button', { name: /duplicate/i }))
+        openCardMenu()
+
+        fireEvent.click(screen.getByRole('menuitem', { name: /duplicate/i }))
 
         await waitFor(() => {
             expect(db.savePackingList).toHaveBeenCalledWith(
@@ -527,7 +544,9 @@ describe('PackingLists pod sync on mutation', () => {
         renderComponent()
         await screen.findByText(/Summer Holiday/)
 
-        fireEvent.click(screen.getByRole('button', { name: /duplicate/i }))
+        openCardMenu()
+
+        fireEvent.click(screen.getByRole('menuitem', { name: /duplicate/i }))
 
         await waitFor(() => {
             expect(mockSaveRdfToPod).toHaveBeenCalledWith(
@@ -544,6 +563,8 @@ describe('PackingLists pod sync on mutation', () => {
 
         renderComponent()
         await screen.findByText(/Summer Holiday/)
+
+        openCardMenu()
 
         fireEvent.click(screen.getByText('🗑️ Delete'))
         await screen.findByText(/cannot be undone/i)
@@ -571,7 +592,9 @@ describe('PackingLists pod sync on mutation', () => {
         renderComponent()
         await screen.findByText(/Summer Holiday/)
 
-        fireEvent.click(screen.getByRole('button', { name: /duplicate/i }))
+        openCardMenu()
+
+        fireEvent.click(screen.getByRole('menuitem', { name: /duplicate/i }))
 
         await waitFor(() => {
             expect(makeDb().savePackingList).toBeDefined()
@@ -587,8 +610,10 @@ describe('PackingLists trip destination and dates', () => {
         name: 'Summer Holiday',
         createdAt: '2026-01-01T00:00:00Z',
         destination: 'Lisbon, Portugal',
-        startDate: '2026-07-12',
-        endDate: '2026-07-19',
+        // Far-future dates: these tests are about display, and a past trip
+        // would fold away behind the history accordion
+        startDate: '2099-07-12',
+        endDate: '2099-07-19',
         items: [],
     }
 
@@ -631,7 +656,7 @@ describe('PackingLists trip destination and dates', () => {
         renderWithList(tripList)
         await screen.findByText(/Summer Holiday/)
 
-        const expected = `${localDate(2026, 6, 12)} – ${localDate(2026, 6, 19)}`
+        const expected = `${localDate(2099, 6, 12)} – ${localDate(2099, 6, 19)}`
         expect(screen.getByText(new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeTruthy()
         expect(screen.queryByText(/📅 Created/)).toBeNull()
     })
@@ -648,5 +673,75 @@ describe('PackingLists trip destination and dates', () => {
         await screen.findByText(/Summer Holiday/)
 
         expect(screen.queryByText(/📍/)).toBeNull()
+    })
+})
+
+describe('PackingLists past trips accordion', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ now: new Date(2026, 6, 31), shouldAdvanceTime: true })
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn().mockResolvedValue([
+                    { id: 'l-now', name: 'Upcoming Trip', createdAt: '2026-07-01T00:00:00Z', startDate: '2026-08-02', endDate: '2026-08-08', items: [] },
+                    { id: 'l-past', name: 'Old Trip', createdAt: '2026-06-01T00:00:00Z', startDate: '2026-06-01', endDate: '2026-06-08', items: [] },
+                    { id: 'l-undated', name: 'Undated List', createdAt: '2026-07-25T00:00:00Z', items: [] },
+                ]),
+                deletePackingList: vi.fn(),
+                savePackingList: vi.fn(),
+                getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            } as unknown as PackingAppDatabase,
+        })
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+        vi.restoreAllMocks()
+    })
+
+    it('folds past trips behind a collapsed accordion, keeping current and undated lists visible', async () => {
+        renderComponent()
+
+        await screen.findByText(/Upcoming Trip/)
+        expect(screen.getByText(/Undated List/)).toBeTruthy()
+        expect(screen.queryByText(/Old Trip/)).toBeNull()
+        expect(screen.getByRole('button', { name: /past trips \(1\)/i })).toBeTruthy()
+    })
+
+    it('reveals and hides past trips when the accordion is toggled', async () => {
+        renderComponent()
+
+        await screen.findByText(/Upcoming Trip/)
+        const toggle = screen.getByRole('button', { name: /past trips \(1\)/i })
+
+        fireEvent.click(toggle)
+        expect(screen.getByText(/Old Trip/)).toBeTruthy()
+
+        fireEvent.click(toggle)
+        expect(screen.queryByText(/Old Trip/)).toBeNull()
+    })
+
+    it('shows no accordion when nothing is in the past', async () => {
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn().mockResolvedValue([
+                    { id: 'l-now', name: 'Upcoming Trip', createdAt: '2026-07-01T00:00:00Z', startDate: '2026-08-02', endDate: '2026-08-08', items: [] },
+                ]),
+                deletePackingList: vi.fn(),
+                savePackingList: vi.fn(),
+                getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            } as unknown as PackingAppDatabase,
+        })
+        renderComponent()
+
+        await screen.findByText(/Upcoming Trip/)
+        expect(screen.queryByRole('button', { name: /past trips/i })).toBeNull()
     })
 })

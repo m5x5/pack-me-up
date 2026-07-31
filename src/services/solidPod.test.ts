@@ -18,6 +18,7 @@ import {
     revokeCollaboratorAccess,
     getCollaborators,
     getPodOwnerName,
+    getPodOwnerProfile,
     friendlyPodName,
     getPrimaryPodUrl,
     derivePodUrlFromWebId,
@@ -1089,6 +1090,64 @@ describe('getPodOwnerName', () => {
 
         expect(result).toBe('Alice')
         expect(mockGetSolidDataset).toHaveBeenCalledWith(EXPLICIT_WEB_ID, expect.objectContaining({ fetch: mockSession.fetch }))
+    })
+})
+
+// ─── getPodOwnerProfile ──────────────────────────────────────────────────────
+
+describe('getPodOwnerProfile', () => {
+    const POD = 'https://pod.example.com/'
+    const WEB_ID = 'https://pod.example.com/profile/card#me'
+
+    it('prefers vcard:fn over foaf:name and returns the vcard:hasPhoto and vcard:bday', async () => {
+        const { buildThing, setThing, createSolidDataset } = await import('@inrupt/solid-client')
+        const thing = buildThing({ url: WEB_ID })
+            .addStringNoLocale('http://www.w3.org/2006/vcard/ns#fn', 'Alice Example')
+            .addStringNoLocale('http://xmlns.com/foaf/0.1/name', 'alice-foaf')
+            .addUrl('http://www.w3.org/2006/vcard/ns#hasPhoto', 'https://pod.example.com/profile/avatar.jpg')
+            .addStringNoLocale('http://www.w3.org/2006/vcard/ns#bday', '1990-05-04')
+            .build()
+        const dataset = setThing(createSolidDataset(), thing)
+        mockGetSolidDataset.mockResolvedValueOnce(dataset as unknown as SolidDataset & WithServerResourceInfo)
+
+        const result = await getPodOwnerProfile(mockSession, POD)
+
+        expect(result).toEqual({ name: 'Alice Example', photo: 'https://pod.example.com/profile/avatar.jpg', birthday: '1990-05-04' })
+    })
+
+    it('reads vcard:bday stored as an xsd:date literal', async () => {
+        const { buildThing, setThing, createSolidDataset } = await import('@inrupt/solid-client')
+        const thing = buildThing({ url: WEB_ID })
+            .addDate('http://www.w3.org/2006/vcard/ns#bday', new Date('1990-05-04'))
+            .build()
+        const dataset = setThing(createSolidDataset(), thing)
+        mockGetSolidDataset.mockResolvedValueOnce(dataset as unknown as SolidDataset & WithServerResourceInfo)
+
+        const result = await getPodOwnerProfile(mockSession, POD)
+
+        expect(result.birthday).toBe('1990-05-04')
+    })
+
+    it('falls back to foaf:name and foaf:img when vcard terms are absent', async () => {
+        const { buildThing, setThing, createSolidDataset } = await import('@inrupt/solid-client')
+        const thing = buildThing({ url: WEB_ID })
+            .addStringNoLocale('http://xmlns.com/foaf/0.1/name', 'Alice Smith')
+            .addUrl('http://xmlns.com/foaf/0.1/img', 'https://pod.example.com/alice.png')
+            .build()
+        const dataset = setThing(createSolidDataset(), thing)
+        mockGetSolidDataset.mockResolvedValueOnce(dataset as unknown as SolidDataset & WithServerResourceInfo)
+
+        const result = await getPodOwnerProfile(mockSession, POD)
+
+        expect(result).toEqual({ name: 'Alice Smith', photo: 'https://pod.example.com/alice.png', birthday: null })
+    })
+
+    it('returns nulls when the profile card fetch fails', async () => {
+        mockGetSolidDataset.mockRejectedValueOnce(new Error('Not found'))
+
+        const result = await getPodOwnerProfile(mockSession, POD)
+
+        expect(result).toEqual({ name: null, photo: null, birthday: null })
     })
 })
 

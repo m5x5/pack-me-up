@@ -53,6 +53,9 @@ export const PersonSchema = z.object({
   gender: GenderSchema.optional(),
   species: PetSpeciesSchema.optional(),
   color: PersonColorSchema.optional(),
+  // Solid WebID of the person, when they have one — lets the app show their
+  // profile photo and could later drive sharing defaults.
+  webId: z.string().optional(),
   lastModified: z.string().optional(),
   deletedAt: z.string().optional(),
 })

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { PackingList } from '../create-packing-list/types'
 import { useDatabase } from '../components/DatabaseContext'
 import { useSolidPod } from '../components/SolidPodContext'
+import { ChevronDown, EllipsisVertical, Plus } from 'lucide-react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { LoadingState } from '../components/LoadingState'
@@ -12,7 +14,7 @@ import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
 import { usePodErrorHandler } from '../hooks/usePodErrorHandler'
 import { generateUUID } from '../utils/uuid'
-import { formatTripDates } from '../create-packing-list/tripDetails'
+import { formatTripDates, tripIsPast } from '../create-packing-list/tripDetails'
 
 type SharingStatus = 'public' | 'shared' | 'private'
 
@@ -22,6 +24,8 @@ export function PackingLists() {
     const [listToDelete, setListToDelete] = useState<{ id: string; name: string } | null>(null)
     const [listToRename, setListToRename] = useState<{ id: string; name: string } | null>(null)
     const [renameValue, setRenameValue] = useState('')
+    // Past trips fold away by default — they're history, not planning
+    const [showPast, setShowPast] = useState(false)
     const [sharingStatus, setSharingStatus] = useState<Record<string, SharingStatus>>({})
     const navigate = useNavigate()
     const { isLoggedIn, session } = useSolidPod()
@@ -34,8 +38,7 @@ export function PackingLists() {
     const { db, loginSyncVersion, loginSyncInProgress } = useDatabase()
     const handlePodError = usePodErrorHandler()
 
-    const requestDeletePackingList = (id: string, name: string, event: React.MouseEvent) => {
-        event.stopPropagation()
+    const requestDeletePackingList = (id: string, name: string) => {
         setListToDelete({ id, name })
     }
 
@@ -61,8 +64,7 @@ export function PackingLists() {
         }
     }
 
-    const handleDuplicatePackingList = async (list: PackingList, event: React.MouseEvent) => {
-        event.stopPropagation()
+    const handleDuplicatePackingList = async (list: PackingList) => {
         try {
             const newList: PackingList = {
                 id: generateUUID(),
@@ -155,6 +157,132 @@ export function PackingLists() {
         }).catch(() => {})
     }, [packingLists, isLoggedIn, session])
 
+    // A finished trip is history, not planning: fold it away below the
+    // lists that still matter, behind one accordion row.
+    const currentLists = packingLists.filter(l => !tripIsPast(l.startDate, l.endDate))
+    const pastLists = packingLists.filter(l => tripIsPast(l.startDate, l.endDate))
+
+    const renderListCard = (list: PackingList, index: number) => {
+        const packedCount = list.items.filter(item => item.packed).length
+        const totalCount = list.items.length
+        const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
+        const displayWidth = packedCount === 0 ? 0 : Math.max(percentComplete, 4)
+
+        // Rotate through gradient colors
+        const gradients = [
+            'from-primary-50 to-primary-100 border-primary-300',
+            'from-secondary-50 to-secondary-100 border-secondary-300',
+            'from-accent-50 to-accent-100 border-accent-300',
+            'from-success-50 to-success-100 border-success-300'
+        ]
+        const gradient = gradients[index % gradients.length]
+
+        // Trip dates are what the traveller cares about; the
+        // creation date is only worth showing when there are none.
+        const tripDates = formatTripDates(list.startDate, list.endDate)
+
+        return (
+            <div
+                key={list.id}
+                onClick={() => {
+                    if (list.sharedFromPodUrl) {
+                        navigate(buildSharedListPath(list.id, list.sharedFromPodUrl, list.ownerWebId))
+                    } else {
+                        navigate(`/view-lists/${list.id}`)
+                    }
+                }}
+                className={`bg-gradient-to-br ${gradient} rounded-2xl shadow-soft border-2 p-6 hover:shadow-glow-primary hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
+            >
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-3">
+                    <div className="min-w-0">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                        ✈️ {list.name}
+                        {list.sharedFromPodUrl ? (
+                            <span className="text-xs font-medium bg-white/60 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                👤 From {resolveOwnerDisplayName(ownerNames[list.id], list.ownerWebId, list.sharedFromPodUrl)}
+                            </span>
+                        ) : (
+                            <>
+                                {sharingStatus[list.id] === 'public' && (
+                                    <span className="text-xs font-medium bg-white/60 text-blue-700 px-2 py-0.5 rounded-full">🌐 Public</span>
+                                )}
+                                {sharingStatus[list.id] === 'shared' && (
+                                    <span className="text-xs font-medium bg-white/60 text-indigo-700 px-2 py-0.5 rounded-full">👤 Shared</span>
+                                )}
+                            </>
+                        )}
+                    </h3>
+                    {/* On its own line so a long destination never
+                        pushes the actions onto a second row */}
+                    {list.destination && (
+                        <p className="mt-1 text-sm text-gray-600 truncate">📍 {list.destination}</p>
+                    )}
+                    </div>
+                    <div data-testid="list-actions" className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-600 bg-white/60 px-3 py-1 rounded-lg">
+                            {tripDates
+                                ? `📅 ${tripDates}`
+                                : `📅 Created ${new Date(list.createdAt).toLocaleDateString()}`}
+                        </span>
+                        <button
+                            onClick={(e) => requestRenamePackingList(list.id, list.name, e)}
+                            className="text-primary-600 hover:text-primary-800 text-sm font-bold hover:scale-110 transition-transform duration-200 bg-white/60 px-3 py-1 rounded-lg"
+                        >
+                            ✏️ Rename
+                        </button>
+                        <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                                <button
+                                    aria-label={`More actions for ${list.name}`}
+                                    title="More actions"
+                                    // The card itself navigates on click; a tap on the
+                                    // menu must not also open the list
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 bg-white/60 hover:bg-white transition-colors"
+                                >
+                                    <EllipsisVertical className="w-4 h-4" aria-hidden="true" />
+                                </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                                <DropdownMenu.Content
+                                    align="end"
+                                    sideOffset={4}
+                                    className="w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <DropdownMenu.Item
+                                        onSelect={() => handleDuplicatePackingList(list)}
+                                        className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 cursor-default outline-none"
+                                    >
+                                        📋 Duplicate
+                                    </DropdownMenu.Item>
+                                    <DropdownMenu.Item
+                                        onSelect={() => requestDeletePackingList(list.id, list.name)}
+                                        className="px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50 cursor-default outline-none"
+                                    >
+                                        🗑️ Delete
+                                    </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                        </DropdownMenu.Root>
+                    </div>
+                </div>
+                <div className="flex items-center gap-4">
+                    <div className="flex-1 bg-white/40 rounded-full h-3 overflow-hidden">
+                        <div
+                            data-testid="progress-fill"
+                            className="progress-bar-fill bg-gradient-primary h-full rounded-full"
+                            style={{ width: `${displayWidth}%` }}
+                        ></div>
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 bg-white/60 px-3 py-1 rounded-lg">
+                        {packedCount} / {totalCount} ({percentComplete}%)
+                    </span>
+                </div>
+            </div>
+        )
+    }
+
     if (isLoading || loginSyncInProgress) {
         // Keep the real header in place so only the list area changes when the
         // lists land.
@@ -162,10 +290,10 @@ export function PackingLists() {
             <div className="max-w-4xl mx-auto py-8 px-4">
                 <div className="mb-8 flex justify-between items-start">
                     <div className="mb-2">
-                        <h1 className="text-4xl font-bold text-primary-900">📦 Packing Lists</h1>
-                        <p className="mt-2 text-lg text-gray-700 font-medium">View all your created packing lists.</p>
+                        <h1 className="text-2xl font-bold text-gray-900">📦 Packing Lists</h1>
+                        <p className="mt-1 text-gray-600 text-sm">View all your created packing lists.</p>
                     </div>
-                    <Button variant="primary" onClick={() => navigate('/create-packing-list')}>➕ New List</Button>
+                    <Button variant="primary" className="inline-flex items-center gap-1.5" onClick={() => navigate('/create-packing-list')}><Plus className="w-4 h-4" aria-hidden="true" />New List</Button>
                 </div>
                 <LoadingState message="Loading packing lists..." rows={3} />
             </div>
@@ -176,10 +304,10 @@ export function PackingLists() {
         <div className="max-w-4xl mx-auto py-8 px-4">
             <div className="mb-8 flex justify-between items-start">
                 <div className="mb-2">
-                    <h1 className="text-4xl font-bold text-primary-900">📦 Packing Lists</h1>
-                    <p className="mt-2 text-lg text-gray-700 font-medium">View all your created packing lists.</p>
+                    <h1 className="text-2xl font-bold text-gray-900">📦 Packing Lists</h1>
+                    <p className="mt-1 text-gray-600 text-sm">View all your created packing lists.</p>
                 </div>
-                <Button variant="primary" onClick={() => navigate('/create-packing-list')}>➕ New List</Button>
+                <Button variant="primary" className="inline-flex items-center gap-1.5" onClick={() => navigate('/create-packing-list')}><Plus className="w-4 h-4" aria-hidden="true" />New List</Button>
             </div>
 
             {packingLists.length === 0 ? (
@@ -189,105 +317,32 @@ export function PackingLists() {
                     </p>
                 </div>
             ) : (
-                <div className="space-y-4">
-                    {packingLists.map((list, index) => {
-                        const packedCount = list.items.filter(item => item.packed).length
-                        const totalCount = list.items.length
-                        const percentComplete = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0
-                        const displayWidth = packedCount === 0 ? 0 : Math.max(percentComplete, 4)
-
-                        // Rotate through gradient colors
-                        const gradients = [
-                            'from-primary-50 to-primary-100 border-primary-300',
-                            'from-secondary-50 to-secondary-100 border-secondary-300',
-                            'from-accent-50 to-accent-100 border-accent-300',
-                            'from-success-50 to-success-100 border-success-300'
-                        ]
-                        const gradient = gradients[index % gradients.length]
-
-                        // Trip dates are what the traveller cares about; the
-                        // creation date is only worth showing when there are none.
-                        const tripDates = formatTripDates(list.startDate, list.endDate)
-
-                        return (
-                            <div
-                                key={list.id}
-                                onClick={() => {
-                                    if (list.sharedFromPodUrl) {
-                                        navigate(buildSharedListPath(list.id, list.sharedFromPodUrl, list.ownerWebId))
-                                    } else {
-                                        navigate(`/view-lists/${list.id}`)
-                                    }
-                                }}
-                                className={`bg-gradient-to-br ${gradient} rounded-2xl shadow-soft border-2 p-6 hover:shadow-glow-primary hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
+                <>
+                    <div className="space-y-4">
+                        {currentLists.map(renderListCard)}
+                    </div>
+                    {pastLists.length > 0 && (
+                        <div className="mt-8">
+                            <button
+                                type="button"
+                                onClick={() => setShowPast(v => !v)}
+                                aria-expanded={showPast}
+                                className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors"
                             >
-                                <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-3">
-                                    <div className="min-w-0">
-                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
-                                        ✈️ {list.name}
-                                        {list.sharedFromPodUrl ? (
-                                            <span className="text-xs font-medium bg-white/60 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
-                                                👤 From {resolveOwnerDisplayName(ownerNames[list.id], list.ownerWebId, list.sharedFromPodUrl)}
-                                            </span>
-                                        ) : (
-                                            <>
-                                                {sharingStatus[list.id] === 'public' && (
-                                                    <span className="text-xs font-medium bg-white/60 text-blue-700 px-2 py-0.5 rounded-full">🌐 Public</span>
-                                                )}
-                                                {sharingStatus[list.id] === 'shared' && (
-                                                    <span className="text-xs font-medium bg-white/60 text-indigo-700 px-2 py-0.5 rounded-full">👤 Shared</span>
-                                                )}
-                                            </>
-                                        )}
-                                    </h3>
-                                    {/* On its own line so a long destination never
-                                        pushes the actions onto a second row */}
-                                    {list.destination && (
-                                        <p className="mt-1 text-sm text-gray-600 truncate">📍 {list.destination}</p>
-                                    )}
-                                    </div>
-                                    <div data-testid="list-actions" className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-sm font-medium text-gray-600 bg-white/60 px-3 py-1 rounded-lg">
-                                            {tripDates
-                                                ? `📅 ${tripDates}`
-                                                : `📅 Created ${new Date(list.createdAt).toLocaleDateString()}`}
-                                        </span>
-                                        <button
-                                            onClick={(e) => requestRenamePackingList(list.id, list.name, e)}
-                                            className="text-primary-600 hover:text-primary-800 text-sm font-bold hover:scale-110 transition-transform duration-200 bg-white/60 px-3 py-1 rounded-lg"
-                                        >
-                                            ✏️ Rename
-                                        </button>
-                                        <button
-                                            onClick={(e) => handleDuplicatePackingList(list, e)}
-                                            className="text-secondary-600 hover:text-secondary-800 text-sm font-bold hover:scale-110 transition-transform duration-200 bg-white/60 px-3 py-1 rounded-lg"
-                                        >
-                                            📋 Duplicate
-                                        </button>
-                                        <button
-                                            onClick={(e) => requestDeletePackingList(list.id, list.name, e)}
-                                            className="text-danger-600 hover:text-danger-800 text-sm font-bold hover:scale-110 transition-transform duration-200 bg-white/60 px-3 py-1 rounded-lg"
-                                        >
-                                            🗑️ Delete
-                                        </button>
-                                    </div>
+                                <ChevronDown
+                                    className={`w-4 h-4 transition-transform ${showPast ? '' : '-rotate-90'}`}
+                                    aria-hidden="true"
+                                />
+                                Past trips ({pastLists.length})
+                            </button>
+                            {showPast && (
+                                <div className="space-y-4 mt-4">
+                                    {pastLists.map(renderListCard)}
                                 </div>
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-1 bg-white/40 rounded-full h-3 overflow-hidden">
-                                        <div
-                                            data-testid="progress-fill"
-                                            className="progress-bar-fill bg-gradient-primary h-full rounded-full"
-                                            style={{ width: `${displayWidth}%` }}
-                                        ></div>
-                                    </div>
-                                    <span className="text-sm font-bold text-gray-700 bg-white/60 px-3 py-1 rounded-lg">
-                                        {packedCount} / {totalCount} ({percentComplete}%)
-                                    </span>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
+                            )}
+                        </div>
+                    )}
+                </>
             )}
 
             <ConfirmationDialog

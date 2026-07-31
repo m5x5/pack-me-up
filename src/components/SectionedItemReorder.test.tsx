@@ -158,6 +158,6 @@ describe('SectionedItemReorder move menu', () => {
 
     it('no longer creates sections of its own', () => {
         renderReorder(unsectioned())
-        expect(screen.queryByRole('button', { name: '+ Add section' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Add section' })).toBeNull()
     })
 })

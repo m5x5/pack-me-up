@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useId, useRef, useMemo, memo, Fragmen
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useDatabase } from '../components/DatabaseContext'
 import { SectionedItemReorder } from '../components/SectionedItemReorder'
+import { PersonAvatar } from '../components/PersonAvatar'
 import { SectionOrderLegend, SectionOrderModal } from '../components/SectionOrderEditor'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import { ALWAYS_NEEDED_CATEGORY, addEmptySection, buildSectionGroups, defaultCategoryFor, reconcileEmptySections, sectionNamesIn, type PositionedItem } from '../edit-questions/item-sections'
@@ -11,12 +12,14 @@ import { DatabaseMigration } from '../services/migration'
 import { PackingListQuestionSet, Person, Item, Option, Question, QuestionType, newDraftQuestion, renumberItemOrder, AGE_RANGE_OPTIONS } from '../edit-questions/types'
 import { Link } from 'react-router-dom'
 import { useSyncCoordinator } from '../hooks/useSyncCoordinator'
+import { useProfilePhotos } from '../hooks/usePersonProfilePhotos'
 import { usePodSync } from '../hooks/usePodSync'
 import { mergeQuestionSets } from '../utils/mergeQuestionSets'
-import { POD_CONTAINERS } from '../services/solidPod'
+import { POD_CONTAINERS, getPodOwnerProfile } from '../services/solidPod'
 import { questionSetToDataset, datasetToQuestionSet } from '../services/rdfSerialization'
 import { useSolidPod } from '../components/SolidPodContext'
 import { useForeignPod } from '../components/ForeignPodContext'
+import { Plus, X } from 'lucide-react'
 import { AgePromotionCard } from '../components/AgePromotionCard'
 import { TemplateUpdatesCard } from '../components/TemplateUpdatesCard'
 import { LoadingState } from '../components/LoadingState'
@@ -48,32 +51,45 @@ function PersonDot({ person, index, selected }: { person: Person; index: number;
     )
 }
 
-const PersonLegend = memo(function PersonLegend({ people, onEdit }: { people: Person[]; onEdit?: () => void }) {
+/* The same quiet cluster the packing list wears: the first two people, then
+   "+n" for the rest. Tapping it opens the people editor. */
+const PersonLegend = memo(function PersonLegend({ people, photos, onEdit }: { people: Person[]; photos?: Record<string, string>; onEdit?: () => void }) {
     if (people.length < 2 && !onEdit) return null
-    return (
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-            {people.length === 0 && onEdit && (
-                <span className="text-xs text-gray-400">No people added</span>
-            )}
-            {people.map((person, i) => (
-                <span key={person.id} className="flex items-center gap-1 text-xs text-gray-500">
-                    <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${personColorFor(person, i).avatar}`}>
-                        {person.name.charAt(0).toUpperCase()}
-                    </span>
-                    {person.name}
+    const cluster = (
+        <>
+            {people.slice(0, 2).map((person, i) => (
+                <span key={person.id} className="rounded-full ring-2 ring-white">
+                    <PersonAvatar
+                        name={person.name}
+                        color={personColorFor(person, i)}
+                        photoUrl={photos?.[person.name]}
+                    />
                 </span>
             ))}
-            {onEdit && (
+            {people.length > 2 && (
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-xs font-semibold ring-2 ring-white">
+                    +{people.length - 2}
+                </span>
+            )}
+            {people.length === 0 && (
+                <span className="text-xs text-gray-600">No people added</span>
+            )}
+        </>
+    )
+    return (
+        <div className="flex items-center mb-4">
+            {onEdit ? (
                 <button
                     type="button"
                     onClick={onEdit}
-                    className="p-1 text-gray-300 hover:text-gray-600 rounded"
                     title="Edit people"
+                    aria-label="Edit people"
+                    className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
                 >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
+                    {cluster}
                 </button>
+            ) : (
+                <span className="flex items-center -space-x-2 p-1">{cluster}</span>
             )}
         </div>
     )
@@ -511,17 +527,17 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                         <button
                             type="button"
                             onClick={() => setOpenComposer(LIST_COMPOSER)}
-                            className={`${FOOT_BUTTON} flex-1`}
+                            className={`${FOOT_BUTTON} flex-1 flex items-center justify-center gap-1`}
                         >
-                            + Add item
+                            <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add item
                         </button>
                         {onSectionAdd && (
                             <button
                                 type="button"
                                 onClick={() => setAddingSection(true)}
-                                className={`${FOOT_BUTTON} shrink-0 px-3`}
+                                className={`${FOOT_BUTTON} shrink-0 px-3 flex items-center justify-center gap-1`}
                             >
-                                + Add section
+                                <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add section
                             </button>
                         )}
                     </div>
@@ -613,9 +629,7 @@ const SectionedItemRows = memo(function SectionedItemRows({ items, people, defau
                                         title={`Add an item to ${group.label}`}
                                         className={`shrink-0 -my-1 rounded p-1.5 ${accent.text} hover:bg-white/70 transition-colors`}
                                     >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
-                                        </svg>
+                                        <Plus className="w-4 h-4" aria-hidden="true" />
                                     </button>
                                 )}
                             </div>
@@ -1115,9 +1129,9 @@ const QuestionSection = memo(function QuestionSection({ question, people, canMov
                     <button
                         type="button"
                         onClick={() => onAddOption(question.id)}
-                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors flex items-center justify-center gap-1"
                     >
-                        + Add Option
+                        <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add Option
                     </button>
                 </div>
             )}
@@ -1273,6 +1287,7 @@ export function PeopleModal({ people, onSave, onClose }: {
     onSave: (newPeople: Person[]) => void
     onClose: () => void
 }) {
+    const { session } = useSolidPod()
     const [localPeople, setLocalPeople] = useState<Person[]>(
         people.length > 0 ? people : [{ id: crypto.randomUUID(), name: '' }]
     )
@@ -1295,6 +1310,25 @@ export function PeopleModal({ people, onSave, onClose }: {
         setLocalPeople(prev => prev.map((p, i) => i === idx
             ? { ...p, ageRange: value === '' ? undefined : value as Person['ageRange'] }
             : p))
+    const updateWebId = (idx: number, webId: string) =>
+        setLocalPeople(prev => prev.map((p, i) => i === idx
+            ? { ...p, webId: webId.trim() || undefined }
+            : p))
+    // A WebID profile often already says when its person was born
+    // (vcard:bday) — fill the birthday from there rather than making the
+    // user type it twice. Only into an empty field: a manually set date wins.
+    const fillBirthdayFromProfile = (idx: number, webId: string) => {
+        const trimmed = webId.trim()
+        if (!session || !trimmed) return
+        getPodOwnerProfile(session, '', trimmed)
+            .then(({ birthday }) => {
+                if (!birthday) return
+                setLocalPeople(prev => prev.map((p, i) => i === idx && !p.dateOfBirth
+                    ? { ...p, dateOfBirth: birthday }
+                    : p))
+            })
+            .catch(() => {})
+    }
     // Picking closes the palette: the choice shows immediately on the avatar
     // above it, so leaving the grid open would only hide the confirmation.
     const updateColor = (idx: number, color: PersonColorId) => {
@@ -1373,6 +1407,20 @@ export function PeopleModal({ people, onSave, onClose }: {
                                         </select>
                                     </div>
                                 )}
+                                {!person.species && (
+                                    <div className="ml-9 mt-1">
+                                        <input
+                                            type="url"
+                                            aria-label={`WebID for ${person.name || `Person ${i + 1}`} (optional)`}
+                                            title="Solid WebID (optional) — used to show their profile photo"
+                                            placeholder="WebID (optional), e.g. https://pod.example/name/profile/card#me"
+                                            value={person.webId ?? ''}
+                                            onChange={e => updateWebId(i, e.target.value)}
+                                            onBlur={e => fillBirthdayFromProfile(i, e.target.value)}
+                                            className="w-full min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        />
+                                    </div>
+                                )}
                                 {pickerOpen && (
                                     <PersonColorSwatches
                                         personName={personLabel}
@@ -1388,9 +1436,9 @@ export function PeopleModal({ people, onSave, onClose }: {
                     <button
                         type="button"
                         onClick={addPerson}
-                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors mb-4"
+                        className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-xs text-gray-400 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors mb-4 flex items-center justify-center gap-1"
                     >
-                        + Add Person
+                        <Plus className="w-3.5 h-3.5" aria-hidden="true" />Add Person
                     </button>
                     <div className="flex gap-2 justify-end">
                         <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100">
@@ -1486,7 +1534,7 @@ function QuestionModal({ question, onSave, onClose }: {
 
 export function QuestionsPage() {
     const { db, loginSyncInProgress } = useDatabase()
-    const { isLoggedIn } = useSolidPod()
+    const { isLoggedIn, session } = useSolidPod()
     const foreignPodCtx = useForeignPod()
     const foreignPodUrl = foreignPodCtx?.foreignPodUrl
     const isForeign = !!foreignPodUrl
@@ -1506,6 +1554,14 @@ export function QuestionsPage() {
     // Bracket changes made by hand in the people modal; offered the same
     // item-review flow as birthday-driven transitions, then cleared.
     const [manualPromotions, setManualPromotions] = useState<AgeTransition[]>([])
+    // A once-per-device nudge, not a setting — plain localStorage, kept out of
+    // the question set so it never syncs to the pod.
+    const [wizardHintDismissed, setWizardHintDismissed] = useState(() => localStorage.getItem('wizardHintDismissed') === 'true')
+
+    const dismissWizardHint = () => {
+        localStorage.setItem('wizardHintDismissed', 'true')
+        setWizardHintDismissed(true)
+    }
 
     const saveToPodRef = useRef<((data: PackingListQuestionSet) => Promise<boolean>) | undefined>(undefined)
 
@@ -1895,6 +1951,7 @@ export function QuestionsPage() {
     // Memoized so their identity is stable across re-renders that don't change
     // the data (modal opens, sync ticks) — they feed the memoized sections.
     const people = useMemo(() => (data?.people ?? []).filter(p => !p.deletedAt), [data])
+    const personPhotos = useProfilePhotos(people, session)
     const activeQuestions = useMemo(() => (data?.questions ?? []).filter(q => !q.deletedAt), [data])
     const activeAlwaysNeededItems = useMemo(() => (data?.alwaysNeededItems ?? []).filter(i => !i.deletedAt), [data])
 
@@ -1913,7 +1970,20 @@ export function QuestionsPage() {
                 <div className="mb-2">
                     <h1 className="text-2xl font-bold text-gray-900">{isForeign ? 'Questions & Items' : 'My Questions & Items'}</h1>
                     <p className="mt-1 text-gray-600 text-sm">Customise the questions and packing items that generate your lists. Changes here affect all future packing lists you create.</p>
-                    {!isForeign && <p className="mt-1 text-xs text-gray-400">Want to start from scratch? <Link to="/wizard" className="text-primary-600 hover:underline">Redo the setup wizard</Link> to regenerate your questions.</p>}
+                    {!isForeign && !wizardHintDismissed && (
+                        <p className="mt-1 text-xs text-gray-400 flex items-center gap-1.5">
+                            <span>Want to start from scratch? <Link to="/wizard" className="text-primary-600 hover:underline">Redo the setup wizard</Link> to regenerate your questions.</span>
+                            <button
+                                type="button"
+                                onClick={dismissWizardHint}
+                                aria-label="Dismiss"
+                                title="Dismiss"
+                                className="shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                            >
+                                <X className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                        </p>
+                    )}
                 </div>
                 {!isForeign && (
                     <AgePromotionCard
@@ -1924,7 +1994,7 @@ export function QuestionsPage() {
                     />
                 )}
                 {!isForeign && <TemplateUpdatesCard questionSet={data} onApply={saveData} />}
-                <PersonLegend people={people} onEdit={openPeopleModal} />
+                <PersonLegend people={people} photos={personPhotos} onEdit={openPeopleModal} />
                 <SectionOrderLegend labels={sectionLabels} onEdit={openSectionOrderModal} />
                 <AlwaysSection
                     items={activeAlwaysNeededItems}
@@ -1965,9 +2035,9 @@ export function QuestionsPage() {
                 <button
                     type="button"
                     onClick={() => setQuestionModal({ question: null })}
-                    className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                    className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50 transition-colors flex items-center justify-center gap-1"
                 >
-                    + Add Question
+                    <Plus className="w-4 h-4" aria-hidden="true" />Add Question
                 </button>
             </div>
             {questionModal !== null && (

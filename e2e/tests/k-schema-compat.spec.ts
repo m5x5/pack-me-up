@@ -83,7 +83,7 @@ test.describe('K – JSON Schema Compatibility', () => {
     await page.goto('/#/view-lists')
     await page.waitForLoadState('networkidle')
 
-    await page.getByRole('link', { name: 'Create List' }).first().click()
+    await page.getByRole('button', { name: 'New List' }).first().click()
     await page.waitForURL(/#\/create-packing-list/, { timeout: 10_000 })
 
     // The question from the fixture should appear (local DB already has it from beforeAll sync)

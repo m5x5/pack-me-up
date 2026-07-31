@@ -1,5 +1,5 @@
 import { AppSession as Session } from '../types/AppSession'
-import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, createContainerAt, acp_ess_2, getThing, getStringNoLocale } from '@inrupt/solid-client'
+import { getPodUrlAll, overwriteFile, getSolidDataset, getContainedResourceUrlAll, getFile, deleteFile, solidDatasetAsTurtle, universalAccess, getResourceInfoWithAcl, hasResourceAcl, hasFallbackAcl, hasAccessibleAcl, getResourceAcl, createAclFromFallbackAcl, saveAclFor, setAgentResourceAccess, setAgentDefaultAccess, createContainerAt, acp_ess_2, getThing, getStringNoLocale, getUrl, getDate, getDatetime } from '@inrupt/solid-client'
 import type { SolidDataset, Access } from '@inrupt/solid-client'
 const { getAgentAccessAll, setPublicAccess, getPublicAccess } = universalAccess
 import { PackingAppDatabase } from './database'
@@ -174,16 +174,52 @@ export function deriveWebIdFromPodUrl(podUrl: string): string {
 }
 
 export async function getPodOwnerName(session: Session, podUrl: string, explicitWebId?: string): Promise<string | null> {
+    return (await getPodOwnerProfile(session, podUrl, explicitWebId)).name
+}
+
+export interface PodOwnerProfile {
+    name: string | null
+    /** URL of the profile photo (vcard:hasPhoto, foaf:img or foaf:depiction). */
+    photo: string | null
+    /** Birthday (vcard:bday) as a plain YYYY-MM-DD string. */
+    birthday: string | null
+}
+
+export async function getPodOwnerProfile(session: Session, podUrl: string, explicitWebId?: string): Promise<PodOwnerProfile> {
     const webId = explicitWebId ?? deriveWebIdFromPodUrl(podUrl)
     const profileCardUrl = webId.replace(/#.*$/, '')
     try {
         const dataset = await getSolidDataset(profileCardUrl, { fetch: session.fetch })
         const profile = getThing(dataset, webId)
-        if (!profile) return null
-        return getStringNoLocale(profile, 'http://xmlns.com/foaf/0.1/name') ?? null
+        if (!profile) return { name: null, photo: null, birthday: null }
+        return {
+            name: getStringNoLocale(profile, 'http://www.w3.org/2006/vcard/ns#fn')
+                ?? getStringNoLocale(profile, 'http://xmlns.com/foaf/0.1/name')
+                ?? null,
+            photo: getUrl(profile, 'http://www.w3.org/2006/vcard/ns#hasPhoto')
+                ?? getUrl(profile, 'http://xmlns.com/foaf/0.1/img')
+                ?? getUrl(profile, 'http://xmlns.com/foaf/0.1/depiction')
+                ?? null,
+            birthday: readBirthday(profile),
+        }
     } catch {
-        return null
+        return { name: null, photo: null, birthday: null }
     }
+}
+
+/**
+ * vcard:bday as YYYY-MM-DD, however the profile stored it — some editors write
+ * a plain string literal, others a typed xsd:date.
+ */
+function readBirthday(profile: NonNullable<ReturnType<typeof getThing>>): string | null {
+    const BDAY = 'http://www.w3.org/2006/vcard/ns#bday'
+    const asString = getStringNoLocale(profile, BDAY)
+    if (asString) {
+        const match = /^\d{4}-\d{2}-\d{2}/.exec(asString.trim())
+        return match ? match[0] : null
+    }
+    const asDate = getDate(profile, BDAY) ?? getDatetime(profile, BDAY)
+    return asDate ? asDate.toISOString().slice(0, 10) : null
 }
 
 /**

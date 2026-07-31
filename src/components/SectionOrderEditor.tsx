@@ -67,7 +67,7 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
             {/* On a phone the caption costs a third of the row it introduces,
                 and the names beside a "Reorder" button say what it would have
                 said. Still read out, just not drawn. */}
-            <span className="sr-only sm:not-sr-only sm:text-xs sm:text-gray-400 sm:shrink-0">List order</span>
+            <span className="sr-only sm:not-sr-only sm:text-xs sm:text-gray-600 sm:shrink-0">List order</span>
             <div className="hidden sm:flex sm:flex-wrap sm:items-center sm:gap-1.5 sm:min-w-0">
                 {shown.map((label, i) => {
                     const accent = sectionAccent(label, false)
@@ -82,9 +82,9 @@ export const SectionOrderLegend = memo(function SectionOrderLegend({ labels, onE
                         </span>
                     )
                 })}
-                {hidden > 0 && <span className="text-[11px] text-gray-400">+{hidden} more</span>}
+                {hidden > 0 && <span className="text-[11px] text-gray-600">+{hidden} more</span>}
             </div>
-            <span className="sm:hidden flex-1 min-w-0 truncate text-[11px] text-gray-400">
+            <span className="sm:hidden flex-1 min-w-0 truncate text-[11px] text-gray-600">
                 {labels.join(' · ')}
             </span>
             {onEdit && (
@@ -209,7 +209,7 @@ export function SectionOrderModal({ labels, onChange, onClose }: {
                     </p>
                 </div>
                 <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 px-5 py-4">
-                    <div className="text-[11px] text-gray-400 mb-2 px-0.5">
+                    <div className="text-[11px] text-gray-600 mb-2 px-0.5">
                         Drag the handle (press and hold on touch) to reorder, or use the arrows.
                     </div>
                     <DndContext

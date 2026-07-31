@@ -36,7 +36,7 @@ test.describe('Z – Offline list → login → share (regression for 404 fix)',
         try {
             await page.getByRole('button', { name: /use.*local/i }).click({ timeout: 3_000 })
         } catch { /* no modal */ }
-        await page.getByRole('button', { name: 'Logout' }).waitFor({ timeout: 15_000 })
+        await page.getByRole('button', { name: 'Account menu' }).waitFor({ timeout: 15_000 })
         console.log('Logged in')
 
         // ── 3. Navigate to the list ──────────────────────────────────────────

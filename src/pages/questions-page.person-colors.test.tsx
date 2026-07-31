@@ -6,7 +6,7 @@ import type { Person } from '../edit-questions/types'
 import { PERSON_COLORS, personColorAt } from '../edit-questions/person-colors'
 
 vi.mock('../components/DatabaseContext', () => ({ useDatabase: vi.fn() }))
-vi.mock('../components/SolidPodContext', () => ({ useSolidPod: vi.fn() }))
+vi.mock('../components/SolidPodContext', () => ({ useSolidPod: vi.fn(() => ({ session: null, isLoggedIn: false })) }))
 vi.mock('../components/ForeignPodContext', () => ({ useForeignPod: vi.fn() }))
 
 const people: Person[] = [

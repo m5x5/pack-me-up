@@ -78,7 +78,7 @@ test.describe('F – Solid Pod Sync', () => {
     // Open People modal via pencil icon
     await page.locator('button[title="Edit people"]').click()
     await expect(page.getByRole('heading', { name: 'Edit People' })).toBeVisible({ timeout: 5_000 })
-    await page.getByRole('button', { name: '+ Add Person' }).click()
+    await page.getByRole('button', { name: 'Add Person', exact: true }).click()
     await page.locator('input[placeholder^="Person "]').last().fill('Sync Test Person')
     // Wait for the pod PUT to complete — set up the promise before clicking Save
     const putDone = page.waitForResponse(

@@ -6,11 +6,12 @@ test.describe('D – Navigation & UI', () => {
     await page.getByRole('link', { name: /My Questions & Items/i }).click()
     await expect(page).toHaveURL(/#\/manage-questions/)
 
-    await page.getByRole('link', { name: /Create List/i }).click()
-    await expect(page).toHaveURL(/#\/create-packing-list/)
-
-    await page.getByRole('link', { name: /View Lists/i }).click()
+    await page.getByRole('link', { name: 'Lists', exact: true }).click()
     await expect(page).toHaveURL(/#\/view-lists/)
+
+    // Creating a list happens from the Lists page now, not a nav link
+    await page.getByRole('button', { name: 'New List' }).first().click()
+    await expect(page).toHaveURL(/#\/create-packing-list/)
   })
 
   test('D2: Backups nav link is hidden when not logged in', async ({ freshPage: page }) => {

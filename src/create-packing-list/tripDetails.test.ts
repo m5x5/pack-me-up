@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatTripDate, formatTripDates, tripDatesOutOfOrder } from './tripDetails'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { formatTripDate, formatTripDates, tripDatesOutOfOrder, tripIsPast } from './tripDetails'
 
 describe('formatTripDate', () => {
     it('formats a YYYY-MM-DD string as a local calendar date', () => {
@@ -60,5 +60,35 @@ describe('tripDatesOutOfOrder', () => {
 
     it('is true when the end date is before the start date', () => {
         expect(tripDatesOutOfOrder('2026-07-19', '2026-07-12')).toBe(true)
+    })
+})
+
+describe('tripIsPast', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('is true when the trip ended before today', () => {
+        vi.useFakeTimers({ now: new Date(2026, 6, 31) })
+        expect(tripIsPast('2026-07-12', '2026-07-19')).toBe(true)
+    })
+
+    it('is false while the trip is still running or upcoming', () => {
+        vi.useFakeTimers({ now: new Date(2026, 6, 31) })
+        expect(tripIsPast('2026-07-28', '2026-08-08')).toBe(false)
+        expect(tripIsPast('2026-08-02', '2026-08-08')).toBe(false)
+    })
+
+    it('is false on the end date itself', () => {
+        vi.useFakeTimers({ now: new Date(2026, 6, 31) })
+        expect(tripIsPast('2026-07-28', '2026-07-31')).toBe(false)
+    })
+
+    it('falls back to the start date when there is no end date', () => {
+        vi.useFakeTimers({ now: new Date(2026, 6, 31) })
+        expect(tripIsPast('2026-07-12', undefined)).toBe(true)
+        expect(tripIsPast('2026-08-02', undefined)).toBe(false)
+    })
+
+    it('is false when the list has no trip dates', () => {
+        expect(tripIsPast(undefined, undefined)).toBe(false)
     })
 })
