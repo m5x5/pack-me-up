@@ -43,13 +43,13 @@ export const Navigation = () => {
 
     return (
         <>
-            <nav className="bg-primary-950 text-white shadow-soft" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+            <nav className="bg-primary-950 text-white shadow-soft safe-area-top">
                 <div className="max-w-7xl mx-auto px-4">
-                    <div className="flex items-center justify-between h-16">
+                    <div className="flex items-center justify-between h-14 md:h-16">
                         <div className="flex items-center">
                             <div className="flex-shrink-0">
-                                <Link to="/home" className="flex items-center gap-2 text-2xl font-bold hover:scale-105 transition-transform duration-200 drop-shadow-md">
-                                    <img src="/favicon.svg" alt="" className="h-8 w-8" />
+                                <Link to="/home" className="flex items-center gap-2 text-xl md:text-2xl font-bold hover:scale-105 transition-transform duration-200 drop-shadow-md">
+                                    <img src="/favicon.svg" alt="" className="h-7 w-7 md:h-8 md:w-8" />
                                     Pack Me Up
                                 </Link>
                             </div>
