@@ -21,7 +21,6 @@ test.describe('Z – Offline list → login → share (regression for 404 fix)',
         try { await page.getByRole('button', { name: 'Yes, Override' }).click({ timeout: 3_000 }) } catch { /* ok */ }
         await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 15_000 })
         await page.getByRole('button', { name: /Create My First Packing List/i }).click()
-        try { await page.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 }) } catch { /* ok */ }
         await page.waitForURL(/#\/create-packing-list/, { timeout: 10_000 })
 
         await page.getByPlaceholder('Enter a name for your packing list').fill('Offline Verification List')

@@ -51,6 +51,9 @@ vi.mock('../components/SharePackingListModal', () => ({
     SharePackingListModal: vi.fn(() => null),
 }))
 
+import { SharePackingListModal } from '../components/SharePackingListModal'
+import { getPendingSignInAction, setPendingSignInAction } from '../utils/pendingSignInAction'
+
 vi.mock('../hooks/useSharedListsSync', () => ({
     useSharedListsSync: vi.fn(() => ({
         sharedListsWithMe: { lists: [], lastModified: '' },
@@ -2747,5 +2750,113 @@ describe('ViewPackingList opening a long list for the first time', () => {
         expect(screen.queryByText('Alice item 0')).toBeNull()
         // Second time around it is their arrangement, not something to explain
         expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+})
+
+describe('ViewPackingList contextual sign-in to share', () => {
+    beforeEach(() => {
+        sessionStorage.clear()
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+        vi.mocked(SharePackingListModal).mockClear()
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function mockLoggedOut() {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+    }
+
+    function mockLoggedIn() {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { fetch: vi.fn(), info: { isLoggedIn: true, webId: 'https://me.example/profile#me' } },
+            webId: 'https://me.example/profile#me',
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+    }
+
+    const mockLogin = vi.fn()
+
+    it('offers Share to a logged-out user rather than hiding it', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        const shareButton = await screen.findByRole('button', { name: 'Share' })
+        expect((shareButton as HTMLButtonElement).disabled).toBe(false)
+    })
+
+    it('frames the sign-in ask around sharing when a logged-out user shares', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+
+        expect(screen.getByText(/sign in to share this list/i)).toBeTruthy()
+        expect(screen.getByRole('button', { name: /sign in to share/i })).toBeTruthy()
+    })
+
+    it('remembers the share the user was attempting when they sign in', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+        fireEvent.click(screen.getByRole('button', { name: /sign in to share/i }))
+        fireEvent.click(screen.getByLabelText('Inrupt PodSpaces'))
+
+        expect(mockLogin).toHaveBeenCalledWith('https://login.inrupt.com')
+        expect(getPendingSignInAction()).toEqual({ type: 'share', listId: 'test-list-1' })
+    })
+
+    it('drops the prompt without remembering anything when the user backs out', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+        fireEvent.click(screen.getByRole('button', { name: /not now/i }))
+
+        await waitFor(() => expect(screen.queryByText(/sign in to share this list/i)).toBeNull())
+        expect(getPendingSignInAction()).toBeNull()
+    })
+
+    it('resumes the share once the user comes back signed in', async () => {
+        setPendingSignInAction({ type: 'share', listId: 'test-list-1' })
+        mockLoggedIn()
+
+        renderComponent()
+
+        await waitFor(() =>
+            expect(vi.mocked(SharePackingListModal).mock.calls.some(([props]) => props.isOpen)).toBe(true)
+        )
+        // Consumed, so a later visit does not pop the dialog again
+        expect(getPendingSignInAction()).toBeNull()
+    })
+
+    it('leaves a share intended for another list alone', async () => {
+        setPendingSignInAction({ type: 'share', listId: 'some-other-list' })
+        mockLoggedIn()
+
+        renderComponent()
+
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+        expect(vi.mocked(SharePackingListModal).mock.calls.every(([props]) => !props.isOpen)).toBe(true)
+        expect(getPendingSignInAction()).toEqual({ type: 'share', listId: 'some-other-list' })
     })
 })
