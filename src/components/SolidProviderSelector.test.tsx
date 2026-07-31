@@ -137,4 +137,30 @@ describe('SolidProviderSelector', () => {
       expect(onSelect).toHaveBeenCalledWith('https://login.inrupt.com')
     })
   })
+
+  describe('connecting state', () => {
+    it('shows a spinner instead of closing while the redirect is in flight', () => {
+      let resolveLogin: () => void = () => {}
+      const onSelect = vi.fn(() => new Promise<void>(resolve => { resolveLogin = resolve }))
+      render(<SolidProviderSelector {...defaultProps} onSelect={onSelect} />)
+
+      clickProvider('Inrupt PodSpaces')
+
+      expect(screen.getByText(/connecting to inrupt podspaces/i)).toBeTruthy()
+      expect(screen.queryByPlaceholderText(/search providers/i)).toBeNull()
+
+      resolveLogin()
+    })
+
+    it('shows an error and lets the user try again when the connection fails', async () => {
+      const onSelect = vi.fn().mockRejectedValue(new Error('nope'))
+      render(<SolidProviderSelector {...defaultProps} onSelect={onSelect} />)
+
+      clickProvider('Inrupt PodSpaces')
+
+      expect(await screen.findByText(/couldn't connect to that provider/i)).toBeTruthy()
+      // Back to the search UI, not stuck showing the spinner
+      expect(getSearchInput()).toBeTruthy()
+    })
+  })
 })
