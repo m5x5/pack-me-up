@@ -15,7 +15,7 @@ test.describe('A – Onboarding & Wizard', () => {
     await expect(page.getByRole('link', { name: /View Packing Lists/i })).not.toBeVisible()
   })
 
-  test('A2: wizard with one person redirects to create-packing-list after dismissing pod prompt', async ({ freshPage: page }) => {
+  test('A2: wizard with one person goes straight to create-packing-list, with no sign-in ask', async ({ freshPage: page }) => {
     await page.goto('/#/wizard')
     // name field is pre-filled with "Me"
     await fillPersonRequiredFields(page)
@@ -26,11 +26,9 @@ test.describe('A – Onboarding & Wizard', () => {
     await expect(page.getByText(/Thinking about Me/i)).toBeVisible()
     await expect(page.getByText(/\d+ questions and \d+ items across 1 person/i)).toBeVisible({ timeout: 5_000 })
     await page.getByRole('button', { name: /Create My First Packing List/i }).click()
-    // Pod prompt appears for non-logged-in users
-    await expect(page.getByText("Great! Your Questions Are Ready")).toBeVisible({ timeout: 5_000 })
-    await page.getByRole('button', { name: 'Maybe Later' }).click()
-    // Should be on create-packing-list page
+    // Straight to the list builder — onboarding never asks a logged-out user to sign in
     await expect(page).toHaveURL(/#\/create-packing-list/, { timeout: 5_000 })
+    await expect(page.getByRole('button', { name: 'Maybe Later' })).toHaveCount(0)
     // Landing page now shows "View Packing Lists"
     await page.goto('/')
     await expect(page.getByRole('link', { name: /View Packing Lists/i })).toBeVisible()
@@ -49,9 +47,7 @@ test.describe('A – Onboarding & Wizard', () => {
     // Generate
     await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
     await waitForWizardSuccess(page)
-    // Dismiss pod prompt path
     await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-    await page.getByRole('button', { name: 'Maybe Later' }).click()
     // On manage-questions page, expand People section and verify both names
     await expect(page).toHaveURL(/#\/manage-questions/, { timeout: 5_000 })
     // Open People modal via pencil icon in the legend
@@ -70,7 +66,6 @@ test.describe('A – Onboarding & Wizard', () => {
     await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
     await waitForWizardSuccess(page)
     await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-    await page.getByRole('button', { name: 'Maybe Later' }).click()
     // Wait for client-side navigation to manage-questions and let the page settle
     await page.waitForURL(/#\/manage-questions/, { timeout: 8_000 })
     await page.waitForLoadState('networkidle')
@@ -98,7 +93,6 @@ test.describe('A – Onboarding & Wizard', () => {
     await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
     await waitForWizardSuccess(page)
     await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-    await page.getByRole('button', { name: 'Maybe Later' }).click()
     await page.waitForURL(/#\/manage-questions/, { timeout: 8_000 })
     await page.waitForLoadState('networkidle')
 

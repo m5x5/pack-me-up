@@ -16,6 +16,7 @@ import { POD_CONTAINERS, getPrimaryPodUrl, saveRdfToPod, resolveOwnerDisplayName
 import { useOwnerDisplayName } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { SharePackingListModal } from '../components/SharePackingListModal'
+import { SolidPodPrompt } from '../components/SolidPodPrompt'
 import { UpdateFromQuestionsModal } from '../components/UpdateFromQuestionsModal'
 import { useForeignPod } from '../components/ForeignPodContext'
 import { useSharedListsSync } from '../hooks/useSharedListsSync'
@@ -28,6 +29,7 @@ import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { useSectionOrder } from '../hooks/useSectionOrder'
+import { clearPendingSignInAction, getPendingSignInAction, setPendingSignInAction } from '../utils/pendingSignInAction'
 import { usePersonColors } from '../hooks/usePersonColors'
 import { PersonAvatar } from '../components/PersonAvatar'
 import { AddItemComposer, UNCATEGORISED_LABEL, type AddItemTarget, type PersonOption } from '../components/AddItemComposer'
@@ -172,6 +174,9 @@ export function ViewPackingList() {
     const [packingList, setPackingList] = useState<PackingList | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [shareModalOpen, setShareModalOpen] = useState(false)
+    // Sharing needs a pod, so a logged-out sharer gets the ask framed around
+    // sharing rather than a generic "set up a pod" pitch.
+    const [signInToSharePromptOpen, setSignInToSharePromptOpen] = useState(false)
     // Additions computed from the question set; non-null opens the preview modal.
     const [questionUpdateAdditions, setQuestionUpdateAdditions] = useState<PackingListItem[] | null>(null)
     // Whether the question set exists locally (gates the "Update from questions" button).
@@ -309,6 +314,18 @@ export function ViewPackingList() {
             getPrimaryPodUrl(session).then(url => setOwnPodUrl(url ?? null))
         }
     }, [isLoggedIn, session])
+
+    // Someone who signed in from the "share this list" prompt came back here to
+    // share — pick the action up where they left it rather than making them
+    // find the button again.
+    useEffect(() => {
+        if (!isLoggedIn || !id) return
+        const pending = getPendingSignInAction()
+        if (pending?.type === 'share' && pending.listId === id) {
+            clearPendingSignInAction()
+            setShareModalOpen(true)
+        }
+    }, [isLoggedIn, id])
 
     // The "Update from questions" action only applies to the user's own lists,
     // regenerating them from their local question set. Foreign lists belong to
@@ -1258,12 +1275,12 @@ export function ViewPackingList() {
                                 Update from questions
                             </Button>
                         )}
-                        {isLoggedIn && !foreignPodUrl && (
+                        {!foreignPodUrl && (
                             <Button
                                 type="button"
                                 variant="secondary"
-                                onClick={() => setShareModalOpen(true)}
-                                disabled={!ownPodUrl}
+                                onClick={() => isLoggedIn ? setShareModalOpen(true) : setSignInToSharePromptOpen(true)}
+                                disabled={isLoggedIn && !ownPodUrl}
                             >
                                 Share
                             </Button>
@@ -1863,6 +1880,22 @@ export function ViewPackingList() {
             message="Remove this guest and all their items from this list?"
             confirmText="Remove"
             confirmVariant="danger"
+        />
+        <SolidPodPrompt
+            isOpen={signInToSharePromptOpen}
+            onClose={() => setSignInToSharePromptOpen(false)}
+            title="Sign in to share this list"
+            message="Sharing sends your friend a link to this list, so it needs somewhere online to live. Sign in with a Solid Pod and we'll bring you straight back here to share."
+            benefitsTitle="What signing in unlocks:"
+            benefits={[
+                { label: 'Share this list', text: 'Send a friend a link, or invite them by WebID' },
+                { label: 'Pack together', text: 'You both tick items off the same list' },
+                { label: 'Free', text: 'All major Pod providers are free to sign up' },
+                { label: 'You own your data', text: 'Your lists stay in your personal storage' },
+            ]}
+            confirmLabel="🔗 Sign in to share"
+            dismissLabel="Not now"
+            onBeforeLogin={() => { if (id) setPendingSignInAction({ type: 'share', listId: id }) }}
         />
         {session && ownPodUrl && id && (
             <SharePackingListModal

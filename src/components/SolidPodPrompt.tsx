@@ -4,12 +4,34 @@ import { Button } from './Button'
 import { SolidProviderSelector } from './SolidProviderSelector'
 import { useSolidPod } from './SolidPodContext'
 
+export interface PodBenefit {
+  label: string
+  text: string
+}
+
+const DEFAULT_BENEFITS: PodBenefit[] = [
+  { label: 'Free', text: 'All major Pod providers are free to sign up' },
+  { label: 'Multi-device access', text: 'Access your packing lists from any device' },
+  { label: 'You own your data', text: 'Your lists stay in your personal storage' },
+  { label: 'Never lose your work', text: 'Safe even if you clear browser data' },
+  { label: 'Privacy-focused', text: 'You control who can access your data' },
+]
+
 interface SolidPodPromptProps {
   isOpen: boolean
   onClose: () => void
   title: string
   message: string
-  dismissalKey?: string
+  /** Heading above the benefits list */
+  benefitsTitle?: string
+  /** Override the benefits when the prompt is framed around a specific payoff */
+  benefits?: PodBenefit[]
+  /** Label of the button that starts the sign-in flow */
+  confirmLabel?: string
+  /** Label of the dismiss button */
+  dismissLabel?: string
+  /** Runs just before the redirect to the provider — record what to resume here */
+  onBeforeLogin?: () => void
 }
 
 /**
@@ -21,7 +43,11 @@ export function SolidPodPrompt({
   onClose,
   title,
   message,
-  dismissalKey
+  benefitsTitle = 'Benefits of using a Solid Pod:',
+  benefits = DEFAULT_BENEFITS,
+  confirmLabel = '🔒 Set Up Solid Pod',
+  dismissLabel = 'Maybe Later',
+  onBeforeLogin,
 }: SolidPodPromptProps) {
   const [isProviderSelectorOpen, setIsProviderSelectorOpen] = useState(false)
   const { login } = useSolidPod()
@@ -31,18 +57,12 @@ export function SolidPodPrompt({
   }
 
   const handleProviderSelect = (issuer: string) => {
-    // Mark as dismissed since they're taking action
-    if (dismissalKey) {
-      localStorage.setItem(dismissalKey, 'true')
-    }
+    onBeforeLogin?.()
     onClose()
     return login(issuer)
   }
 
   const handleMaybeLater = () => {
-    if (dismissalKey) {
-      localStorage.setItem(dismissalKey, 'true')
-    }
     onClose()
   }
 
@@ -57,23 +77,13 @@ export function SolidPodPrompt({
           <p className="text-gray-700 leading-relaxed">{message}</p>
 
           <div className="bg-gradient-to-br from-primary-50 to-accent-50 border-2 border-primary-200 rounded-xl p-4 space-y-2">
-            <h4 className="font-bold text-primary-900 text-sm">Benefits of using a Solid Pod:</h4>
+            <h4 className="font-bold text-primary-900 text-sm">{benefitsTitle}</h4>
             <ul className="text-sm text-gray-700 space-y-1.5 ml-4 list-disc">
-              <li>
-                <strong>Free</strong> - All major Pod providers are free to sign up
-              </li>
-              <li>
-                <strong>Multi-device access</strong> - Access your packing lists from any device
-              </li>
-              <li>
-                <strong>You own your data</strong> - Your lists stay in your personal storage
-              </li>
-              <li>
-                <strong>Never lose your work</strong> - Safe even if you clear browser data
-              </li>
-              <li>
-                <strong>Privacy-focused</strong> - You control who can access your data
-              </li>
+              {benefits.map(benefit => (
+                <li key={benefit.label}>
+                  <strong>{benefit.label}</strong> - {benefit.text}
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -84,7 +94,7 @@ export function SolidPodPrompt({
               variant="primary"
               className="flex-1"
             >
-              🔒 Set Up Solid Pod
+              {confirmLabel}
             </Button>
             <Button
               type="button"
@@ -92,7 +102,7 @@ export function SolidPodPrompt({
               variant="ghost"
               className="flex-1"
             >
-              Maybe Later
+              {dismissLabel}
             </Button>
           </div>
 

@@ -25,7 +25,6 @@ test.describe('L – Sharing a packing list', () => {
         try { await pageA.getByRole('button', { name: 'Yes, Override' }).click({ timeout: 3_000 }) } catch { /* ok */ }
         await expect(pageA.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 15_000 })
         await pageA.getByRole('button', { name: /Create My First Packing List/i }).click()
-        try { await pageA.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 }) } catch { /* ok */ }
         await pageA.waitForURL(/#\/create-packing-list/, { timeout: 10_000 })
 
         // Create list
