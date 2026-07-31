@@ -30,6 +30,10 @@ function isProviderVisible(name: string): boolean {
   return all.some(b => b.querySelector('div.font-medium')?.textContent === name)
 }
 
+function getSearchInput(): HTMLInputElement {
+  return screen.getByPlaceholderText(/search providers/i) as HTMLInputElement
+}
+
 describe('SolidProviderSelector', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -46,17 +50,25 @@ describe('SolidProviderSelector', () => {
       expect(getPrimaryProviderName()).toBe('Inrupt PodSpaces')
     })
 
-    it('hides other providers by default', () => {
+    it('shows all providers below the search box by default', () => {
       render(<SolidProviderSelector {...defaultProps} />)
-      expect(isProviderVisible('solidcommunity.net')).toBe(false)
+      expect(isProviderVisible('solidcommunity.net')).toBe(true)
+      expect(isProviderVisible('Private Data Pod')).toBe(true)
+    })
+
+    it('filters the results as the user types', () => {
+      render(<SolidProviderSelector {...defaultProps} />)
+      fireEvent.change(getSearchInput(), { target: { value: 'solidcommunity' } })
+      expect(isProviderVisible('solidcommunity.net')).toBe(true)
+      expect(isProviderVisible('Inrupt PodSpaces')).toBe(false)
       expect(isProviderVisible('Private Data Pod')).toBe(false)
     })
 
-    it('shows other providers when "Other providers" is clicked', () => {
+    it('offers a custom-provider option built from the typed text', () => {
       render(<SolidProviderSelector {...defaultProps} />)
-      fireEvent.click(screen.getByRole('button', { name: /other providers/i }))
-      expect(isProviderVisible('solidcommunity.net')).toBe(true)
-      expect(isProviderVisible('Private Data Pod')).toBe(true)
+      fireEvent.change(getSearchInput(), { target: { value: 'https://my-pod.example.com' } })
+      expect(screen.getByText('Connect to custom provider')).toBeTruthy()
+      expect(screen.getByText('https://my-pod.example.com')).toBeTruthy()
     })
   })
 
@@ -65,13 +77,6 @@ describe('SolidProviderSelector', () => {
       localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidcommunity.net')
       render(<SolidProviderSelector {...defaultProps} />)
       expect(getPrimaryProviderName()).toBe('solidcommunity.net')
-    })
-
-    it('does not show other providers by default', () => {
-      localStorage.setItem(LAST_PROVIDER_KEY, 'https://solidcommunity.net')
-      render(<SolidProviderSelector {...defaultProps} />)
-      expect(isProviderVisible('Inrupt PodSpaces')).toBe(false)
-      expect(isProviderVisible('Private Data Pod')).toBe(false)
     })
 
     it('falls back to Inrupt PodSpaces for an unrecognised issuer', () => {
@@ -88,11 +93,26 @@ describe('SolidProviderSelector', () => {
       expect(localStorage.getItem(LAST_PROVIDER_KEY)).toBe('https://login.inrupt.com')
     })
 
-    it('saves a different provider when selected from the expanded list', () => {
+    it('saves a different provider when selected from the results list', () => {
       render(<SolidProviderSelector {...defaultProps} />)
-      fireEvent.click(screen.getByRole('button', { name: /other providers/i }))
       clickProvider('solidcommunity.net')
       expect(localStorage.getItem(LAST_PROVIDER_KEY)).toBe('https://solidcommunity.net')
+    })
+
+    it('saves a custom provider URL typed into the search box', () => {
+      render(<SolidProviderSelector {...defaultProps} />)
+      fireEvent.change(getSearchInput(), { target: { value: 'https://my-pod.example.com' } })
+      fireEvent.click(screen.getByText('Connect to custom provider'))
+      expect(localStorage.getItem(LAST_PROVIDER_KEY)).toBe('https://my-pod.example.com')
+    })
+
+    it('connects to the custom provider on Enter when nothing matches', () => {
+      const onSelect = vi.fn()
+      render(<SolidProviderSelector {...defaultProps} onSelect={onSelect} />)
+      const input = getSearchInput()
+      fireEvent.change(input, { target: { value: 'https://my-pod.example.com' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(onSelect).toHaveBeenCalledWith('https://my-pod.example.com')
     })
 
     it('calls onSelect with the issuer', () => {
