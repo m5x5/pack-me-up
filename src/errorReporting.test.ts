@@ -41,3 +41,60 @@ describe('reportError', () => {
         expect(details).toContain('a plain string error')
     })
 })
+
+/**
+ * Mirrors Sentry's `eventFromUnknownInput`: anything captured that isn't an
+ * Error loses its message and stack and is titled by its keys instead. That is
+ * how a thrown `{ name, message }` object reached Sentry as the useless
+ * "Object captured as exception with keys: message, name", with only Sentry's
+ * own minified frames attached.
+ */
+function sentryTitle(captured: unknown): string {
+    if (captured instanceof Error) return `${captured.name}: ${captured.message}`
+    if (typeof captured === 'object' && captured !== null) {
+        return `Object captured as exception with keys: ${Object.keys(captured).sort().join(', ')}`
+    }
+    return String(captured)
+}
+
+describe('reportError with values that are not Errors', () => {
+    beforeEach(() => {
+        captureException.mockClear()
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    it('sends a thrown { name, message } object to Sentry as a real Error', () => {
+        reportError({ name: 'not_found', message: 'Packing list not found' }, 'Error fetching packing list')
+
+        const captured = captureException.mock.calls[0][0]
+        expect(sentryTitle(captured)).not.toBe('Object captured as exception with keys: message, name')
+        expect(captured).toBeInstanceOf(Error)
+        expect((captured as Error).name).toBe('not_found')
+        expect((captured as Error).message).toBe('Packing list not found')
+        expect((captured as Error).stack).toBeTruthy()
+    })
+
+    it('sends a thrown string to Sentry as a real Error carrying that message', () => {
+        reportError('403 Forbidden', 'Save to Pod error')
+
+        const captured = captureException.mock.calls[0][0]
+        expect(captured).toBeInstanceOf(Error)
+        expect((captured as Error).message).toBe('403 Forbidden')
+    })
+
+    it('keeps the original value in the console log and in the copyable details', () => {
+        const thrown = { name: 'not_found', message: 'Packing list not found' }
+        const details = reportError(thrown, 'Error fetching packing list')
+
+        expect(console.error).toHaveBeenCalledWith('Error fetching packing list', thrown)
+        expect(details).toContain('not_found')
+        expect(details).toContain('Packing list not found')
+    })
+
+    it('preserves extra properties of the thrown object as Sentry context', () => {
+        reportError({ name: 'conflict', message: 'Document update conflict', status: 409 })
+
+        const captured = captureException.mock.calls[0][0] as Error & { cause?: unknown }
+        expect(captured.cause).toEqual({ name: 'conflict', message: 'Document update conflict', status: 409 })
+    })
+})

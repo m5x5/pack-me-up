@@ -300,7 +300,7 @@ export function ViewPackingList() {
     const isDesktop = useIsDesktop()
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
-    const { db } = useDatabase()
+    const { db, loginSyncInProgress } = useDatabase()
     // Read from the question set on every visit, not copied onto the list when
     // it was generated — the order is one global setting, so changing it has to
     // reach the lists that already exist. See `useSectionOrder`.
@@ -555,6 +555,14 @@ export function ViewPackingList() {
     }, [saveToPod])
 
     useEffect(() => {
+        // The login sync (pod -> local) runs in the background while the app is
+        // already rendering, so reading local storage before it finishes would
+        // miss any list this device hasn't seen yet — a fresh browser, or a link
+        // to a list created on another device. Wait for it and keep the spinner
+        // up; the effect re-runs when the sync finishes. Same guard as
+        // create-packing-list and questions-page.
+        if (loginSyncInProgress) return
+
         const fetchPackingList = async () => {
             try {
                 const doc = await db.getPackingList(id!)
@@ -572,17 +580,23 @@ export function ViewPackingList() {
                 setIsLoading(false)
             } catch (err) {
                 const isNotFound = typeof err === 'object' && err !== null && (err as { name?: string }).name === 'not_found'
-                if (isNotFound && foreignPodUrl) {
-                    // Leave isLoading=true — the first pod poll will hydrate via handleSyncSuccess
-                } else {
-                    reportError(err, 'Error fetching packing list')
-                    setIsLoading(false)
+                if (isNotFound) {
+                    // Not an error: the list simply isn't on this device. On a
+                    // foreign pod the first poll hydrates it via
+                    // handleSyncSuccess, so hold the spinner. Otherwise the
+                    // login sync has already had its turn and the list really is
+                    // gone, so fall through to "Packing list not found" — but
+                    // never report it, a missing list is a normal outcome.
+                    if (!foreignPodUrl) setIsLoading(false)
+                    return
                 }
+                reportError(err, 'Error fetching packing list')
+                setIsLoading(false)
             }
         }
 
         fetchPackingList()
-    }, [db, id, setValue, foreignPodUrl])
+    }, [db, id, setValue, foreignPodUrl, loginSyncInProgress])
 
     const handleItemChange = useDebouncedCallback(async () => {
         if (!packingList) {
