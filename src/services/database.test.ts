@@ -189,10 +189,14 @@ describe('PackingAppDatabase', () => {
     })
 
     it('should throw not_found error when question set does not exist', async () => {
-      await expect(db.getQuestionSet()).rejects.toEqual({
+      await expect(db.getQuestionSet()).rejects.toMatchObject({
         name: 'not_found',
         message: 'Question set not found'
       })
+    })
+
+    it('should throw a real Error for a missing question set, so Sentry gets a stack', async () => {
+      await expect(db.getQuestionSet()).rejects.toBeInstanceOf(Error)
     })
 
     it('should preserve createdAt timestamp when updating', async () => {
@@ -311,10 +315,22 @@ describe('PackingAppDatabase', () => {
     })
 
     it('should throw not_found error when packing list does not exist', async () => {
-      await expect(db.getPackingList('nonexistent')).rejects.toEqual({
+      await expect(db.getPackingList('nonexistent')).rejects.toMatchObject({
         name: 'not_found',
         message: 'Packing list not found'
       })
+    })
+
+    // A plain `{ name, message }` object reaches Sentry as "Object captured as
+    // exception with keys: message, name" — no message, no stack, nothing to
+    // act on. Every not_found the app throws must be a real Error.
+    it('should throw a real Error for a missing packing list, so Sentry gets a stack', async () => {
+      await expect(db.getPackingList('nonexistent')).rejects.toBeInstanceOf(Error)
+    })
+
+    it('should throw a real Error for missing shared-with-me and shared-lists-with-me docs', async () => {
+      await expect(db.getSharedWithMe()).rejects.toBeInstanceOf(Error)
+      await expect(db.getSharedListsWithMe()).rejects.toBeInstanceOf(Error)
     })
 
     it('should retrieve all packing lists', async () => {

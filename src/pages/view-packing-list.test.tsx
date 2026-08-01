@@ -66,6 +66,11 @@ vi.mock('../utils/haptics', () => ({
     tapFeedback: () => mockTapFeedback(),
 }))
 
+const mockCaptureException = vi.fn()
+vi.mock('@sentry/capacitor', () => ({
+    captureException: (...args: unknown[]) => mockCaptureException(...args),
+}))
+
 const mockUseDatabase = vi.mocked(useDatabase)
 const mockUseSolidPod = vi.mocked(useSolidPod)
 const mockUsePodSync = vi.mocked(usePodSync)
@@ -1266,6 +1271,131 @@ describe('ViewPackingList foreign pod (?pod= param)', () => {
             'error',
             expect.any(String)
         )
+    })
+})
+
+// ─── Own-pod list not in local storage yet ──────────────────────────────────
+//
+// DatabaseContext renders the app as soon as the pod database is resolved and
+// runs `syncAllDataFromPod` in the background, so a device that has never seen
+// a list locally (a fresh browser, or a deep link to a list created on another
+// device) hits `getPackingList` before the login sync has written it. That is
+// not an error — the pod poll hydrates the page moments later — but it used to
+// be captured, and because the miss is thrown as a plain `{ name, message }`
+// object it reached Sentry as "Object captured as exception with keys:
+// message, name" with no usable stack.
+
+describe('ViewPackingList when an own-pod list is not in local storage yet', () => {
+    function renderMissingLocally(extraDbContext: Record<string, unknown> = {}) {
+        const getPackingList = vi.fn().mockRejectedValue({ name: 'not_found', message: 'Packing list not found' })
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList } as unknown as PackingAppDatabase,
+            ...extraDbContext,
+        })
+        const result = render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+        return { ...result, getPackingList }
+    }
+
+    beforeEach(() => {
+        mockCaptureException.mockClear()
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { info: { isLoggedIn: true, webId: 'https://own.solidcommunity.net/profile/card#me' }, fetch: vi.fn() },
+            webId: 'https://own.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('does not report the local miss to Sentry', async () => {
+        const { getPackingList } = renderMissingLocally()
+
+        await waitFor(() => expect(getPackingList).toHaveBeenCalled())
+        await waitFor(() => expect(screen.getByText('Packing list not found')).toBeTruthy())
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('does not read from local storage while the login sync is still running', async () => {
+        const { getPackingList } = renderMissingLocally({ loginSyncInProgress: true })
+
+        await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Loading packing list...'))
+        expect(getPackingList).not.toHaveBeenCalled()
+        expect(screen.queryByText('Packing list not found')).toBeNull()
+    })
+
+    it('reads local storage once the login sync finishes', async () => {
+        const getPackingList = vi.fn().mockRejectedValue({ name: 'not_found', message: 'Packing list not found' })
+        const db = { ...makeDb(), getPackingList } as unknown as PackingAppDatabase
+        mockUseDatabase.mockReturnValue({ db, loginSyncInProgress: true })
+
+        const { rerender } = render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+        expect(getPackingList).not.toHaveBeenCalled()
+
+        mockUseDatabase.mockReturnValue({ db, loginSyncInProgress: false })
+        rerender(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+
+        await waitFor(() => expect(getPackingList).toHaveBeenCalledWith('test-list-1'))
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('hydrates from the pod once the poll succeeds', async () => {
+        renderMissingLocally()
+
+        await waitFor(() => expect(mockUsePodSync).toHaveBeenCalled())
+        const updateFormAndState = mockUseSyncCoordinator.mock.calls[mockUseSyncCoordinator.mock.calls.length - 1][0]
+            .updateFormAndState as (data: unknown, rev: string) => void
+        act(() => updateFormAndState(testPackingList, '2'))
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('still reports a genuine load failure to Sentry', async () => {
+        const failure = new Error('IndexedDB unavailable')
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList: vi.fn().mockRejectedValue(failure) } as unknown as PackingAppDatabase,
+        })
+
+        render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+
+        await waitFor(() => expect(mockCaptureException).toHaveBeenCalledWith(failure))
     })
 })
 
