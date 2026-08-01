@@ -154,11 +154,11 @@ function SuggestionCard({ suggestions, questionSet, onSaveToQuestionSet, onSkip,
                                         })()
                                     const isShared = communalFlags[item.id] ?? item.communal ?? false
                                     return (
-                                    <div key={item.id} className="flex flex-col gap-2 bg-white rounded border border-amber-200 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div key={item.id} className="flex flex-col gap-2 bg-white dark:bg-gray-800 rounded border border-amber-200 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
-                                            <span className="font-medium text-gray-900">{item.itemText}</span>
+                                            <span className="font-medium text-gray-900 dark:text-gray-100">{item.itemText}</span>
                                             {item.personName && (
-                                                <span className="ml-2 text-sm text-gray-500">for {item.personName}</span>
+                                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">for {item.personName}</span>
                                             )}
                                         </div>
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -177,7 +177,7 @@ function SuggestionCard({ suggestions, questionSet, onSaveToQuestionSet, onSkip,
                                                     ))
                                                 )}
                                             </select>
-                                            <label className="flex items-center gap-1.5 text-sm text-gray-600 shrink-0" title="Packed once for the whole group instead of per person">
+                                            <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 shrink-0" title="Packed once for the whole group instead of per person">
                                                 <input
                                                     type="checkbox"
                                                     aria-label={`Save ${item.itemText} as a shared item`}
@@ -268,11 +268,11 @@ function DeletionSuggestionCard({ suggestions, onRemovePermanently, onKeep, onDi
                             <p className="text-sm text-red-700 font-semibold mb-2">From: {listName}</p>
                             <div className="space-y-2">
                                 {items.map(({ listId, item }) => (
-                                    <div key={item.id} className="flex flex-col gap-2 bg-white rounded border border-red-200 px-3 py-2">
+                                    <div key={item.id} className="flex flex-col gap-2 bg-white dark:bg-gray-800 rounded border border-red-200 px-3 py-2">
                                         <div>
-                                            <span className="font-medium text-gray-900">{item.itemText}</span>
+                                            <span className="font-medium text-gray-900 dark:text-gray-100">{item.itemText}</span>
                                             {item.personName && (
-                                                <span className="ml-2 text-sm text-gray-500">for {item.personName}</span>
+                                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">for {item.personName}</span>
                                             )}
                                         </div>
                                         <div className="flex gap-2">
@@ -672,23 +672,23 @@ export function CreatePackingList() {
             <>
                 <div className="max-w-4xl mx-auto py-8 px-4">
                     <div className="mb-8">
-                        <h1 className="text-2xl font-bold text-gray-900">Create New Packing List</h1>
-                        <p className="mt-2 text-gray-600">Let's set up your packing list questions first!</p>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Create New Packing List</h1>
+                        <p className="mt-2 text-gray-600 dark:text-gray-400">Let's set up your packing list questions first!</p>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-soft border-2 border-primary-200 p-8">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-soft border-2 border-primary-200 dark:border-primary-800 p-8">
                         <div className="text-center mb-6">
                             <div className="text-6xl mb-4">📋</div>
-                            <h2 className="text-2xl font-bold text-gray-900 mb-2">No Questions Found</h2>
-                            <p className="text-gray-600">
+                            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">No Questions Found</h2>
+                            <p className="text-gray-600 dark:text-gray-400">
                                 Before you can create a packing list, you need to set up your packing list questions.
                             </p>
                         </div>
 
                         <div className="space-y-4 max-w-2xl mx-auto">
-                            <div className="bg-gradient-to-br from-primary-50 to-primary-100 p-6 rounded-xl border-2 border-primary-200">
-                                <h3 className="text-lg font-bold text-primary-900 mb-2">✨ Quick Start with Wizard</h3>
-                                <p className="text-gray-700 mb-4">
+                            <div className="bg-gradient-to-br from-primary-50 dark:from-primary-950/40 to-primary-100 dark:to-primary-900/30 p-6 rounded-xl border-2 border-primary-200 dark:border-primary-800">
+                                <h3 className="text-lg font-bold text-primary-900 dark:text-primary-200 mb-2">✨ Quick Start with Wizard</h3>
+                                <p className="text-gray-700 dark:text-gray-300 mb-4">
                                     Answer a few simple questions and we'll generate a personalized question set for you.
                                 </p>
                                 <Link to="/wizard">
@@ -699,13 +699,13 @@ export function CreatePackingList() {
                             </div>
 
                             {!isLoggedIn && (
-                                <div className="bg-gradient-to-br from-accent-50 to-accent-100 p-6 rounded-xl border-2 border-accent-200">
-                                    <h3 className="text-lg font-bold text-accent-900 mb-2">🔒 Login to Sync Questions</h3>
-                                    <p className="text-gray-700 mb-4">
+                                <div className="bg-gradient-to-br from-accent-50 dark:from-accent-950/40 to-accent-100 dark:to-accent-900/30 p-6 rounded-xl border-2 border-accent-200 dark:border-accent-800">
+                                    <h3 className="text-lg font-bold text-accent-900 dark:text-accent-200 mb-2">🔒 Login to Sync Questions</h3>
+                                    <p className="text-gray-700 dark:text-gray-300 mb-4">
                                         If you've already created questions and saved them to your Solid Pod, login to sync them.
                                     </p>
                                     <button
-                                        className="text-sm font-semibold text-accent-700 underline hover:text-accent-900"
+                                        className="text-sm font-semibold text-accent-700 dark:text-accent-300 underline hover:text-accent-900 dark:hover:text-accent-300"
                                         onClick={() => setIsProviderSelectorOpen(true)}
                                     >
                                         Login with Solid Pod
@@ -713,9 +713,9 @@ export function CreatePackingList() {
                                 </div>
                             )}
 
-                            <div className="bg-gradient-to-br from-secondary-50 to-secondary-100 p-6 rounded-xl border-2 border-secondary-200">
-                                <h3 className="text-lg font-bold text-secondary-900 mb-2">✏️ Create Manually</h3>
-                                <p className="text-gray-700 mb-4">
+                            <div className="bg-gradient-to-br from-secondary-50 dark:from-secondary-950/40 to-secondary-100 dark:to-secondary-900/30 p-6 rounded-xl border-2 border-secondary-200 dark:border-secondary-800">
+                                <h3 className="text-lg font-bold text-secondary-900 dark:text-secondary-200 mb-2">✏️ Create Manually</h3>
+                                <p className="text-gray-700 dark:text-gray-300 mb-4">
                                     Prefer full control? Create your packing list questions from scratch.
                                 </p>
                                 <Link to="/manage-questions">
@@ -743,8 +743,8 @@ export function CreatePackingList() {
     return (
         <div className="max-w-4xl mx-auto py-8 px-4">
             <div className="mb-8">
-                <h1 className="text-2xl font-bold text-gray-900">Create New Packing List</h1>
-                <p className="mt-2 text-gray-600">Answer the questions below to create your packing list.</p>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Create New Packing List</h1>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">Answer the questions below to create your packing list.</p>
             </div>
 
             {!foreignPodUrl && (
@@ -792,7 +792,7 @@ export function CreatePackingList() {
                         placeholder="e.g. 3"
                         {...register('nights', { valueAsNumber: true, min: 1 })}
                     />
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         We'll suggest quantities for items with a per-night amount, like socks — e.g. 3 nights → Socks ×3.
                     </p>
                 </div>
@@ -820,16 +820,16 @@ export function CreatePackingList() {
                             {...register('endDate')}
                         />
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         Where you're going and when — shown on your lists so you can tell trips apart.
                     </p>
                 </div>
 
                 {/* Person Selection */}
                 {questionSet.people.length > 0 && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-medium text-gray-900">
+                            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
                                 Who is going on this trip?
                             </h3>
                             <button
@@ -865,10 +865,10 @@ export function CreatePackingList() {
                                         color={personColorFor(person, personIndex)}
                                         size="sm"
                                     />
-                                    <span className="text-gray-700">
+                                    <span className="text-gray-700 dark:text-gray-300">
                                         {person.name}
                                         {person.ageRange && (
-                                            <span className="ml-2 text-sm text-gray-500">({person.ageRange})</span>
+                                            <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">({person.ageRange})</span>
                                         )}
                                     </span>
                                 </label>
@@ -882,11 +882,11 @@ export function CreatePackingList() {
                     const questionType = question.questionType || "single-choice"
 
                     return (
-                    <div key={question.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                        <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    <div key={question.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
                             {question.text}
                             {questionType === "multiple-choice" && (
-                                <span className="ml-2 text-sm text-gray-500">(select all that apply)</span>
+                                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">(select all that apply)</span>
                             )}
                         </h3>
                         <input
@@ -905,7 +905,7 @@ export function CreatePackingList() {
                                             {...register(`questionAnswers.${index}.selectedOptionIds.0`)}
                                             className="h-4 w-4 text-blue-600"
                                         />
-                                        <span className="text-gray-700">{option.text}</span>
+                                        <span className="text-gray-700 dark:text-gray-300">{option.text}</span>
                                     </label>
                                 ))
                             ) : (
@@ -932,7 +932,7 @@ export function CreatePackingList() {
                                             }}
                                             className="h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                                         />
-                                        <span className="text-gray-700">{option.text}</span>
+                                        <span className="text-gray-700 dark:text-gray-300">{option.text}</span>
                                     </label>
                                     )
                                 })

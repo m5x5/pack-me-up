@@ -1237,13 +1237,13 @@ export function ViewPackingList() {
                     onClick={() => navigate(backPath)}
                     aria-label="Back to lists"
                     title="Back to lists"
-                    className="mb-1 -ml-1.5 inline-flex items-center justify-center rounded-lg p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                    className="mb-1 -ml-1.5 inline-flex items-center justify-center rounded-lg p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
                     <ArrowLeft className="w-5 h-5" aria-hidden="true" />
                 </button>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                        <h1 className="text-xl font-bold text-gray-900 truncate">{packingList.name}</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{packingList.name}</h1>
                         {foreignPodUrl && (
                             <span className="text-xs font-medium text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">
                                 Shared list
@@ -1289,7 +1289,7 @@ export function ViewPackingList() {
                                 title="Add Guest"
                                 aria-expanded={showAddGuest}
                                 data-testid="guest-cluster"
-                                className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
+                                className="flex items-center -space-x-2 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
                                 {peopleOptions.slice(0, 2).map(person => (
                                     <span key={person.name} className="rounded-full ring-2 ring-white">
@@ -1301,13 +1301,13 @@ export function ViewPackingList() {
                                     </span>
                                 ))}
                                 {peopleOptions.length > 2 && (
-                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 text-xs font-semibold ring-2 ring-white">
+                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 dark:text-gray-300 text-xs font-semibold ring-2 ring-white">
                                         +{peopleOptions.length - 2}
                                     </span>
                                 )}
                                 {peopleOptions.length === 0 && (
                                     // A list that names nobody yet still needs a way in
-                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 ring-2 ring-white">
+                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-200 text-gray-700 dark:text-gray-300 ring-2 ring-white">
                                         <Plus className="w-4 h-4" aria-hidden="true" />
                                     </span>
                                 )}
@@ -1320,7 +1320,7 @@ export function ViewPackingList() {
                                 disabled={!ownPodUrl}
                                 aria-label="Share"
                                 title="Share"
-                                className="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Share2 className="w-5 h-5" aria-hidden="true" />
                             </button>
@@ -1330,7 +1330,7 @@ export function ViewPackingList() {
                 {(packingList.destination || tripDates) && (
                     <div
                         data-testid="trip-details"
-                        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600"
+                        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600 dark:text-gray-400"
                     >
                         {packingList.destination && <span>📍 {packingList.destination}</span>}
                         {tripDates && <span>📅 {tripDates}</span>}
@@ -1350,12 +1350,12 @@ export function ViewPackingList() {
             {/* Slim sticky progress strip */}
             <div className="sticky top-0 z-50 w-full mb-4 flex justify-center">
                 <div className="w-full max-w-screen-2xl">
-                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-4 py-2">
+                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 dark:border-gray-700 shadow-sm rounded-lg px-4 py-2">
                         {/* Counts and bar share a line with the controls where there is
                             room; at 390px the controls drop to a line of their own
                             rather than squeezing everything into wrapped fragments. */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                            <span className={`text-sm font-medium whitespace-nowrap ${allPacked ? 'text-emerald-600' : 'text-gray-600'}`}>
+                            <span className={`text-sm font-medium whitespace-nowrap ${allPacked ? 'text-emerald-600' : 'text-gray-600 dark:text-gray-400'}`}>
                                 {allPacked ? '🎉 All packed!' : `${packedCount} / ${totalCount} packed (${percentComplete}%)`}
                             </span>
                             {/* The bar shrinks to its minimum before the encouragement
@@ -1377,7 +1377,7 @@ export function ViewPackingList() {
                                     ></div>
                                 </div>
                                 {milestoneMessage && (
-                                    <span data-testid="progress-milestone" className="text-xs font-semibold text-primary-700 whitespace-nowrap">
+                                    <span data-testid="progress-milestone" className="text-xs font-semibold text-primary-700 dark:text-primary-300 whitespace-nowrap">
                                         {milestoneMessage}
                                     </span>
                                 )}
@@ -1388,12 +1388,12 @@ export function ViewPackingList() {
                                         type="button"
                                         onClick={toggleAllSections}
                                         title={everySectionFolded ? 'Open every section' : 'Fold every section down to its header'}
-                                        className="shrink-0 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                                        className="shrink-0 flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
                                     >
                                         {/* Same glyph the section headers use for the same
                                             state, so the toolbar and the cards never point
                                             opposite ways at each other. */}
-                                        <span aria-hidden="true" className="text-xs text-gray-400">{everySectionFolded ? '▶' : '▼'}</span>
+                                        <span aria-hidden="true" className="text-xs text-gray-400 dark:text-gray-500">{everySectionFolded ? '▶' : '▼'}</span>
                                         {/* The word "all" is what tips this row onto a second
                                             line on a phone, and the icon already says it. */}
                                         {everySectionFolded ? (isDesktop ? 'Expand all' : 'Expand') : (isDesktop ? 'Collapse all' : 'Collapse')}
@@ -1402,13 +1402,13 @@ export function ViewPackingList() {
                                 {/* "View" is what the group is labelled; repeating it in both
                                     buttons is what pushes this row off a 390px screen. The
                                     accessible name keeps the full wording either way. */}
-                                <div className="flex shrink-0 items-center rounded-md border border-gray-300 overflow-hidden" role="group" aria-label="View mode">
+                                <div className="flex shrink-0 items-center rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden" role="group" aria-label="View mode">
                                     <button
                                         type="button"
                                         aria-pressed={viewMode === 'person'}
                                         aria-label="Person View"
                                         onClick={() => setViewMode('person')}
-                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${viewMode === 'person' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
                                     >
                                         {isDesktop ? 'Person View' : 'Person'}
                                     </button>
@@ -1417,7 +1417,7 @@ export function ViewPackingList() {
                                         aria-pressed={viewMode === 'question'}
                                         aria-label="Question View"
                                         onClick={() => setViewMode('question')}
-                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors border-l border-gray-300 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        className={`px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors border-l border-gray-300 dark:border-gray-600 ${viewMode === 'question' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
                                     >
                                         {isDesktop ? 'Question View' : 'Question'}
                                     </button>
@@ -1475,7 +1475,7 @@ export function ViewPackingList() {
                         <button
                             type="button"
                             onClick={toggleAllSections}
-                            className="shrink-0 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+                            className="shrink-0 rounded-md border border-blue-300 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100"
                         >
                             Expand all
                         </button>
@@ -1514,12 +1514,12 @@ export function ViewPackingList() {
                 >
                     {peopleOptions.length > 0 && (
                         <div className="mb-4">
-                            <p className="text-xs text-gray-500 mb-2">Already on this list</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Already on this list</p>
                             <ul className="flex flex-wrap gap-2">
                                 {peopleOptions.map(person => (
                                     <li
                                         key={person.name}
-                                        className="flex items-center gap-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-full pl-1 pr-3 py-0.5"
+                                        className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full pl-1 pr-3 py-0.5"
                                     >
                                         <PersonAvatar
                                             name={person.name}
@@ -1544,7 +1544,7 @@ export function ViewPackingList() {
                             }}
                             placeholder="Guest name..."
                             autoFocus
-                            className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         />
                         <button
                             type="button"
@@ -1556,7 +1556,7 @@ export function ViewPackingList() {
                         <button
                             type="button"
                             onClick={() => { setShowAddGuest(false); setNewGuestName('') }}
-                            className="shrink-0 px-3 py-2 text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md text-sm"
+                            className="shrink-0 px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-md text-sm"
                         >
                             Cancel
                         </button>
@@ -1593,7 +1593,7 @@ export function ViewPackingList() {
                                 : personColor({ id: guestId ?? personIdByName.get(section.name) ?? '', name: section.name })
                             const sectionBorder = isComplete
                                 ? 'border-emerald-300 bg-emerald-50'
-                                : `bg-white ${sectionPersonColor?.border ?? (isShared ? 'border-blue-200' : 'border-gray-200')}`
+                                : `bg-white dark:bg-gray-800 ${sectionPersonColor?.border ?? (isShared ? 'border-blue-200' : 'border-gray-200 dark:border-gray-700')}`
                             return (
                             <div
                                 key={sectionKey}
@@ -1608,11 +1608,11 @@ export function ViewPackingList() {
                                 {/* The rule under the heading separates it from the items
                                     below; a folded card has none, so it would just be a
                                     line ruling off empty space. */}
-                                <div className={isSectionCollapsed ? undefined : 'mb-4 pb-2 border-b border-gray-200'}>
+                                <div className={isSectionCollapsed ? undefined : 'mb-4 pb-2 border-b border-gray-200 dark:border-gray-700'}>
                                     <div className="flex flex-wrap items-center gap-1 min-h-[2rem]">
                                         {isGuest && renamingGuestId === guestId ? (
                                             <>
-                                                <span className="text-sm text-gray-400 px-1" aria-hidden>▼</span>
+                                                <span className="text-sm text-gray-400 dark:text-gray-500 px-1" aria-hidden>▼</span>
                                                 <input
                                                     type="text"
                                                     value={renamingGuestName}
@@ -1623,7 +1623,7 @@ export function ViewPackingList() {
                                                     }}
                                                     onBlur={() => handleRenameGuest(guestId, renamingGuestName)}
                                                     autoFocus
-                                                    className="flex-1 px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold text-gray-800"
+                                                    className="flex-1 px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold text-gray-800 dark:text-gray-200"
                                                 />
                                             </>
                                         ) : (
@@ -1633,14 +1633,14 @@ export function ViewPackingList() {
                                                 onClick={e => { e.stopPropagation(); toggleSection(sectionKey) }}
                                                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                             >
-                                                <span className="shrink-0 text-sm text-gray-400">{isSectionCollapsed ? '▶' : '▼'}</span>
+                                                <span className="shrink-0 text-sm text-gray-400 dark:text-gray-500">{isSectionCollapsed ? '▶' : '▼'}</span>
                                                 {sectionPersonColor && (
                                                     <PersonAvatar name={section.name} color={sectionPersonColor} photoUrl={personPhoto[section.name]} />
                                                 )}
-                                                <span className="text-xl font-semibold text-gray-800">{title}</span>
+                                                <span className="text-xl font-semibold text-gray-800 dark:text-gray-200">{title}</span>
                                                 {/* Never let a count break across lines — "9 /" above "9" is
                                                     a fraction the eye has to reassemble. */}
-                                                <span className="ml-1 shrink-0 whitespace-nowrap text-sm font-normal text-gray-500">{stats.packed} / {stats.total}</span>
+                                                <span className="ml-1 shrink-0 whitespace-nowrap text-sm font-normal text-gray-500 dark:text-gray-400">{stats.packed} / {stats.total}</span>
                                             </button>
                                         )}
                                         {isComplete && (
@@ -1663,7 +1663,7 @@ export function ViewPackingList() {
                                                     type="button"
                                                     aria-label={`Rename ${section.name}`}
                                                     onClick={e => { e.stopPropagation(); setRenamingGuestId(guestId); setRenamingGuestName(section.name) }}
-                                                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                                         <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
@@ -1673,7 +1673,7 @@ export function ViewPackingList() {
                                                     type="button"
                                                     aria-label={`Remove ${section.name}`}
                                                     onClick={e => { e.stopPropagation(); setGuestToRemove(guestId) }}
-                                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                                         <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -1688,7 +1688,7 @@ export function ViewPackingList() {
                                         part of the target the card already knows: a person's card
                                         knows who, and asks which section; a section's card knows
                                         which section, and asks who. */}
-                                    <div className="mb-4 pb-4 border-b border-gray-200">
+                                    <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
                                         <AddItemComposer
                                             personName={isCategorySection ? '' : section.name}
                                             personId={isCategorySection ? '' : (guestId ?? personIdByName.get(section.name) ?? '')}
@@ -1738,7 +1738,7 @@ export function ViewPackingList() {
                                                         type="button"
                                                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${label}`}
                                                         onClick={() => toggleGroup(categoryKey)}
-                                                        className="flex items-center gap-1 text-left text-sm font-semibold text-gray-600 hover:text-gray-900"
+                                                        className="flex items-center gap-1 text-left text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                                                     >
                                                         <span>{isCollapsed ? '▶' : '▼'}</span>
                                                         {/* A category card's groups are people, so each one
@@ -1753,7 +1753,7 @@ export function ViewPackingList() {
                                                             />
                                                         )}
                                                         <span>{label}</span>
-                                                        <span className="ml-1 shrink-0 whitespace-nowrap text-xs font-normal text-gray-400">{groupStat.packed} / {groupStat.total}</span>
+                                                        <span className="ml-1 shrink-0 whitespace-nowrap text-xs font-normal text-gray-400 dark:text-gray-500">{groupStat.packed} / {groupStat.total}</span>
                                                     </button>
                                                     {!isCollapsed && (
                                                         <div className="flex shrink-0 items-center gap-2">
@@ -1810,7 +1810,7 @@ export function ViewPackingList() {
                                                                     if (el) itemRowRefs.current.set(item.id, el)
                                                                     else itemRowRefs.current.delete(item.id)
                                                                 }}
-                                                                className={`relative rounded-lg p-3 transition-colors duration-1000 ${item.id === recentlyAddedItemId ? 'bg-green-100 ring-2 ring-green-400' : 'bg-gray-50'} ${item.id === flourish?.itemId ? 'item-row-packed' : ''}`}
+                                                                className={`relative rounded-lg p-3 transition-colors duration-1000 ${item.id === recentlyAddedItemId ? 'bg-green-100 ring-2 ring-green-400' : 'bg-gray-50 dark:bg-gray-900'} ${item.id === flourish?.itemId ? 'item-row-packed' : ''}`}
                                                             >
                                                                 {item.id === flourish?.itemId && (
                                                                     <span
@@ -1823,7 +1823,7 @@ export function ViewPackingList() {
                                                                         // so no translate utilities here. Themed green rather than
                                                                         // text-green-600 — that class belongs to the "Saved" indicator,
                                                                         // which the e2e suite waits on by selector.
-                                                                        className="item-packed-tick pointer-events-none absolute left-[22px] top-1/2 z-10 text-xl font-bold text-success-600"
+                                                                        className="item-packed-tick pointer-events-none absolute left-[22px] top-1/2 z-10 text-xl font-bold text-success-600 dark:text-success-400"
                                                                     >
                                                                         ✓
                                                                     </span>
@@ -1835,7 +1835,7 @@ export function ViewPackingList() {
                                                                             {...register(`items.${item.id}`, {
                                                                                 onChange: (e) => handleItemToggle(item.id, e.target.checked),
                                                                             })}
-                                                                            className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                                            className="h-5 w-5 text-blue-600 rounded border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                                                                         />
                                                                         {editingItemId === item.id ? (
                                                                             <span
@@ -1855,7 +1855,7 @@ export function ViewPackingList() {
                                                                                     }}
                                                                                     autoFocus
                                                                                     aria-label="Edit item name"
-                                                                                    className="flex-1 min-w-0 px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-700"
+                                                                                    className="flex-1 min-w-0 px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-700 dark:text-gray-300"
                                                                                 />
                                                                                 <input
                                                                                     type="number"
@@ -1869,12 +1869,12 @@ export function ViewPackingList() {
                                                                                     placeholder="Qty"
                                                                                     aria-label="Edit item quantity"
                                                                                     title="How many to pack (leave blank for no quantity)"
-                                                                                    className="w-12 sm:w-16 shrink-0 px-1.5 sm:px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-700"
+                                                                                    className="w-12 sm:w-16 shrink-0 px-1.5 sm:px-2 py-1 border border-blue-400 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-gray-700 dark:text-gray-300"
                                                                                 />
                                                                             </span>
                                                                         ) : (
                                                                             <span
-                                                                                className={watchedItems[item.id] ? 'text-gray-400 line-through' : 'text-gray-700'}
+                                                                                className={watchedItems[item.id] ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}
                                                                                 onDoubleClick={() => handleStartEdit(item)}
                                                                             >
                                                                                 {item.itemText}
@@ -1890,7 +1890,7 @@ export function ViewPackingList() {
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleStartEdit(item)}
-                                                                            className="ml-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md p-1 transition-colors"
+                                                                            className="ml-1 text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md p-1 transition-colors"
                                                                             title="Edit item"
                                                                         >
                                                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

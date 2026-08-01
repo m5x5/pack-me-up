@@ -98,7 +98,7 @@ export function ForeignPodLayout() {
     if (!isLoggedIn) {
         return (
             <div className="max-w-4xl mx-auto py-8 px-4">
-                <p className="text-gray-700">Please log in to view shared content.</p>
+                <p className="text-gray-700 dark:text-gray-300">Please log in to view shared content.</p>
             </div>
         )
     }
@@ -114,7 +114,7 @@ export function ForeignPodLayout() {
     if (accessState === 'pending') {
         return (
             <div className="max-w-4xl mx-auto py-8 px-4">
-                <p className="text-gray-500">Verifying access…</p>
+                <p className="text-gray-500 dark:text-gray-400">Verifying access…</p>
             </div>
         )
     }

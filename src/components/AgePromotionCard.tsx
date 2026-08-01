@@ -116,7 +116,7 @@ export function AgePromotionCard({ questionSet, onApply, manualTransitions, onMa
         .join(', ')
 
     const renderSuggestion = (s: PromotionSuggestion) => (
-        <label key={s.key} className="flex items-start gap-2 text-sm text-gray-700 bg-white rounded border border-violet-200 px-3 py-2">
+        <label key={s.key} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 rounded border border-violet-200 px-3 py-2">
             <input
                 type="checkbox"
                 checked={!unchecked.has(s.key)}
@@ -124,8 +124,8 @@ export function AgePromotionCard({ questionSet, onApply, manualTransitions, onMa
                 className="mt-0.5 h-4 w-4 text-violet-600 rounded focus:ring-2 focus:ring-violet-500"
             />
             <span>
-                <span className="font-medium text-gray-900">{s.itemText}</span>
-                <span className="ml-2 text-xs text-gray-500">{s.contextLabel}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{s.itemText}</span>
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{s.contextLabel}</span>
             </span>
         </label>
     )
@@ -180,7 +180,7 @@ export function AgePromotionCard({ questionSet, onApply, manualTransitions, onMa
                         <button
                             type="button"
                             onClick={() => setIsExpanded(false)}
-                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-violet-100"
+                            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-violet-100"
                         >
                             Not now
                         </button>

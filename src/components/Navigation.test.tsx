@@ -24,6 +24,10 @@ vi.mock('./DatabaseContext', () => ({
     }),
 }))
 
+vi.mock('./ThemeContext', () => ({
+    useTheme: vi.fn().mockReturnValue({ theme: 'light', setTheme: vi.fn(), toggleTheme: vi.fn() }),
+}))
+
 import { useSolidPod } from './SolidPodContext'
 import { getPodOwnerProfile } from '../services/solidPod'
 
@@ -203,6 +207,27 @@ describe('Navigation', () => {
             expect(within(menu).getByRole('menuitem', { name: 'Backups' })).toBeTruthy()
             expect(within(menu).getByRole('menuitem', { name: 'Sharing' })).toBeTruthy()
             expect(within(menu).getByRole('menuitem', { name: 'Logout' })).toBeTruthy()
+        })
+
+        it('shows the profile name and photo instead of the raw address in the mobile menu', async () => {
+            mockGetPodOwnerProfile.mockResolvedValueOnce({ name: 'Alice Smith', photo: 'https://pod.example/photo.jpg' })
+            mockUseSolidPod.mockReturnValue({
+                session: {} as never,
+                isLoggedIn: true,
+                sessionExpired: false,
+                clearSessionExpired: vi.fn(),
+                webId: 'https://user.solidpod.example/profile/card#me',
+                isLoading: false,
+                login: vi.fn(),
+                logout: vi.fn(),
+            })
+            render(<MemoryRouter><Navigation /></MemoryRouter>)
+
+            const mobileIdentity = await screen.findByTitle('https://user.solidpod.example/profile/card#me')
+            expect(within(mobileIdentity).getByText('Alice Smith')).toBeTruthy()
+            const avatar = mobileIdentity.querySelector('img')
+            expect(avatar?.getAttribute('src')).toBe('https://pod.example/photo.jpg')
+            expect(mobileIdentity.textContent).not.toContain('profile/card#me')
         })
 
         it('keeps Backups and Sharing out of the desktop link row', () => {

@@ -1,8 +1,9 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
-import { CircleUserRound, ChevronDown } from 'lucide-react'
+import { CircleUserRound, ChevronDown, Sun, Moon } from 'lucide-react'
 import { useSolidPod } from './SolidPodContext'
 import { useDatabase } from './DatabaseContext'
+import { useTheme } from './ThemeContext'
 import { SolidProviderSelector } from './SolidProviderSelector'
 import { getPodOwnerProfile } from '../services/solidPod'
 import type { SharedContext } from '../services/rdfSerialization'
@@ -32,6 +33,7 @@ export const Navigation = () => {
     const [isProviderSelectorOpen, setIsProviderSelectorOpen] = useState(false)
     const { login, logout, isLoggedIn, webId, session } = useSolidPod()
     const { db, loginSyncVersion } = useDatabase()
+    const { theme, toggleTheme } = useTheme()
     const location = useLocation()
     const navigate = useNavigate()
     const [sharedContexts, setSharedContexts] = useState<SharedContext[]>([])
@@ -132,6 +134,15 @@ export const Navigation = () => {
                         </div>
                         {/* Solid Login/Logout section */}
                         <div className="hidden md:flex items-center gap-4">
+                            <button
+                                type="button"
+                                onClick={toggleTheme}
+                                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                                className="p-2 rounded-lg hover:bg-white/20 transition-all duration-200"
+                            >
+                                {theme === 'dark' ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
+                            </button>
                             {isLoggedIn ? (
                                 /* relative z-[70]: keeps the dropdown above the packing list's
                                    sticky progress strip (z-50) */
@@ -147,12 +158,12 @@ export const Navigation = () => {
                                             className="text-sm font-medium bg-white/20 text-white rounded-lg px-2 py-1 border-0 focus:ring-0 cursor-pointer"
                                             aria-label="Switch context"
                                         >
-                                            <option value="__own__" className="text-gray-900">Your data</option>
+                                            <option value="__own__" className="text-gray-900 dark:text-gray-100">Your data</option>
                                             {sharedContexts.map(ctx => (
                                                 <option
                                                     key={ctx.podUrl}
                                                     value={encodeURIComponent(ctx.podUrl)}
-                                                    className="text-gray-900"
+                                                    className="text-gray-900 dark:text-gray-100"
                                                 >
                                                     {ctx.label ?? ctx.podUrl}
                                                 </option>
@@ -186,15 +197,15 @@ export const Navigation = () => {
                                                 role="menu"
                                                 // z-[70]: above the sticky progress strip (z-50) and the
                                                 // confetti overlay (z-60) on the packing-list page
-                                                className="absolute right-0 top-full mt-2 w-72 rounded-xl bg-white text-gray-900 shadow-lg ring-1 ring-black/10 py-2 z-[70]"
+                                                className="absolute right-0 top-full mt-2 w-72 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-lg ring-1 ring-black/10 py-2 z-[70]"
                                             >
-                                                <div className="px-4 py-2 border-b border-gray-100">
-                                                    <p className="text-xs text-gray-500">Signed in as</p>
+                                                <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Signed in as</p>
                                                     <a
                                                         href={webId}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="block text-sm font-medium break-all text-primary-700 hover:underline"
+                                                        className="block text-sm font-medium break-all text-primary-700 dark:text-primary-300 hover:underline"
                                                         title="Open your profile in a new tab"
                                                     >
                                                         {webId}
@@ -204,7 +215,7 @@ export const Navigation = () => {
                                                     to="/backups"
                                                     role="menuitem"
                                                     onClick={() => setIsProfileOpen(false)}
-                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50"
+                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50 dark:hover:bg-gray-700"
                                                 >
                                                     Backups
                                                 </Link>
@@ -212,7 +223,7 @@ export const Navigation = () => {
                                                     to="/sharing"
                                                     role="menuitem"
                                                     onClick={() => setIsProfileOpen(false)}
-                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50"
+                                                    className="block px-4 py-2 text-sm font-medium hover:bg-primary-50 dark:hover:bg-gray-700"
                                                 >
                                                     Sharing
                                                 </Link>
@@ -222,7 +233,7 @@ export const Navigation = () => {
                                                         setIsProfileOpen(false)
                                                         handleLogout()
                                                     }}
-                                                    className="w-full text-left px-4 py-2 text-sm font-medium text-danger-600 hover:bg-danger-50 border-t border-gray-100 mt-1 pt-2.5"
+                                                    className="w-full text-left px-4 py-2 text-sm font-medium text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-red-950/40 border-t border-gray-100 dark:border-gray-800 mt-1 pt-2.5"
                                                 >
                                                     Logout
                                                 </button>
@@ -311,12 +322,31 @@ export const Navigation = () => {
                                 Sharing
                             </Link>
                         )}
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            className="w-full flex items-center gap-2 px-3 py-3 rounded-xl text-base font-semibold hover:bg-white/20 transition-all duration-200"
+                        >
+                            {theme === 'dark' ? <Sun className="w-5 h-5 shrink-0" aria-hidden="true" /> : <Moon className="w-5 h-5 shrink-0" aria-hidden="true" />}
+                            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                        </button>
                         {/* Mobile Solid Login/Logout */}
                         <div className="border-t border-white/20 pt-2 mt-2">
                             {isLoggedIn ? (
                                 <>
-                                    <div className="px-3 py-2 text-sm font-medium truncate" title={webId}>
-                                        {webId}
+                                    <div className="px-3 py-2 flex items-center gap-2" title={webId}>
+                                        {profilePhoto ? (
+                                            <img
+                                                src={profilePhoto}
+                                                alt=""
+                                                className="w-8 h-8 shrink-0 rounded-full object-cover ring-2 ring-white"
+                                                // The photo may live behind pod auth; fall back to the icon
+                                                onError={() => setProfilePhoto(null)}
+                                            />
+                                        ) : (
+                                            <CircleUserRound className="w-8 h-8 shrink-0" aria-hidden="true" />
+                                        )}
+                                        <span className="text-sm font-medium truncate">{displayName}</span>
                                     </div>
                                     <button
                                         onClick={() => {

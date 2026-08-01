@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Modal } from './Modal';
-import { Button } from './Button';
 
 export interface SolidProvider {
   name: string;
@@ -29,6 +29,13 @@ export const COMMON_PROVIDERS: SolidProvider[] = [
 
 export const LAST_PROVIDER_KEY = 'solid-last-provider-issuer';
 
+// Users shouldn't have to type the scheme themselves - default to https:// for
+// anything that doesn't already specify http:// or https://.
+const normalizeIssuerUrl = (value: string): string => {
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
 const DEFAULT_PROVIDER = COMMON_PROVIDERS.find(p => p.issuer === 'https://login.inrupt.com')!;
 
 function getLastUsedProvider(): SolidProvider | null {
@@ -40,156 +47,131 @@ function getLastUsedProvider(): SolidProvider | null {
 interface SolidProviderSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (issuer: string) => void;
+  onSelect: (issuer: string) => void | Promise<void>;
 }
 
 export function SolidProviderSelector({ isOpen, onClose, onSelect }: SolidProviderSelectorProps) {
   const primaryProvider = getLastUsedProvider() ?? DEFAULT_PROVIDER;
-  const otherProviders = COMMON_PROVIDERS.filter(p => p.issuer !== primaryProvider.issuer);
+  const sortedProviders = [primaryProvider, ...COMMON_PROVIDERS.filter(p => p.issuer !== primaryProvider.issuer)];
 
-  const [showOthers, setShowOthers] = useState(false);
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [customIssuer, setCustomIssuer] = useState('');
+  const [query, setQuery] = useState('');
+  // Set while we're waiting on OIDC discovery/registration and the browser
+  // redirect they lead to - that round trip can take a few seconds, so the
+  // modal stays open with a spinner instead of vanishing immediately.
+  const [connectingIssuer, setConnectingIssuer] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
-  const handleProviderSelect = (issuer: string) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchingProviders = normalizedQuery
+    ? sortedProviders.filter(p => p.name.toLowerCase().includes(normalizedQuery) || p.issuer.toLowerCase().includes(normalizedQuery))
+    : sortedProviders;
+
+  const handleProviderSelect = async (issuer: string) => {
+    setConnectError(null);
+    setConnectingIssuer(issuer);
     localStorage.setItem(LAST_PROVIDER_KEY, issuer);
-    onSelect(issuer);
-    onClose();
-    setShowOthers(false);
-    setShowCustomInput(false);
-    setCustomIssuer('');
+    try {
+      await onSelect(issuer);
+      // On success the browser is navigating away to the identity provider,
+      // so there's nothing left to reset here.
+    } catch {
+      setConnectingIssuer(null);
+      setConnectError("Couldn't connect to that provider. Check the URL and try again.");
+    }
   };
 
   const handleCustomSubmit = () => {
-    if (customIssuer.trim()) {
-      handleProviderSelect(customIssuer.trim());
+    if (query.trim()) {
+      handleProviderSelect(normalizeIssuerUrl(query));
     }
   };
 
   const handleClose = () => {
     onClose();
-    setShowOthers(false);
-    setShowCustomInput(false);
-    setCustomIssuer('');
+    setQuery('');
+    setConnectingIssuer(null);
+    setConnectError(null);
   };
 
   const isLastUsed = localStorage.getItem(LAST_PROVIDER_KEY) === primaryProvider.issuer;
+  const connectingProviderName = COMMON_PROVIDERS.find(p => p.issuer === connectingIssuer)?.name ?? connectingIssuer;
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Login with Your Solid Pod">
-      <div className="space-y-4">
-        {/* Explanation section */}
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 space-y-2">
-          <h3 className="font-semibold text-gray-900 text-sm">What is a Solid Pod?</h3>
-          <p className="text-sm text-gray-700">
-            A Solid Pod is your personal data storage that <strong>you control</strong>. Instead of storing your packing lists on our servers, they're stored in your own secure space.
-          </p>
-          <ul className="text-sm text-gray-700 space-y-1 ml-4 list-disc">
-            <li><strong>You own your data</strong> - it stays in your Pod</li>
-            <li><strong>Privacy-focused</strong> - you choose who can access it</li>
-            <li><strong>Portable</strong> - use your Pod with any Solid app</li>
-          </ul>
+      {connectingIssuer ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <Loader2 className="w-8 h-8 text-primary-600 dark:text-primary-400 animate-spin" aria-hidden="true" />
+          <div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">Connecting to {connectingProviderName}…</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">You'll be redirected to sign in. This can take a few seconds.</p>
+          </div>
         </div>
+      ) : (
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {isLastUsed && !query ? 'Continue with your last-used provider, search for another, or paste a Pod URL:' : 'Search providers or paste a Pod URL:'}
+            </span>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setConnectError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                if (matchingProviders.length > 0) handleProviderSelect(matchingProviders[0].issuer);
+                else handleCustomSubmit();
+              }}
+              placeholder="Search providers or paste a Pod URL…"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              autoFocus
+            />
+          </label>
 
-        <div className="border-t border-gray-200 pt-4">
-          <p className="text-sm text-gray-600 mb-3">
-            {isLastUsed ? 'Continue with your last-used provider:' : 'Get started with a free provider:'}
-          </p>
-
-          {/* Primary provider */}
-          <button
-            aria-label={primaryProvider.name}
-            onClick={() => handleProviderSelect(primaryProvider.issuer)}
-            className="w-full text-left px-4 py-3 border-2 border-blue-400 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 rounded-md transition-colors"
-          >
-            <div className="font-medium text-gray-900">{primaryProvider.name}</div>
-            {primaryProvider.description && (
-              <div className="text-xs text-green-700 font-medium">{primaryProvider.description}</div>
-            )}
-            <div className="text-xs text-gray-400">{primaryProvider.issuer}</div>
-          </button>
-        </div>
-
-        {/* Other providers toggle */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setShowOthers(v => !v)}
-            className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors text-center"
-          >
-            {showOthers ? 'Hide other providers ▲' : 'Other providers ▼'}
-          </button>
-
-          {showOthers && (
-            <div className="space-y-2">
-              {otherProviders.map((provider) => (
-                <button
-                  key={provider.issuer}
-                  aria-label={provider.name}
-                  onClick={() => handleProviderSelect(provider.issuer)}
-                  className="w-full text-left px-4 py-3 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-md transition-colors"
-                >
-                  <div className="font-medium text-gray-900">{provider.name}</div>
-                  {provider.description && (
-                    <div className="text-xs text-green-700 font-medium">{provider.description}</div>
-                  )}
-                  <div className="text-xs text-gray-400">{provider.issuer}</div>
-                </button>
-              ))}
-
-              {!showCustomInput ? (
-                <Button
-                  type="button"
-                  onClick={() => setShowCustomInput(true)}
-                  variant="secondary"
-                  className="w-full"
-                >
-                  Use Custom Provider
-                </Button>
-              ) : (
-                <div className="space-y-3 pt-2 border-t border-gray-200">
-                  <label className="block">
-                    <span className="text-sm font-medium text-gray-700">Custom Provider URL</span>
-                    <input
-                      type="url"
-                      value={customIssuer}
-                      onChange={(e) => setCustomIssuer(e.target.value)}
-                      placeholder="https://your-provider.com"
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      autoFocus
-                    />
-                  </label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      onClick={handleCustomSubmit}
-                      disabled={!customIssuer.trim()}
-                      className="flex-1"
-                    >
-                      Connect
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setShowCustomInput(false);
-                        setCustomIssuer('');
-                      }}
-                      variant="secondary"
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+          {connectError && (
+            <p className="text-sm text-danger-600 dark:text-danger-400">{connectError}</p>
           )}
-        </div>
 
-        <p className="text-xs text-gray-500 text-center">
-          No Pod? No problem — your data saves locally in your browser automatically.
-        </p>
-      </div>
+          <div className="space-y-2">
+            {matchingProviders.map((provider) => (
+              <button
+                key={provider.issuer}
+                aria-label={provider.name}
+                onClick={() => handleProviderSelect(provider.issuer)}
+                className={`w-full text-left px-4 py-3 rounded-md transition-colors ${
+                  provider.issuer === primaryProvider.issuer
+                    ? 'border-2 border-blue-400 bg-blue-50 hover:bg-blue-100 hover:border-blue-500'
+                    : 'border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400'
+                }`}
+              >
+                <div className="font-medium text-gray-900 dark:text-gray-100">{provider.name}</div>
+                {provider.description && (
+                  <div className="text-xs text-green-700 font-medium">{provider.description}</div>
+                )}
+                <div className="text-xs text-gray-400 dark:text-gray-500">{provider.issuer}</div>
+              </button>
+            ))}
+
+            {query.trim() && matchingProviders.length === 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 px-1">No matching providers.</p>
+            )}
+
+            {query.trim() && (
+              <button
+                type="button"
+                onClick={handleCustomSubmit}
+                className="w-full text-left px-4 py-3 border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-400 rounded-md transition-colors"
+              >
+                <div className="font-medium text-gray-900 dark:text-gray-100">Connect to custom provider</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{normalizeIssuerUrl(query)}</div>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
