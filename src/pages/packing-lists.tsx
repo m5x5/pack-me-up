@@ -9,6 +9,7 @@ import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { LoadingState } from '../components/LoadingState'
 import { Modal } from '../components/Modal'
+import { SyncAcrossDevicesPrompt } from '../components/SyncAcrossDevicesPrompt'
 import { getPrimaryPodUrl, saveRdfToPod, deleteFileFromPod, POD_CONTAINERS, POD_ERROR_MESSAGES, getCollaborators, isPubliclyAccessible, resolveOwnerDisplayName, buildSharedListPath } from '../services/solidPod'
 import { useOwnerDisplayNames } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset } from '../services/rdfSerialization'
@@ -309,6 +310,9 @@ export function PackingLists() {
                 </div>
                 <Button variant="primary" className="inline-flex items-center gap-1.5" onClick={() => navigate('/create-packing-list')}><Plus className="w-4 h-4" aria-hidden="true" />New List</Button>
             </div>
+
+            {/* Only worth asking once there is something to sync */}
+            {packingLists.length > 0 && <SyncAcrossDevicesPrompt />}
 
             {packingLists.length === 0 ? (
                 <div className="text-center py-12 bg-gradient-to-br from-primary-50 to-accent-50 rounded-2xl border-2 border-primary-200 shadow-soft">

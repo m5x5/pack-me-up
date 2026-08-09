@@ -17,6 +17,7 @@ import { POD_CONTAINERS, getPrimaryPodUrl, saveRdfToPod, resolveOwnerDisplayName
 import { useOwnerDisplayName } from '../hooks/useOwnerDisplayName'
 import { packingListToDataset, datasetToPackingList } from '../services/rdfSerialization'
 import { SharePackingListModal } from '../components/SharePackingListModal'
+import { SolidPodPrompt } from '../components/SolidPodPrompt'
 import { UpdateFromQuestionsModal } from '../components/UpdateFromQuestionsModal'
 import { useForeignPod } from '../components/ForeignPodContext'
 import { useSharedListsSync } from '../hooks/useSharedListsSync'
@@ -29,6 +30,7 @@ import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 import { groupItemsByCategory, sortByOrder, type CategoryAccessors } from '../utils/groupByCategory'
 import { CATEGORY_ORDER } from '../edit-questions/item-sections'
 import { useSectionOrder } from '../hooks/useSectionOrder'
+import { clearPendingSignInAction, getPendingSignInAction, setPendingSignInAction } from '../utils/pendingSignInAction'
 import { usePersonColors } from '../hooks/usePersonColors'
 import { usePersonProfilePhotos } from '../hooks/usePersonProfilePhotos'
 import { Modal } from '../components/Modal'
@@ -175,6 +177,9 @@ export function ViewPackingList() {
     const [packingList, setPackingList] = useState<PackingList | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [shareModalOpen, setShareModalOpen] = useState(false)
+    // Sharing needs a pod, so a logged-out sharer gets the ask framed around
+    // sharing rather than a generic "set up a pod" pitch.
+    const [signInToSharePromptOpen, setSignInToSharePromptOpen] = useState(false)
     // Additions computed from the question set; non-null opens the preview modal.
     const [questionUpdateAdditions, setQuestionUpdateAdditions] = useState<PackingListItem[] | null>(null)
     // Whether the question set exists locally (gates the "Update from questions" button).
@@ -306,7 +311,7 @@ export function ViewPackingList() {
     const isDesktop = useIsDesktop()
     const { isLoggedIn, session } = useSolidPod()
     const { showToast } = useToast()
-    const { db } = useDatabase()
+    const { db, loginSyncInProgress } = useDatabase()
     // Read from the question set on every visit, not copied onto the list when
     // it was generated — the order is one global setting, so changing it has to
     // reach the lists that already exist. See `useSectionOrder`.
@@ -320,6 +325,18 @@ export function ViewPackingList() {
             getPrimaryPodUrl(session).then(url => setOwnPodUrl(url ?? null))
         }
     }, [isLoggedIn, session])
+
+    // Someone who signed in from the "share this list" prompt came back here to
+    // share — pick the action up where they left it rather than making them
+    // find the button again.
+    useEffect(() => {
+        if (!isLoggedIn || !id) return
+        const pending = getPendingSignInAction()
+        if (pending?.type === 'share' && pending.listId === id) {
+            clearPendingSignInAction()
+            setShareModalOpen(true)
+        }
+    }, [isLoggedIn, id])
 
     // The "Update from questions" action only applies to the user's own lists,
     // regenerating them from their local question set. Foreign lists belong to
@@ -557,6 +574,14 @@ export function ViewPackingList() {
     }, [saveToPod])
 
     useEffect(() => {
+        // The login sync (pod -> local) runs in the background while the app is
+        // already rendering, so reading local storage before it finishes would
+        // miss any list this device hasn't seen yet — a fresh browser, or a link
+        // to a list created on another device. Wait for it and keep the spinner
+        // up; the effect re-runs when the sync finishes. Same guard as
+        // create-packing-list and questions-page.
+        if (loginSyncInProgress) return
+
         const fetchPackingList = async () => {
             try {
                 const doc = await db.getPackingList(id!)
@@ -574,17 +599,23 @@ export function ViewPackingList() {
                 setIsLoading(false)
             } catch (err) {
                 const isNotFound = typeof err === 'object' && err !== null && (err as { name?: string }).name === 'not_found'
-                if (isNotFound && foreignPodUrl) {
-                    // Leave isLoading=true — the first pod poll will hydrate via handleSyncSuccess
-                } else {
-                    reportError(err, 'Error fetching packing list')
-                    setIsLoading(false)
+                if (isNotFound) {
+                    // Not an error: the list simply isn't on this device. On a
+                    // foreign pod the first poll hydrates it via
+                    // handleSyncSuccess, so hold the spinner. Otherwise the
+                    // login sync has already had its turn and the list really is
+                    // gone, so fall through to "Packing list not found" — but
+                    // never report it, a missing list is a normal outcome.
+                    if (!foreignPodUrl) setIsLoading(false)
+                    return
                 }
+                reportError(err, 'Error fetching packing list')
+                setIsLoading(false)
             }
         }
 
         fetchPackingList()
-    }, [db, id, setValue, foreignPodUrl])
+    }, [db, id, setValue, foreignPodUrl, loginSyncInProgress])
 
     const handleItemChange = useDebouncedCallback(async () => {
         if (!packingList) {
@@ -1313,11 +1344,11 @@ export function ViewPackingList() {
                                 )}
                             </button>
                         )}
-                        {isLoggedIn && !foreignPodUrl && (
+                        {!foreignPodUrl && (
                             <button
                                 type="button"
-                                onClick={() => setShareModalOpen(true)}
-                                disabled={!ownPodUrl}
+                                onClick={() => isLoggedIn ? setShareModalOpen(true) : setSignInToSharePromptOpen(true)}
+                                disabled={isLoggedIn && !ownPodUrl}
                                 aria-label="Share"
                                 title="Share"
                                 className="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1959,6 +1990,22 @@ export function ViewPackingList() {
             message="Remove this guest and all their items from this list?"
             confirmText="Remove"
             confirmVariant="danger"
+        />
+        <SolidPodPrompt
+            isOpen={signInToSharePromptOpen}
+            onClose={() => setSignInToSharePromptOpen(false)}
+            title="Sign in to share this list"
+            message="Sharing sends your friend a link to this list, so it needs somewhere online to live. Sign in with a Solid Pod and we'll bring you straight back here to share."
+            benefitsTitle="What signing in unlocks:"
+            benefits={[
+                { label: 'Share this list', text: 'Send a friend a link, or invite them by WebID' },
+                { label: 'Pack together', text: 'You both tick items off the same list' },
+                { label: 'Free', text: 'All major Pod providers are free to sign up' },
+                { label: 'You own your data', text: 'Your lists stay in your personal storage' },
+            ]}
+            confirmLabel="🔗 Sign in to share"
+            dismissLabel="Not now"
+            onBeforeLogin={() => { if (id) setPendingSignInAction({ type: 'share', listId: id }) }}
         />
         {session && ownPodUrl && id && (
             <SharePackingListModal

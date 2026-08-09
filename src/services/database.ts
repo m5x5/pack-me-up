@@ -61,6 +61,23 @@ function hasName(err: unknown): err is { name: string } {
 }
 
 /**
+ * Thrown when a document isn't in the local database.
+ *
+ * A real Error rather than an object literal: a plain `{ name, message }` that
+ * reaches `Sentry.captureException` is reported as "Object captured as
+ * exception with keys: message, name" — no message, no app stack frames,
+ * nothing to act on. `name` stays `'not_found'` so that PouchDB's own
+ * `err.name === 'not_found'` convention, which callers across the app check
+ * against, keeps working unchanged.
+ */
+export class NotFoundError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'not_found'
+    }
+}
+
+/**
  * Builds a document's `data` payload from an entity by *omitting* the keys the
  * document itself owns (`id` / `_id` / `_rev`), plus any explicitly-undefined
  * values so absent fields stay absent in PouchDB.
@@ -145,7 +162,7 @@ export class PackingAppDatabase {
             }
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
-                throw { name: 'not_found', message: 'Question set not found' }
+                throw new NotFoundError('Question set not found')
             }
             throw err
         }
@@ -208,7 +225,7 @@ export class PackingAppDatabase {
             }
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
-                throw { name: 'not_found', message: 'Packing list not found' }
+                throw new NotFoundError('Packing list not found')
             }
             throw err
         }
@@ -308,7 +325,7 @@ export class PackingAppDatabase {
             return doc.data
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
-                throw { name: 'not_found', message: 'SharedWithMe not found' }
+                throw new NotFoundError('SharedWithMe not found')
             }
             throw err
         }
@@ -364,7 +381,7 @@ export class PackingAppDatabase {
             return doc.data
         } catch (err: unknown) {
             if (hasName(err) && err.name === 'not_found') {
-                throw { name: 'not_found', message: 'SharedListsWithMe not found' }
+                throw new NotFoundError('SharedListsWithMe not found')
             }
             throw err
         }

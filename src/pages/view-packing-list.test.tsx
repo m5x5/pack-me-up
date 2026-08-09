@@ -52,6 +52,9 @@ vi.mock('../components/SharePackingListModal', () => ({
     SharePackingListModal: vi.fn(() => null),
 }))
 
+import { SharePackingListModal } from '../components/SharePackingListModal'
+import { getPendingSignInAction, setPendingSignInAction } from '../utils/pendingSignInAction'
+
 vi.mock('../hooks/useSharedListsSync', () => ({
     useSharedListsSync: vi.fn(() => ({
         sharedListsWithMe: { lists: [], lastModified: '' },
@@ -62,6 +65,11 @@ vi.mock('../hooks/useSharedListsSync', () => ({
 const mockTapFeedback = vi.fn()
 vi.mock('../utils/haptics', () => ({
     tapFeedback: () => mockTapFeedback(),
+}))
+
+const mockCaptureException = vi.fn()
+vi.mock('@sentry/capacitor', () => ({
+    captureException: (...args: unknown[]) => mockCaptureException(...args),
 }))
 
 const mockUseDatabase = vi.mocked(useDatabase)
@@ -1345,6 +1353,131 @@ describe('ViewPackingList foreign pod (?pod= param)', () => {
             'error',
             expect.any(String)
         )
+    })
+})
+
+// ─── Own-pod list not in local storage yet ──────────────────────────────────
+//
+// DatabaseContext renders the app as soon as the pod database is resolved and
+// runs `syncAllDataFromPod` in the background, so a device that has never seen
+// a list locally (a fresh browser, or a deep link to a list created on another
+// device) hits `getPackingList` before the login sync has written it. That is
+// not an error — the pod poll hydrates the page moments later — but it used to
+// be captured, and because the miss is thrown as a plain `{ name, message }`
+// object it reached Sentry as "Object captured as exception with keys:
+// message, name" with no usable stack.
+
+describe('ViewPackingList when an own-pod list is not in local storage yet', () => {
+    function renderMissingLocally(extraDbContext: Record<string, unknown> = {}) {
+        const getPackingList = vi.fn().mockRejectedValue({ name: 'not_found', message: 'Packing list not found' })
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList } as unknown as PackingAppDatabase,
+            ...extraDbContext,
+        })
+        const result = render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+        return { ...result, getPackingList }
+    }
+
+    beforeEach(() => {
+        mockCaptureException.mockClear()
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { info: { isLoggedIn: true, webId: 'https://own.solidcommunity.net/profile/card#me' }, fetch: vi.fn() },
+            webId: 'https://own.solidcommunity.net/profile/card#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        })
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    it('does not report the local miss to Sentry', async () => {
+        const { getPackingList } = renderMissingLocally()
+
+        await waitFor(() => expect(getPackingList).toHaveBeenCalled())
+        await waitFor(() => expect(screen.getByText('Packing list not found')).toBeTruthy())
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('does not read from local storage while the login sync is still running', async () => {
+        const { getPackingList } = renderMissingLocally({ loginSyncInProgress: true })
+
+        await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Loading packing list...'))
+        expect(getPackingList).not.toHaveBeenCalled()
+        expect(screen.queryByText('Packing list not found')).toBeNull()
+    })
+
+    it('reads local storage once the login sync finishes', async () => {
+        const getPackingList = vi.fn().mockRejectedValue({ name: 'not_found', message: 'Packing list not found' })
+        const db = { ...makeDb(), getPackingList } as unknown as PackingAppDatabase
+        mockUseDatabase.mockReturnValue({ db, loginSyncInProgress: true })
+
+        const { rerender } = render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+        expect(getPackingList).not.toHaveBeenCalled()
+
+        mockUseDatabase.mockReturnValue({ db, loginSyncInProgress: false })
+        rerender(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+
+        await waitFor(() => expect(getPackingList).toHaveBeenCalledWith('test-list-1'))
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('hydrates from the pod once the poll succeeds', async () => {
+        renderMissingLocally()
+
+        await waitFor(() => expect(mockUsePodSync).toHaveBeenCalled())
+        const updateFormAndState = mockUseSyncCoordinator.mock.calls[mockUseSyncCoordinator.mock.calls.length - 1][0]
+            .updateFormAndState as (data: unknown, rev: string) => void
+        act(() => updateFormAndState(testPackingList, '2'))
+
+        await waitFor(() => expect(screen.getByText('Test Trip')).toBeTruthy())
+        expect(mockCaptureException).not.toHaveBeenCalled()
+    })
+
+    it('still reports a genuine load failure to Sentry', async () => {
+        const failure = new Error('IndexedDB unavailable')
+        mockUseDatabase.mockReturnValue({
+            db: { ...makeDb(), getPackingList: vi.fn().mockRejectedValue(failure) } as unknown as PackingAppDatabase,
+        })
+
+        render(
+            <MemoryRouter initialEntries={['/view-list/test-list-1']}>
+                <Routes>
+                    <Route path="/view-list/:id" element={<ViewPackingList />} />
+                </Routes>
+            </MemoryRouter>
+        )
+
+        await waitFor(() => expect(mockCaptureException).toHaveBeenCalledWith(failure))
     })
 })
 
@@ -2829,5 +2962,113 @@ describe('ViewPackingList opening a long list for the first time', () => {
         expect(screen.queryByText('Alice item 0')).toBeNull()
         // Second time around it is their arrangement, not something to explain
         expect(screen.queryByTestId('folded-on-open-note')).toBeNull()
+    })
+})
+
+describe('ViewPackingList contextual sign-in to share', () => {
+    beforeEach(() => {
+        sessionStorage.clear()
+        mockUsePodSync.mockReturnValue({ saveToPod: vi.fn() })
+        mockUseSyncCoordinator.mockReturnValue({
+            syncingFromPod: false,
+            handleSyncSuccess: vi.fn(),
+            handleSyncError: vi.fn(),
+            saveWithSyncPrevention: vi.fn().mockResolvedValue({ ...testPackingList, _rev: '2' }),
+        })
+        mockUseDatabase.mockReturnValue({ db: makeDb() as unknown as PackingAppDatabase })
+        vi.mocked(SharePackingListModal).mockClear()
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function mockLoggedOut() {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+    }
+
+    function mockLoggedIn() {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { fetch: vi.fn(), info: { isLoggedIn: true, webId: 'https://me.example/profile#me' } },
+            webId: 'https://me.example/profile#me',
+            isLoading: false,
+            login: mockLogin,
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+    }
+
+    const mockLogin = vi.fn()
+
+    it('offers Share to a logged-out user rather than hiding it', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        const shareButton = await screen.findByRole('button', { name: 'Share' })
+        expect((shareButton as HTMLButtonElement).disabled).toBe(false)
+    })
+
+    it('frames the sign-in ask around sharing when a logged-out user shares', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+
+        expect(screen.getByText(/sign in to share this list/i)).toBeTruthy()
+        expect(screen.getByRole('button', { name: /sign in to share/i })).toBeTruthy()
+    })
+
+    it('remembers the share the user was attempting when they sign in', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+        fireEvent.click(screen.getByRole('button', { name: /sign in to share/i }))
+        fireEvent.click(screen.getByLabelText('Inrupt PodSpaces'))
+
+        expect(mockLogin).toHaveBeenCalledWith('https://login.inrupt.com')
+        expect(getPendingSignInAction()).toEqual({ type: 'share', listId: 'test-list-1' })
+    })
+
+    it('drops the prompt without remembering anything when the user backs out', async () => {
+        mockLoggedOut()
+        renderComponent()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Share' }))
+        fireEvent.click(screen.getByRole('button', { name: /not now/i }))
+
+        await waitFor(() => expect(screen.queryByText(/sign in to share this list/i)).toBeNull())
+        expect(getPendingSignInAction()).toBeNull()
+    })
+
+    it('resumes the share once the user comes back signed in', async () => {
+        setPendingSignInAction({ type: 'share', listId: 'test-list-1' })
+        mockLoggedIn()
+
+        renderComponent()
+
+        await waitFor(() =>
+            expect(vi.mocked(SharePackingListModal).mock.calls.some(([props]) => props.isOpen)).toBe(true)
+        )
+        // Consumed, so a later visit does not pop the dialog again
+        expect(getPendingSignInAction()).toBeNull()
+    })
+
+    it('leaves a share intended for another list alone', async () => {
+        setPendingSignInAction({ type: 'share', listId: 'some-other-list' })
+        mockLoggedIn()
+
+        renderComponent()
+
+        await waitFor(() => expect(screen.getByText('Passport')).toBeTruthy())
+        expect(vi.mocked(SharePackingListModal).mock.calls.every(([props]) => !props.isOpen)).toBe(true)
+        expect(getPendingSignInAction()).toEqual({ type: 'share', listId: 'some-other-list' })
     })
 })

@@ -686,7 +686,7 @@ describe('PackingLists past trips accordion', () => {
             isLoading: false,
             login: vi.fn(),
             logout: vi.fn(),
-        })
+        } as unknown as ReturnType<typeof useSolidPod>)
         mockUseDatabase.mockReturnValue({
             db: {
                 getAllPackingLists: vi.fn().mockResolvedValue([
@@ -743,5 +743,74 @@ describe('PackingLists past trips accordion', () => {
 
         await screen.findByText(/Upcoming Trip/)
         expect(screen.queryByRole('button', { name: /past trips/i })).toBeNull()
+    })
+})
+
+describe('PackingLists sync-across-devices prompt', () => {
+    beforeEach(() => {
+        sessionStorage.clear()
+        localStorage.clear()
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: false,
+            session: null,
+            webId: undefined,
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    function renderWithLists(lists: Record<string, unknown>[]) {
+        mockUseDatabase.mockReturnValue({
+            db: {
+                getAllPackingLists: vi.fn().mockResolvedValue(lists),
+                deletePackingList: vi.fn(),
+                savePackingList: vi.fn(),
+                getSharedListsWithMe: vi.fn().mockResolvedValue({ lists: [], lastModified: '' }),
+            } as unknown as PackingAppDatabase,
+        })
+        return renderComponent()
+    }
+
+    it('nudges a logged-out user with a list to sync across devices', async () => {
+        renderWithLists([testPackingList])
+
+        expect(await screen.findByTestId('sync-across-devices-prompt')).toBeTruthy()
+    })
+
+    it('does not nudge before there is anything to sync', async () => {
+        renderWithLists([])
+
+        await waitFor(() => expect(screen.getByText(/No packing lists found/i)).toBeTruthy())
+        expect(screen.queryByTestId('sync-across-devices-prompt')).toBeNull()
+    })
+
+    it('does not nudge a user who is already logged in', async () => {
+        mockUseSolidPod.mockReturnValue({
+            isLoggedIn: true,
+            session: { fetch: vi.fn(), info: { isLoggedIn: true, webId: 'https://me.example/profile#me' } },
+            webId: 'https://me.example/profile#me',
+            isLoading: false,
+            login: vi.fn(),
+            logout: vi.fn(),
+        } as unknown as ReturnType<typeof useSolidPod>)
+        mockGetPrimaryPodUrl.mockResolvedValue('https://pod.example/')
+
+        renderWithLists([testPackingList])
+
+        await waitFor(() => expect(screen.getByText(/Beach Trip/)).toBeTruthy())
+        expect(screen.queryByTestId('sync-across-devices-prompt')).toBeNull()
+    })
+
+    it('stays dismissed for the rest of the session', async () => {
+        renderWithLists([testPackingList])
+
+        fireEvent.click(await screen.findByLabelText('Dismiss sync prompt'))
+
+        expect(screen.queryByTestId('sync-across-devices-prompt')).toBeNull()
     })
 })

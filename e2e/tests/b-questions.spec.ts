@@ -8,10 +8,6 @@ async function setupWizardAndGoToQuestions(page: import('@playwright/test').Page
   // Use role heading to distinguish modal title from toast notification
   await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-  // handle pod prompt
-  try {
-    await page.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 })
-  } catch { /* already dismissed or logged in */ }
   await page.waitForURL(/#\/manage-questions/, { timeout: 8_000 })
 }
 
@@ -85,7 +81,6 @@ test.describe('B – Editing Questions', () => {
     await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
     await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 10_000 })
     await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-    try { await page.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 }) } catch { /* ok */ }
     await page.waitForURL(/#\/manage-questions/, { timeout: 8_000 })
     // Open People modal
     await openPeopleModal(page)

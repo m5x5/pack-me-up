@@ -26,7 +26,6 @@ test.describe('F – Solid Pod Sync', () => {
     try { await page.getByRole('button', { name: 'Yes, Override' }).click({ timeout: 3_000 }) } catch { /* ok */ }
     await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: /Create My First Packing List/i }).click()
-    try { await page.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 }) } catch { /* ok */ }
     await page.waitForURL(/#\/create-packing-list/, { timeout: 10_000 })
   })
 

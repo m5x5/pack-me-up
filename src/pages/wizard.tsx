@@ -5,8 +5,6 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { Modal } from '../components/Modal'
-import { SolidPodPrompt } from '../components/SolidPodPrompt'
-import { useSolidPod } from '../components/SolidPodContext'
 import { useDatabase } from '../components/DatabaseContext'
 import { wizardSchema, WizardFormData, WizardEntry } from './wizard-types'
 import { useWizardGeneration } from './useWizardGeneration'
@@ -16,19 +14,14 @@ import { buildRevealSteps, buildGenerationSummary, REVEAL_STEP_MS } from './wiza
 import { peopleToWizardEntries } from './wizard-prefill'
 import { prefersReducedMotion } from '../utils/prefersReducedMotion'
 
-const SOLID_POD_UPSELL_SHOWN_KEY = 'solid-pod-upsell-shown'
-
 export const Wizard = () => {
     const navigate = useNavigate()
     const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-    const [showPodPrompt, setShowPodPrompt] = useState(false)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
-    const [pendingNavRoute, setPendingNavRoute] = useState<string | null>(null)
     const [hasExistingData, setHasExistingData] = useState(false)
     const [isPrefilled, setIsPrefilled] = useState(false)
     const [revealedCount, setRevealedCount] = useState(0)
     const [isRevealComplete, setIsRevealComplete] = useState(false)
-    const { isLoggedIn } = useSolidPod()
     const { db } = useDatabase()
     const { isLoading, isSuccess, generatedSet, generateAndSave } = useWizardGeneration()
 
@@ -107,25 +100,12 @@ export const Wizard = () => {
         setIsRevealComplete(true)
     }
 
+    // Onboarding never asks for a sign-in: the ask belongs where it pays off
+    // (sharing a list, syncing across devices), not before there is anything
+    // worth saving.
     const handleSuccessAction = (route: string) => {
         setShowSuccessModal(false)
-        if (!isLoggedIn) {
-            const dismissed = localStorage.getItem(SOLID_POD_UPSELL_SHOWN_KEY) === 'true'
-            if (!dismissed) {
-                setPendingNavRoute(route)
-                setShowPodPrompt(true)
-                return
-            }
-        }
         navigate(route)
-    }
-
-    const handlePodPromptClose = () => {
-        setShowPodPrompt(false)
-        if (pendingNavRoute) {
-            navigate(pendingNavRoute)
-            setPendingNavRoute(null)
-        }
     }
 
     const onSubmit = async (data: WizardFormData) => {
@@ -438,15 +418,6 @@ Are you sure you want to continue?"
                     )}
                 </div>
             </Modal>
-
-            {/* Solid Pod Onboarding Prompt */}
-            <SolidPodPrompt
-                isOpen={showPodPrompt}
-                onClose={handlePodPromptClose}
-                title="🎉 Great! Your Questions Are Ready"
-                message="Want to keep your personalized packing questions safe and accessible from any device? Set up a Solid Pod to store your data securely in personal storage that you control."
-                dismissalKey={SOLID_POD_UPSELL_SHOWN_KEY}
-            />
         </div>
     )
 }

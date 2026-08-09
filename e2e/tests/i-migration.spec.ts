@@ -28,8 +28,6 @@ test.describe('I – Data Migration', () => {
     await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 10_000 })
     // The Success Modal's backdrop blocks the nav; dismiss it by clicking an action button
     await page.getByRole('button', { name: /Refine My Packing List Questions/i }).click()
-    // For unauthenticated users, a SolidPodPrompt may appear — dismiss it
-    try { await page.getByRole('button', { name: /Maybe Later/i }).click({ timeout: 3_000 }) } catch { /* ok */ }
     await page.waitForURL(/#\/manage-questions/, { timeout: 5_000 })
     await page.waitForLoadState('networkidle')
   }

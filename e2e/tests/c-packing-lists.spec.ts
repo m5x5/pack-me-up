@@ -7,7 +7,6 @@ async function runWizard(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: /Generate My Packing Questions/i }).click()
   await expect(page.getByRole('heading', { name: /Questions Generated Successfully/i })).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: /Create My First Packing List/i }).click()
-  try { await page.getByRole('button', { name: 'Maybe Later' }).click({ timeout: 3_000 }) } catch { /* ok */ }
   await page.waitForURL(/#\/create-packing-list/, { timeout: 5_000 })
 }
 
@@ -198,5 +197,69 @@ test.describe('C – Packing Lists', () => {
     const card = page.locator('[data-testid="list-section"]').filter({ hasText: "Me's Items" })
     await expect(card.getByTestId('person-avatar')).toHaveClass(/bg-fuchsia-500/)
     await expect(card).toHaveClass(/border-fuchsia-300/)
+  })
+})
+
+test.describe('C – Contextual sign-in prompts (logged out)', () => {
+  test('C10: the lists index nudges a logged-out user to sync, and stays dismissed for the session', async ({ freshPage: page }) => {
+    await runWizard(page)
+    await createList(page, 'Sync Nudge Trip')
+
+    await page.goto('/#/view-lists')
+    const prompt = page.getByTestId('sync-across-devices-prompt')
+    await expect(prompt).toBeVisible({ timeout: 8_000 })
+    await expect(prompt).toContainText(/sync across devices/i)
+
+    await prompt.getByRole('button', { name: 'Dismiss sync prompt' }).click()
+    await expect(prompt).toHaveCount(0)
+
+    // A reload is the same session, so the nudge stays gone
+    await page.reload()
+    await expect(page.getByText('Sync Nudge Trip')).toBeVisible({ timeout: 8_000 })
+    await expect(page.getByTestId('sync-across-devices-prompt')).toHaveCount(0)
+  })
+
+  test('C11: the nudge waits until there is a list worth syncing', async ({ freshPage: page }) => {
+    await page.goto('/#/view-lists')
+    await expect(page.getByText(/No packing lists found/i)).toBeVisible({ timeout: 8_000 })
+    await expect(page.getByTestId('sync-across-devices-prompt')).toHaveCount(0)
+  })
+
+  test('C12: sharing while logged out asks to sign in, framed around sharing', async ({ freshPage: page }) => {
+    await runWizard(page)
+    await createList(page, 'Share Prompt Trip')
+
+    await page.getByRole('button', { name: 'Share', exact: true }).click()
+    await expect(page.getByRole('heading', { name: /Sign in to share this list/i })).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByText(/Send a friend a link/i)).toBeVisible()
+
+    // Backing out leaves the list exactly as it was
+    await page.getByRole('button', { name: 'Not now' }).click()
+    await expect(page.getByRole('heading', { name: /Sign in to share this list/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Share', exact: true })).toBeVisible()
+  })
+
+  test('C13: both contextual prompts work on a phone-sized screen', async ({ freshPage: page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await runWizard(page)
+    await createList(page, 'Mobile Prompt Trip')
+
+    // Share prompt: the modal and both of its buttons fit the viewport
+    await page.getByRole('button', { name: 'Share', exact: true }).click()
+    const signInButton = page.getByRole('button', { name: /Sign in to share/i })
+    await expect(signInButton).toBeVisible({ timeout: 5_000 })
+    const signInBox = await signInButton.boundingBox()
+    expect(signInBox!.x).toBeGreaterThanOrEqual(0)
+    expect(signInBox!.x + signInBox!.width).toBeLessThanOrEqual(390)
+    await page.getByRole('button', { name: 'Not now' }).click()
+
+    // Sync nudge: fits the width, and the dismiss control is reachable
+    await page.goto('/#/view-lists')
+    const prompt = page.getByTestId('sync-across-devices-prompt')
+    await expect(prompt).toBeVisible({ timeout: 8_000 })
+    const promptBox = await prompt.boundingBox()
+    expect(promptBox!.x + promptBox!.width).toBeLessThanOrEqual(390)
+    await prompt.getByRole('button', { name: 'Dismiss sync prompt' }).click()
+    await expect(prompt).toHaveCount(0)
   })
 })

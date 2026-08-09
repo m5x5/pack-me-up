@@ -547,6 +547,9 @@ describe('CreatePackingList – suggestion card', () => {
 
         fireEvent.click(screen.getAllByRole('button', { name: /^add$/i })[0])
         await waitFor(() => expect(saveQuestionSet).toHaveBeenCalledTimes(1))
+        // The save resolving is not the row going away — wait for the first
+        // suggestion to leave before reaching for the remaining Add button
+        await waitFor(() => expect(screen.getAllByRole('button', { name: /^add$/i })).toHaveLength(1))
         fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
         await waitFor(() => expect(saveQuestionSet).toHaveBeenCalledTimes(2))
 
@@ -572,7 +575,9 @@ describe('CreatePackingList – suggestion card', () => {
         // Skip both
         const skipButtons = screen.getAllByRole('button', { name: /skip/i })
         fireEvent.click(skipButtons[0])
-        await waitFor(() => screen.getAllByRole('button', { name: /skip/i }).length < 2)
+        // A returned boolean never fails a waitFor — assert, so this really does
+        // wait for the first suggestion to go
+        await waitFor(() => expect(screen.getAllByRole('button', { name: /skip/i })).toHaveLength(1))
         const remainingSkip = screen.getByRole('button', { name: /skip/i })
         fireEvent.click(remainingSkip)
 
