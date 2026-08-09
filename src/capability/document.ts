@@ -229,6 +229,61 @@ const questionSetShape = {
     ],
 }
 
+// ---------------------------------------------------------------------------
+// Exports for the RDFa restatement in the footer
+// (src/components/ApplicationCapabilityRdfa.tsx). These re-export the exact
+// same objects that feed CAPABILITY_JSONLD's @graph below, so the RDFa
+// markup can't drift out of sync with it the way two independently
+// hand-typed documents could - see the module doc comment.
+// ---------------------------------------------------------------------------
+
+interface Capability {
+    id: string
+    type: string
+    action: string
+    output: string
+    resourceType: string
+    shape?: string
+    invocation: string
+}
+
+interface Invocation {
+    id: string
+    type: string
+    template: string
+    mapping: { variable: string; property: string }[]
+}
+
+interface Requirement {
+    id: string
+    type: string
+    cspDirective?: string
+    browserPermission?: string
+    hasPurpose: string
+}
+
+export const APPLICATION = application
+
+export const CAPABILITIES: Capability[] = [
+    capabilityViewPackingList,
+    capabilityViewQuestionSet,
+    capabilityCreatePackingList,
+    capabilitySetupWizard,
+]
+
+export const INVOCATIONS: Invocation[] = [
+    invokeViewPackingList,
+    invokeViewQuestionSet,
+    invokeCreatePackingList,
+    invokeSetupWizard,
+]
+
+export const REQUIREMENTS: Requirement[] = [
+    requirementScripts,
+    requirementConnect,
+    requirementClipboard,
+]
+
 export const CAPABILITY_JSONLD = {
     '@context': CONTEXT,
     '@graph': [
