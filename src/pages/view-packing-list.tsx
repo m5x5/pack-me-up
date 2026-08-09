@@ -22,7 +22,7 @@ import { UpdateFromQuestionsModal } from '../components/UpdateFromQuestionsModal
 import { useForeignPod } from '../components/ForeignPodContext'
 import { useSharedListsSync } from '../hooks/useSharedListsSync'
 import { mergePackingLists } from '../utils/mergePackingLists'
-import { computeQuestionSetAdditions } from '../create-packing-list/updateFromQuestions'
+import { computeQuestionSetChanges, type QuestionSetChange } from '../create-packing-list/updateFromQuestions'
 import { MILESTONE_MESSAGES, resolveMilestone } from './packing-milestones'
 import { formatTripDates } from '../create-packing-list/tripDetails'
 import { tapFeedback } from '../utils/haptics'
@@ -181,7 +181,7 @@ export function ViewPackingList() {
     // sharing rather than a generic "set up a pod" pitch.
     const [signInToSharePromptOpen, setSignInToSharePromptOpen] = useState(false)
     // Additions computed from the question set; non-null opens the preview modal.
-    const [questionUpdateAdditions, setQuestionUpdateAdditions] = useState<PackingListItem[] | null>(null)
+    const [questionUpdateChanges, setQuestionUpdateChanges] = useState<QuestionSetChange[] | null>(null)
     // Whether the question set exists locally (gates the "Update from questions" button).
     const [questionUpdateAvailable, setQuestionUpdateAvailable] = useState(false)
     const [ownPodUrl, setOwnPodUrl] = useState<string | null>(null)
@@ -352,7 +352,7 @@ export function ViewPackingList() {
             .then(() => db.getQuestionSet())
             .then(questionSet => {
                 if (cancelled) return
-                setQuestionUpdateAvailable(computeQuestionSetAdditions(packingList, questionSet).length > 0)
+                setQuestionUpdateAvailable(computeQuestionSetChanges(packingList, questionSet).length > 0)
             })
             .catch(() => { if (!cancelled) setQuestionUpdateAvailable(false) })
         return () => { cancelled = true }
@@ -731,35 +731,59 @@ export function ViewPackingList() {
         if (!packingList) return
         try {
             const questionSet = await db.getQuestionSet()
-            const additions = computeQuestionSetAdditions(packingList, questionSet)
-            if (additions.length === 0) {
+            const changes = computeQuestionSetChanges(packingList, questionSet)
+            if (changes.length === 0) {
                 showToast('This list already matches your questions', 'success')
                 return
             }
-            setQuestionUpdateAdditions(additions)
+            setQuestionUpdateChanges(changes)
         } catch (err) {
             const details = reportError(err, 'Error computing question updates')
             showToast('Failed to check for question updates', 'error', details)
         }
     }
 
-    const handleConfirmQuestionUpdate = async (selected: PackingListItem[]) => {
+    const handleConfirmQuestionUpdate = async (selected: QuestionSetChange[]) => {
         if (!packingList || selected.length === 0) {
-            setQuestionUpdateAdditions(null)
+            setQuestionUpdateChanges(null)
             return
         }
         try {
-            const updatedList: PackingList = {
-                ...packingList,
-                items: [...packingList.items, ...selected],
+            let items = [...packingList.items]
+            const deletedItems = [...(packingList.deletedItems ?? [])]
+            const now = new Date().toISOString()
+            for (const change of selected) {
+                switch (change.type) {
+                    case 'add':
+                        items.push(change.item)
+                        break
+                    case 'update':
+                        items = items.map(i => i.id === change.before.id ? change.after : i)
+                        break
+                    case 'remove':
+                        // Tombstoned like a hand-deleted item, so sync merges
+                        // agree it's gone and additions never resurrect it.
+                        items = items.filter(i => i.id !== change.item.id)
+                        deletedItems.push({ ...change.item, reviewed: false, lastModified: now })
+                        break
+                    case 'sharing': {
+                        // Replaced, not deleted — no tombstone, so flipping the
+                        // question back later re-offers the old shape.
+                        const removed = new Set(change.remove.map(r => r.id))
+                        items = items.filter(i => !removed.has(i.id))
+                        items.push(...change.add)
+                        break
+                    }
+                }
             }
+            const updatedList: PackingList = { ...packingList, items, deletedItems }
             await persistPackingList(updatedList)
-            showToast(`Added ${selected.length} item${selected.length === 1 ? '' : 's'} from your questions`, 'success')
+            showToast(`Applied ${selected.length} update${selected.length === 1 ? '' : 's'} from your questions`, 'success')
         } catch (err) {
-            const details = reportError(err, 'Error adding question updates')
-            showToast('Failed to add items', 'error', details)
+            const details = reportError(err, 'Error applying question updates')
+            showToast('Failed to apply updates', 'error', details)
         } finally {
-            setQuestionUpdateAdditions(null)
+            setQuestionUpdateChanges(null)
         }
     }
 
@@ -1378,14 +1402,13 @@ export function ViewPackingList() {
                 </div>
             )}
 
-            {/* Slim sticky progress strip */}
+            {/* Slim sticky progress strip: the progress card carries the bar and
+                Show Packed (they're both about what's visible of the packing
+                state); the view controls sit in their own card to the right. */}
             <div className="sticky top-0 z-50 w-full mb-4 flex justify-center">
-                <div className="w-full max-w-screen-2xl">
-                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-4 py-2">
-                        {/* Counts and bar share a line with the controls where there is
-                            room; at 390px the controls drop to a line of their own
-                            rather than squeezing everything into wrapped fragments. */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="w-full max-w-screen-2xl flex flex-wrap items-stretch gap-2">
+                    <div className="flex-1 min-w-0 backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-4 py-2">
+                        <div className="h-full flex flex-wrap items-center gap-x-3 gap-y-2">
                             <span className={`text-sm font-medium whitespace-nowrap ${allPacked ? 'text-emerald-600' : 'text-gray-600'}`}>
                                 {allPacked ? '🎉 All packed!' : `${packedCount} / ${totalCount} packed (${percentComplete}%)`}
                             </span>
@@ -1413,7 +1436,17 @@ export function ViewPackingList() {
                                     </span>
                                 )}
                             </div>
-                            <div className="w-full sm:w-auto flex flex-wrap items-center justify-end gap-2">
+                            <Button
+                                type="button"
+                                variant={hiddenPackedCount > 0 ? 'primary' : 'secondary'}
+                                onClick={() => setShowPacked(!showPacked)}
+                            >
+                                {showPacked ? 'Hide Packed' : 'Show Packed'}
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="backdrop-blur-md bg-white/90 border border-gray-200 shadow-sm rounded-lg px-3 py-2 shrink-0">
+                        <div className="h-full flex flex-wrap items-center justify-end gap-2">
                                 {showFoldAllControl && (
                                     <button
                                         type="button"
@@ -1453,14 +1486,6 @@ export function ViewPackingList() {
                                         {isDesktop ? 'Question View' : 'Question'}
                                     </button>
                                 </div>
-                                <Button
-                                    type="button"
-                                    variant={hiddenPackedCount > 0 ? 'primary' : 'secondary'}
-                                    onClick={() => setShowPacked(!showPacked)}
-                                >
-                                    {showPacked ? 'Hide Packed' : 'Show Packed'}
-                                </Button>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -2026,9 +2051,9 @@ export function ViewPackingList() {
             />
         )}
         <UpdateFromQuestionsModal
-            isOpen={questionUpdateAdditions !== null}
-            onClose={() => setQuestionUpdateAdditions(null)}
-            additions={questionUpdateAdditions ?? []}
+            isOpen={questionUpdateChanges !== null}
+            onClose={() => setQuestionUpdateChanges(null)}
+            changes={questionUpdateChanges ?? []}
             onConfirm={handleConfirmQuestionUpdate}
         />
         </>

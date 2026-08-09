@@ -1,85 +1,144 @@
 import { useMemo, useState } from 'react'
 import { Modal } from './Modal'
 import { Button } from './Button'
+import type { QuestionSetChange } from '../create-packing-list/updateFromQuestions'
 import { PackingListItem } from '../create-packing-list/types'
 
 interface UpdateFromQuestionsModalProps {
     isOpen: boolean
     onClose: () => void
-    additions: PackingListItem[]
-    onConfirm: (selected: PackingListItem[]) => void
+    changes: QuestionSetChange[]
+    onConfirm: (selected: QuestionSetChange[]) => void
 }
 
-// Groups additions by traveller for the preview, communal ("Shared items")
-// first, then people alphabetically.
-function groupAdditions(additions: PackingListItem[]): Array<{ label: string; items: PackingListItem[] }> {
-    const shared: PackingListItem[] = []
-    const byPerson = new Map<string, PackingListItem[]>()
-    for (const item of additions) {
-        if (item.communal || item.personId === '') {
-            shared.push(item)
-        } else {
-            const key = item.personName || 'Unassigned'
-            if (!byPerson.has(key)) byPerson.set(key, [])
-            byPerson.get(key)!.push(item)
+const forWhom = (item: PackingListItem) =>
+    item.communal || item.personId === '' ? 'Shared' : item.personName || 'Unassigned'
+
+// One human-readable line per change; the checkbox's accessible name.
+function describeChange(change: QuestionSetChange): string {
+    switch (change.type) {
+        case 'add': {
+            const { item } = change
+            return `Add ${item.itemText}${item.personName ? ` for ${item.personName}` : ''}`
+        }
+        case 'remove':
+            return `Remove ${change.item.itemText}${change.item.personName ? ` for ${change.item.personName}` : ''}`
+        case 'sharing':
+            return change.direction === 'shared'
+                ? `Make ${change.itemText} a shared item`
+                : `Give everyone their own ${change.itemText}`
+        case 'update': {
+            const parts: string[] = []
+            if (change.kinds.includes('renamed')) parts.push(`rename ${change.before.itemText} to ${change.after.itemText}`)
+            if (change.kinds.includes('moved')) parts.push(`move ${change.before.itemText} to ${change.after.category}`)
+            if (change.kinds.includes('quantity')) parts.push(`change ${change.before.itemText} quantity to ${change.after.quantity ?? 1}`)
+            const [first, ...rest] = parts
+            const joined = [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ')
+            return `${joined}${change.before.personName ? ` for ${change.before.personName}` : ''}`
         }
     }
-    const groups: Array<{ label: string; items: PackingListItem[] }> = []
-    if (shared.length > 0) groups.push({ label: 'Shared items', items: shared })
-    for (const label of [...byPerson.keys()].sort((a, b) => a.localeCompare(b))) {
-        groups.push({ label, items: byPerson.get(label)! })
-    }
-    return groups
 }
+
+function sectionOf(change: QuestionSetChange): 'add' | 'change' | 'remove' {
+    if (change.type === 'add') return 'add'
+    if (change.type === 'remove') return 'remove'
+    return 'change'
+}
+
+const SECTIONS = [
+    { key: 'add' as const, title: 'New items' },
+    { key: 'change' as const, title: 'Changed items' },
+    { key: 'remove' as const, title: 'No longer in your questions' },
+]
 
 export function UpdateFromQuestionsModal({
     isOpen,
     onClose,
-    additions,
+    changes,
     onConfirm,
 }: UpdateFromQuestionsModalProps) {
-    // All additions start selected; the user unchecks any they don't want.
-    const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set())
+    // Everything starts selected; the user unchecks what they don't want.
+    // Changes are keyed by their index — the array is stable for the modal's life.
+    const [excluded, setExcluded] = useState<Set<number>>(new Set())
 
-    const groups = useMemo(() => groupAdditions(additions), [additions])
-    const selectedCount = additions.length - excludedIds.size
+    const sections = useMemo(() => SECTIONS
+        .map(section => ({
+            ...section,
+            entries: changes
+                .map((change, index) => ({ change, index }))
+                .filter(({ change }) => sectionOf(change) === section.key),
+        }))
+        .filter(section => section.entries.length > 0),
+    [changes])
 
-    const toggle = (id: string) => {
-        setExcludedIds(prev => {
+    const selected = changes.filter((_, i) => !excluded.has(i))
+    const onlyAdditions = selected.every(c => c.type === 'add')
+
+    const toggle = (index: number) => {
+        setExcluded(prev => {
             const next = new Set(prev)
-            if (next.has(id)) next.delete(id)
-            else next.add(id)
+            if (next.has(index)) next.delete(index)
+            else next.add(index)
             return next
         })
-    }
-
-    const handleConfirm = () => {
-        onConfirm(additions.filter(item => !excludedIds.has(item.id)))
     }
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Update from questions">
             <p className="text-sm text-gray-600 mb-4">
-                Your questions have new items that match this trip. Choose which to add.
+                Your questions have changed since this list was made. Choose which updates to apply.
             </p>
             <div className="max-h-96 overflow-y-auto space-y-4">
-                {groups.map(group => (
-                    <div key={group.label}>
-                        <p className="text-sm font-semibold text-gray-700 mb-2">{group.label}</p>
+                {sections.map(section => (
+                    <div key={section.key}>
+                        <p className="text-sm font-semibold text-gray-700 mb-2">{section.title}</p>
                         <div className="space-y-1">
-                            {group.items.map(item => (
-                                <label key={item.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                            {section.entries.map(({ change, index }) => (
+                                <label key={index} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
                                     <input
                                         type="checkbox"
-                                        aria-label={`Add ${item.itemText}${item.personName ? ` for ${item.personName}` : ''}`}
-                                        checked={!excludedIds.has(item.id)}
-                                        onChange={() => toggle(item.id)}
+                                        aria-label={describeChange(change)}
+                                        checked={!excluded.has(index)}
+                                        onChange={() => toggle(index)}
                                         className="h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                                     />
-                                    <span className="text-gray-900">
-                                        {item.itemText}
-                                        {item.quantity !== undefined && (
-                                            <span className="ml-1.5 text-sm text-gray-500">×{item.quantity}</span>
+                                    <span className={change.type === 'remove' ? 'text-gray-500 line-through' : 'text-gray-900'}>
+                                        {change.type === 'add' && (
+                                            <>
+                                                {change.item.itemText}
+                                                {change.item.quantity !== undefined && (
+                                                    <span className="ml-1.5 text-sm text-gray-500 no-underline">×{change.item.quantity}</span>
+                                                )}
+                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.item)}</span>
+                                            </>
+                                        )}
+                                        {change.type === 'remove' && (
+                                            <>
+                                                {change.item.itemText}
+                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.item)}</span>
+                                            </>
+                                        )}
+                                        {change.type === 'update' && (
+                                            <>
+                                                {change.kinds.includes('renamed')
+                                                    ? <>{change.before.itemText} <span aria-hidden="true">→</span> {change.after.itemText}</>
+                                                    : change.before.itemText}
+                                                {change.kinds.includes('moved') && (
+                                                    <span className="ml-1.5 text-sm text-gray-500">now in {change.after.category}</span>
+                                                )}
+                                                {change.kinds.includes('quantity') && (
+                                                    <span className="ml-1.5 text-sm text-gray-500">×{change.before.quantity ?? 1} <span aria-hidden="true">→</span> ×{change.after.quantity ?? 1}</span>
+                                                )}
+                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.before)}</span>
+                                            </>
+                                        )}
+                                        {change.type === 'sharing' && (
+                                            <>
+                                                {change.itemText}
+                                                <span className="ml-1.5 text-sm text-gray-500">
+                                                    {change.direction === 'shared' ? 'now packed once for everyone' : 'now one per person'}
+                                                </span>
+                                            </>
                                         )}
                                     </span>
                                 </label>
@@ -95,10 +154,14 @@ export function UpdateFromQuestionsModal({
                 <Button
                     type="button"
                     variant="primary"
-                    onClick={handleConfirm}
-                    disabled={selectedCount === 0}
+                    onClick={() => onConfirm(selected)}
+                    disabled={selected.length === 0}
                 >
-                    {selectedCount > 0 ? `Add ${selectedCount} item${selectedCount === 1 ? '' : 's'}` : 'Add items'}
+                    {selected.length === 0
+                        ? 'Apply changes'
+                        : onlyAdditions
+                            ? `Add ${selected.length} item${selected.length === 1 ? '' : 's'}`
+                            : `Apply ${selected.length} change${selected.length === 1 ? '' : 's'}`}
                 </Button>
             </div>
         </Modal>

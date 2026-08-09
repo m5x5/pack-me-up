@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import PouchDB from 'pouchdb'
 import PouchDBMemoryAdapter from 'pouchdb-adapter-memory'
 import { PackingAppDatabase } from '../services/database'
-import { computeQuestionSetAdditions, reconstructGenerationInputs } from './updateFromQuestions'
+import { computeQuestionSetAdditions, computeQuestionSetChanges, reconstructGenerationInputs } from './updateFromQuestions'
 import { PackingList, PackingListItem } from './types'
 import { PackingListQuestionSet, Question, Person, Item } from '../edit-questions/types'
 
@@ -406,5 +406,165 @@ describe('an item reaching one person from two answers', () => {
     it('offers the larger of the two suggested quantities', () => {
         const [towels] = computeQuestionSetAdditions(list, questionSet)
         expect(towels.quantity).toBe(3)
+    })
+})
+
+describe('computeQuestionSetChanges', () => {
+    // A question set whose one option holds the given items
+    const setWith = (...items: Item[]) => makeQuestionSet({
+        questions: [makeQuestion({
+            options: [{ id: 'opt-swimming', text: 'Swimming', order: 0, items }],
+        })],
+    })
+    const answered = { questionAnswers: [{ questionId: 'q-activities', selectedOptionIds: ['opt-swimming'] }] }
+
+    it('reports an item removed from the questions as a removal', () => {
+        const questionSet = setWith(makeItem('Goggles', ['p1']))
+        const towel = listItem({ itemText: 'Towel', personId: 'p1', personName: 'Alice' })
+        const goggles = listItem({ itemText: 'Goggles', personId: 'p1', personName: 'Alice' })
+        const list = makeList({ ...answered, items: [towel, goggles] })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toEqual([{ type: 'remove', item: towel }])
+    })
+
+    it('never flags hand-added custom items as removals', () => {
+        const questionSet = setWith(makeItem('Goggles', ['p1']))
+        const custom = listItem({ itemText: 'Souvenir money', questionId: '', optionId: '' })
+        const goggles = listItem({ itemText: 'Goggles' })
+        const list = makeList({ ...answered, items: [custom, goggles] })
+
+        expect(computeQuestionSetChanges(list, questionSet)).toEqual([])
+    })
+
+    it('reports a renamed item as an update that keeps the packed state and id', () => {
+        const questionSet = setWith(makeItem('Swimming goggles', ['p1']))
+        const goggles = listItem({ itemText: 'Goggles', packed: true })
+        const list = makeList({ ...answered, items: [goggles] })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toHaveLength(1)
+        const change = changes[0]
+        if (change.type !== 'update') throw new Error('expected update')
+        expect(change.kinds).toEqual(['renamed'])
+        expect(change.before.itemText).toBe('Goggles')
+        expect(change.after.itemText).toBe('Swimming goggles')
+        expect(change.after.id).toBe(goggles.id)
+        expect(change.after.packed).toBe(true)
+    })
+
+    it('does not guess a rename when several items changed in the same option', () => {
+        const questionSet = setWith(makeItem('Snorkel', ['p1']), makeItem('Fins', ['p1']))
+        const list = makeList({
+            ...answered,
+            items: [
+                listItem({ itemText: 'Goggles' }),
+                listItem({ itemText: 'Towel' }),
+            ],
+        })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        const types = changes.map(c => c.type).sort()
+        expect(types).toEqual(['add', 'add', 'remove', 'remove'])
+    })
+
+    it('reports a moved item (new category) as an update', () => {
+        const questionSet = setWith(makeItem('Goggles', ['p1'], { category: 'Beach' }))
+        const goggles = listItem({ itemText: 'Goggles', category: 'Essentials' })
+        const list = makeList({ ...answered, items: [goggles] })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toHaveLength(1)
+        const change = changes[0]
+        if (change.type !== 'update') throw new Error('expected update')
+        expect(change.kinds).toEqual(['moved'])
+        expect(change.after.category).toBe('Beach')
+    })
+
+    it('reports a quantity change as an update', () => {
+        const questionSet = setWith(makeItem('Socks', ['p1'], { perNight: 1, perNights: 1, maxQuantity: 3 }))
+        const socks = listItem({ itemText: 'Socks', quantity: 1 })
+        const list = makeList({ ...answered, items: [socks], nights: 5 })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toHaveLength(1)
+        const change = changes[0]
+        if (change.type !== 'update') throw new Error('expected update')
+        expect(change.kinds).toEqual(['quantity'])
+        expect(change.after.quantity).toBe(3)
+    })
+
+    it('reports an item that became communal as one sharing change', () => {
+        const questionSet = setWith(makeItem('Tent', ['p1', 'p2'], { communal: true }))
+        const aliceTent = listItem({ itemText: 'Tent', personId: 'p1', personName: 'Alice', packed: true })
+        const bobTent = listItem({ itemText: 'Tent', personId: 'p2', personName: 'Bob', packed: true })
+        const list = makeList({ ...answered, items: [aliceTent, bobTent] })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toHaveLength(1)
+        const change = changes[0]
+        if (change.type !== 'sharing') throw new Error('expected sharing')
+        expect(change.direction).toBe('shared')
+        expect(change.remove.map(i => i.id).sort()).toEqual([aliceTent.id, bobTent.id].sort())
+        expect(change.add).toHaveLength(1)
+        expect(change.add[0].communal).toBe(true)
+        // Every copy was packed, so the shared one arrives packed
+        expect(change.add[0].packed).toBe(true)
+    })
+
+    it('reports a communal item that became per-person as one sharing change', () => {
+        const questionSet = setWith(makeItem('Sunscreen', ['p1', 'p2']))
+        const shared = listItem({ itemText: 'Sunscreen', personId: '', personName: '', communal: true, packed: false })
+        const list = makeList({ ...answered, items: [shared] })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toHaveLength(1)
+        const change = changes[0]
+        if (change.type !== 'sharing') throw new Error('expected sharing')
+        expect(change.direction).toBe('personal')
+        expect(change.remove.map(i => i.id)).toEqual([shared.id])
+        expect(change.add.map(i => i.personName).sort()).toEqual(['Alice', 'Bob'])
+    })
+
+    it('still reports plain additions, skipping deleted items', () => {
+        const questionSet = setWith(makeItem('Goggles', ['p1']), makeItem('Towel', ['p1']))
+        const list = makeList({
+            ...answered,
+            items: [listItem({ itemText: 'Goggles' })],
+            deletedItems: [listItem({ itemText: 'Towel' })],
+        })
+
+        const changes = computeQuestionSetChanges(list, questionSet)
+
+        expect(changes).toEqual([])
+    })
+
+    it('does not flag removals for a question the list never answered', () => {
+        // The list has items from q-activities but no stored answer for it
+        // (the pre-fix empty-inputs shape) — nothing should look removed.
+        const questionSet = setWith(makeItem('Goggles', ['p1']))
+        const list = makeList({ questionAnswers: [], items: [listItem({ itemText: 'Goggles' })] })
+
+        expect(computeQuestionSetChanges(list, questionSet)).toEqual([])
+    })
+
+    it('leaves items of a person no longer in the question set alone', () => {
+        const questionSet = makeQuestionSet({
+            people: [alice],
+            questions: [makeQuestion({
+                options: [{ id: 'opt-swimming', text: 'Swimming', order: 0, items: [makeItem('Goggles', ['p1'])] }],
+            })],
+        })
+        const bobItem = listItem({ itemText: 'Goggles', personId: 'p2', personName: 'Bob' })
+        const list = makeList({ ...answered, items: [listItem({ itemText: 'Goggles' }), bobItem] })
+
+        expect(computeQuestionSetChanges(list, questionSet)).toEqual([])
     })
 })

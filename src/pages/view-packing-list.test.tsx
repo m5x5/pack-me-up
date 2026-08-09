@@ -1851,6 +1851,46 @@ describe('ViewPackingList update from questions', () => {
         expect(texts).not.toContain('Swimsuit')
     })
 
+    it('applies a rename and tombstones a removed item', async () => {
+        // The questions now call the swimsuit "Bathing suit" and no longer
+        // mention the goggles the list still carries.
+        const renamedQs = {
+            ...questionSetWithNewItem,
+            questions: [{
+                ...questionSetWithNewItem.questions[0],
+                options: [{
+                    ...questionSetWithNewItem.questions[0].options[0],
+                    items: [{ text: 'Bathing suit', personSelections: [{ personId: 'p1', selected: true }] }],
+                }],
+            }],
+        }
+        const db = renderUpdatable({
+            list: {
+                ...updatablePackingList,
+                items: [
+                    { id: 'item-suit', itemText: 'Swimsuit', personName: 'Alice', personId: 'p1', questionId: 'q-activities', optionId: 'opt-swimming', packed: true },
+                    // In a different group (always-needed) so the rename above stays
+                    // unambiguous — one item changed within one option
+                    { id: 'item-goggles', itemText: 'Goggles', personName: 'Alice', personId: 'p1', questionId: 'always-needed', optionId: '', packed: false },
+                ],
+            },
+            getQuestionSet: vi.fn().mockResolvedValue(renamedQs),
+        })
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Updatable Trip' })).toBeTruthy())
+
+        fireEvent.click(await screen.findByRole('button', { name: /update from questions/i }))
+        // A mixed selection reads "Apply", not "Add"
+        fireEvent.click(await screen.findByRole('button', { name: /apply 2 changes/i }))
+
+        await waitFor(() => expect(db.savePackingList).toHaveBeenCalled())
+        const saved = db.savePackingList.mock.calls[0][0]
+        const renamed = saved.items.find((i: { id: string }) => i.id === 'item-suit')
+        expect(renamed.itemText).toBe('Bathing suit')
+        expect(renamed.packed).toBe(true)
+        expect(saved.items.find((i: { id: string }) => i.id === 'item-goggles')).toBeUndefined()
+        expect(saved.deletedItems.map((i: { itemText: string }) => i.itemText)).toContain('Goggles')
+    })
+
     it('is hidden for foreign lists', async () => {
         const db = {
             getPackingList: vi.fn().mockResolvedValue(updatablePackingList),
