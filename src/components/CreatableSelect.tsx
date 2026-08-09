@@ -101,9 +101,9 @@ export function CustomCreatableSelect({ value, onChange, options, placeholder = 
                 tabIndex={0}
                 onClick={() => setIsActive(true)}
                 onFocus={() => setIsActive(true)}
-                className="flex items-center min-h-[42px] border border-gray-200 hover:border-gray-400 rounded px-3 cursor-text"
+                className="flex items-center min-h-[42px] border border-gray-200 dark:border-gray-700 hover:border-gray-400 rounded px-3 cursor-text"
             >
-                <span className={`flex-1 text-sm ${value ? 'text-gray-700' : 'text-gray-400'}`}>
+                <span className={`flex-1 text-sm ${value ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
                     {value || placeholder}
                 </span>
                 {value && (
@@ -112,7 +112,7 @@ export function CustomCreatableSelect({ value, onChange, options, placeholder = 
                         tabIndex={-1}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={(e) => { e.stopPropagation(); onChange(''); }}
-                        className="text-gray-300 hover:text-gray-500 text-lg leading-none ml-1"
+                        className="text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 text-lg leading-none ml-1"
                         aria-label="Clear"
                     >
                         ×

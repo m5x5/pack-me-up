@@ -85,16 +85,16 @@ export function UpdateFromQuestionsModal({
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Update from questions">
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Your questions have changed since this list was made. Choose which updates to apply.
             </p>
             <div className="max-h-96 overflow-y-auto space-y-4">
                 {sections.map(section => (
                     <div key={section.key}>
-                        <p className="text-sm font-semibold text-gray-700 mb-2">{section.title}</p>
+                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{section.title}</p>
                         <div className="space-y-1">
                             {section.entries.map(({ change, index }) => (
-                                <label key={index} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                                <label key={index} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         aria-label={describeChange(change)}
@@ -102,20 +102,20 @@ export function UpdateFromQuestionsModal({
                                         onChange={() => toggle(index)}
                                         className="h-4 w-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                                     />
-                                    <span className={change.type === 'remove' ? 'text-gray-500 line-through' : 'text-gray-900'}>
+                                    <span className={change.type === 'remove' ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}>
                                         {change.type === 'add' && (
                                             <>
                                                 {change.item.itemText}
                                                 {change.item.quantity !== undefined && (
-                                                    <span className="ml-1.5 text-sm text-gray-500 no-underline">×{change.item.quantity}</span>
+                                                    <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400 no-underline">×{change.item.quantity}</span>
                                                 )}
-                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.item)}</span>
+                                                <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">{forWhom(change.item)}</span>
                                             </>
                                         )}
                                         {change.type === 'remove' && (
                                             <>
                                                 {change.item.itemText}
-                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.item)}</span>
+                                                <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">{forWhom(change.item)}</span>
                                             </>
                                         )}
                                         {change.type === 'update' && (
@@ -124,18 +124,18 @@ export function UpdateFromQuestionsModal({
                                                     ? <>{change.before.itemText} <span aria-hidden="true">→</span> {change.after.itemText}</>
                                                     : change.before.itemText}
                                                 {change.kinds.includes('moved') && (
-                                                    <span className="ml-1.5 text-sm text-gray-500">now in {change.after.category}</span>
+                                                    <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">now in {change.after.category}</span>
                                                 )}
                                                 {change.kinds.includes('quantity') && (
-                                                    <span className="ml-1.5 text-sm text-gray-500">×{change.before.quantity ?? 1} <span aria-hidden="true">→</span> ×{change.after.quantity ?? 1}</span>
+                                                    <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">×{change.before.quantity ?? 1} <span aria-hidden="true">→</span> ×{change.after.quantity ?? 1}</span>
                                                 )}
-                                                <span className="ml-1.5 text-sm text-gray-500">{forWhom(change.before)}</span>
+                                                <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">{forWhom(change.before)}</span>
                                             </>
                                         )}
                                         {change.type === 'sharing' && (
                                             <>
                                                 {change.itemText}
-                                                <span className="ml-1.5 text-sm text-gray-500">
+                                                <span className="ml-1.5 text-sm text-gray-500 dark:text-gray-400">
                                                     {change.direction === 'shared' ? 'now packed once for everyone' : 'now one per person'}
                                                 </span>
                                             </>

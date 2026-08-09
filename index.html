@@ -6,6 +6,15 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Pack Me Up</title>
+  <script>
+    // Applied before first paint so there's no flash of the wrong theme.
+    // Mirrors ThemeContext's own resolution: an explicit choice wins, else the OS setting.
+    (function () {
+      var stored = localStorage.getItem('theme-preference');
+      var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', dark);
+    })();
+  </script>
 </head>
 
 <body>

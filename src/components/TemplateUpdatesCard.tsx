@@ -111,7 +111,7 @@ export function TemplateUpdatesCard({ questionSet, onApply }: TemplateUpdatesCar
                                 {group.items.map(s => (
                                     <label
                                         key={s.key}
-                                        className="flex items-start gap-2 text-sm text-gray-700 bg-white rounded border border-emerald-200 px-3 py-2"
+                                        className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 rounded border border-emerald-200 px-3 py-2"
                                     >
                                         <input
                                             type="checkbox"
@@ -120,7 +120,7 @@ export function TemplateUpdatesCard({ questionSet, onApply }: TemplateUpdatesCar
                                             className="mt-0.5 h-4 w-4 text-emerald-600 rounded focus:ring-2 focus:ring-emerald-500"
                                         />
                                         <span>
-                                            <span className="font-medium text-gray-900">{s.label}</span>
+                                            <span className="font-medium text-gray-900 dark:text-gray-100">{s.label}</span>
                                             {KIND_HINT[s.kind] && (
                                                 <span className="ml-2 text-xs text-emerald-600">{KIND_HINT[s.kind]}</span>
                                             )}
@@ -134,7 +134,7 @@ export function TemplateUpdatesCard({ questionSet, onApply }: TemplateUpdatesCar
                         <button
                             type="button"
                             onClick={() => setIsExpanded(false)}
-                            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-emerald-100"
+                            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-emerald-100"
                         >
                             Not now
                         </button>
